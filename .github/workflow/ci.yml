@@ -1,0 +1,21 @@
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.x
+      - run: deno test
+      - uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: 1.x
+      - run: bun test
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+      - run: npx tsx --test
