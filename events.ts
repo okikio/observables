@@ -1,321 +1,321 @@
 /**
- * This module provides functionality for creating and managing status event dispatchers using the Web Streams API.
- * It allows for efficient broadcasting of status events to multiple listeners with proper handling of backpressure and synchronization.
- *
- * @module
+ * @module EventBus
  */
 
-import type { MulticastReadableStream } from "./multicast.ts";
-import { createChannel } from "./channel.ts";
+import type { Subscription } from "./_types.ts";
+import type { SubscriptionObserver } from './observable.ts';
+
+import { Observable } from './observable.ts';
+import { Symbol } from "./symbol.ts";
 
 /**
- * Creates a status event dispatcher that allows dispatching and listening to status events
- * using the Web Streams API. This function utilizes a channel internally to manage event
- * dispatching and multiple listeners via `for await...of`.
+ * A multicast event bus that extends {@link Observable<T>}, allowing
+ * emission of values to multiple subscribers and supporting both
+ * Observer-style and async-iterator consumption.
  *
- * ## What is a Channel?
- * A channel is a communication mechanism built on top of Web Streams, allowing data to flow
- * from one or more producers (writers) to multiple independent consumers (readers). Channels
- * efficiently manage data flow, backpressure, and synchronization across multiple consumers.
- *
- * In the context of `createStatusEventDispatcher`, the channel provides the infrastructure for
- * broadcasting status events to multiple listeners while ensuring that all listeners receive
- * the events as they occur. For more details, see the documentation for `createChannel`.
- *
- * ## Key Features:
- * - Allows multiple listeners to concurrently listen to status events using `for await...of`.
- * - Ensures that all listeners receive events, though their processing order may be influenced by backpressure.
- * - Uses `ReadableStream.tee()` to create multiple branches, enabling independent consumption of the same data stream.
- *
- * ## Important Considerations:
- *
- * ### Event Timing and Backpressure
- * - **Event Dispatch Timing**: Unlike `EventTarget`, where all listeners receive the event immediately,
- *   `ReadableStreams` introduce backpressure. This means that if one listener is slower in consuming
- *   the stream, it could delay the delivery of events to other listeners.
- * - **Synchronization**: All branches created via `tee()` must be ready to consume data before the
- *   underlying source produces more data. This can result in a slower processing speed if there is
- *   a discrepancy in consumption rates between different listeners.
- *
- * ### Behavior of `ReadableStream.tee()`
- * - **Mid-Stream `tee()`**: When `tee()` is called on a `ReadableStream` mid-event and a new listener
- *   is added via `for await...of`, the new stream will only start consuming events from the next
- *   unconsumed event onward. It will not receive any previously consumed events from before the `tee()`
- *   was called.
- * - **Pre-existing Streams**: The original stream will continue consuming data as normal, but its
- *   consumption pace might be affected by the newly created branches. Specifically, if the new branches
- *   are slower, the original stream will be paused until all branches are ready to consume the next event.
- * - **No Retroactive Events**: The newly created branches do not loop through or receive events that were
- *   already consumed by the original stream. They only process new events that have not yet been consumed.
- *
- * ### Performance Impact
- * - **Backpressure Management**: The system will introduce natural backpressure if one of the branches
- *   is slower, ensuring data consistency across all branches. However, this could lead to performance
- *   degradation if one listener significantly lags behind others.
- * - **Use Case Suitability**: This method works best when streams are set up at the start and have
- *   similar consumption speeds. If frequent dynamic listener addition is required, a custom event
- *   multiplexing solution might be preferable.
- *
- * @template T - The specific status type being dispatched and listened for.
- *
- * @returns An object with methods to dispatch status events, listen to them, and manage the stream lifecycle.
+ * @typeParam T - The type of values emitted by this bus.
  *
  * @remarks
- * This function is particularly useful for scenarios where status events need to be broadcasted to multiple
- * listeners that might consume the events at different rates. The use of Web Streams ensures efficient
- * backpressure management, though developers should be aware of the potential impact on performance if
- * listeners consume data at different speeds.
+ * - Calling {@link emit} delivers the value to all active subscribers.
+ * - Calling {@link close} completes all subscribers and prevents further emissions.
+ * - Implements both {@link Symbol.dispose} and {@link Symbol.asyncDispose}
+ *   for cleanup in synchronous and asynchronous contexts.
  *
  * @example
- * ```typescript
- * // Create a status event dispatcher
- * const statusDispatcher = createStatusEventDispatcher();
+ * ```ts
+ * import { EventBus } from './EventBus.ts';
  *
- * // Example listeners using `for await...of`
- * (async () => {
- *   const reader = statusDispatcher.events;
- *   for await (const event of reader) {
- *     console.log("Listener 1 received:", event.status);
- *   }
- * })();
+ * // Create a bus for string messages
+ * const bus = new EventBus<string>();
  *
- * (async () => {
- *   const reader = statusDispatcher.events;
- *   for await (const event of reader) {
- *     console.log("Listener 2 received:", event.status);
- *   }
- * })();
+ * // Subscribe using Observer
+ * bus.events.subscribe({
+ *   next(msg) { console.log('Received:', msg); },
+ *   complete()  { console.log('Bus closed'); }
+ * });
  *
- * // Dispatching events
- * (async () => {
- *   const runningEvent = new StatusEvent(Status.Running, { data: { jobId: 123 } });
- *   const pausedEvent = new StatusEvent(Status.Paused);
+ * // Emit values
+ * bus.emit('hello');
+ * bus.emit('world');
  *
- *   await statusDispatcher.dispatch(runningEvent);
- *   await statusDispatcher.dispatch(pausedEvent);
- *
- *   // Close the dispatcher when done
- *   statusDispatcher.close();
- * })();
+ * // Close the bus
+ * bus.close();
  * ```
- *
- * @see CustomEvent
- * @see ReadableStream
- * @see WritableStream
- * @see TransformStream
- * @see {@link createChannel} for more information on how channels are implemented and their benefits.
- *
- * @public
  */
-export function createEventDispatcher<E extends Event = CustomEvent<unknown>>(): EventDispatcher<E> {
-  const channel = createChannel<E>();
+export class EventBus<T> extends Observable<T> {
+  /** Active subscribers receiving emitted values */
+  #subscribers = new Set<SubscriptionObserver<T>>();
+  /** Tracks whether the bus has been closed */
+  #closed = false;
+
+  /**
+   * Construct a new EventBus instance.
+   *
+   * @remarks
+   * The base {@link Observable} constructor is invoked with the subscriber
+   * registration logic, adding and removing subscribers to the internal set.
+   */
+  constructor() {
+    super(subscriber => {
+      if (this.#closed) {
+        subscriber.complete?.();
+        return;
+      }
+
+      this.#subscribers.add(subscriber);
+      return () => {
+        this.#subscribers.delete(subscriber);
+      };
+    });
+  }
+
+  /**
+   * Exposes the bus itself as an {@link Observable<T>} for subscription.
+   *
+   * @returns The current instance as an Observable of T.
+   */
+  get events(): Observable<T> {
+    return this;
+  }
+
+  /**
+   * Emit a value to all active subscribers.
+   *
+   * @param value - The value to deliver.
+   */
+  emit(value: T): void {
+    if (this.#closed) return;
+    for (const subscriber of this.#subscribers) {
+      subscriber.next?.(value);
+    }
+  }
+
+  /**
+   * Close the bus, completing all subscribers and preventing further emits.
+   */
+  close(): void {
+    if (this.#closed) return;
+    this.#closed = true;
+
+    for (const subscriber of this.#subscribers) {
+      subscriber.complete?.();
+    }
+
+    this.#subscribers.clear();
+  }
+
+  /**
+   * Synchronous disposal method (for `using` syntax).
+   *
+   * @remarks
+   * Alias for {@link close}.
+   */
+  [Symbol.dispose](): void {
+    this.close();
+  }
+
+  /**
+   * Asynchronous disposal method.
+   *
+   * @remarks
+   * Alias for {@link close}.
+   */
+  async [Symbol.asyncDispose](): Promise<void> {
+    return await this.close();
+  }
+}
+
+/**
+ * A mapping from event names (keys) to their payload types (values).
+ *
+ * Example:
+ * ```ts
+ * interface MyEvents {
+ *   login: { userId: string };
+ *   logout: void;
+ * }
+ * ```
+ */
+export type EventMap = Record<string, unknown>;
+
+/**
+ * Options for `waitForEvent`.
+ */
+export interface WaitForEventOptions {
+  /**
+   * An AbortSignal to cancel waiting for the event.
+   */
+  signal?: AbortSignal;
+  /**
+   * If true, rejects if the underlying stream completes before the event fires.
+   * @defaultValue false
+   */
+  throwOnClose?: boolean;
+}
+
+/**
+ * Creates a strongly-typed event bus based on {@link EventBus}, ensuring
+ * that both `emit` and `on` methods enforce matching event names and payload types.
+ *
+ * @typeParam E - The event map type, mapping event names to payloads.
+ *
+ * @returns An object with the following methods:
+ * - `emit(name, payload)`: Emit an event.
+ * - `on(name, handler)`: Subscribe to a specific event.
+ * - `events`: Observable stream of all events.
+ * - `close()`: Close the bus and complete all subscribers.
+ *
+ * @example
+ * ```ts
+ * interface MyEvents {
+ *   message: { text: string };
+ *   error: { code: number; message: string };
+ * }
+ *
+ * const bus = createTypedEventBus<MyEvents>();
+ *
+ * // Subscribe to `message` events
+ * bus.on('message', payload => {
+ *   console.log('New message:', payload.text);
+ * });
+ *
+ * // Emit an event
+ * bus.emit('message', { text: 'Hello World' });
+ *
+ * // Close the bus when done
+ * bus.close();
+ * ```
+ */
+export function createEventDispatcher<E extends EventMap>() {
+  // Internal bus carries a union of all event types and payloads
+  const bus = new EventBus<{ type: keyof E; payload: E[keyof E] }>();
 
   return {
     /**
-     * Dispatches a status event to the channel.
-     * @param event - The status event to dispatch.
+     * Emit an event with the given name and payload.
+     * @param name - The event name.
+     * @param payload - The payload matching the event name.
      */
-    async dispatch(event: E): Promise<void> {
-      const writer = channel.getWriter();
-      await writer.write(event);
+    emit<Name extends keyof E>(name: Name, payload: E[Name]): void {
+      bus.emit({ type: name, payload });
     },
 
     /**
-     * Provides a new readable stream that can be used with `for await...of`
-     * to listen to status events.
-     *
-     * @returns A new readable stream of StatusEvents.
+     * Subscribe to a specific event by name.
+     * Only events with a matching `type` will invoke the handler.
+     * @param name - The event name to listen for.
+     * @param handler - The callback invoked with the event payload.
+     * @returns A subscription object with `unsubscribe()`.
      */
-    get events(): MulticastReadableStream<E> {
-      return channel.readable;
+    on<Name extends keyof E>(
+      name: Name,
+      handler: (payload: E[Name]) => void
+    ) {
+      return bus.events.subscribe({
+        next(event) {
+          if (event.type === name) {
+            handler(event.payload as E[Name]);
+          }
+        }
+      });
     },
 
     /**
-     * Disposes of the dispatcher asynchronously, releasing resources.
+     * Observable stream of all emitted events, carrying `{ type, payload }` objects.
      */
-    [Symbol.asyncDispose]() {
-      return channel[Symbol.asyncDispose]();
-    },
+    events: bus.events as Observable<{ type: keyof E; payload: E[keyof E] }>,
+
+    /**
+     * Close the bus, completing all subscribers and preventing further emits.
+     */
+    close(): void {
+      bus.close();
+    }
   };
 }
 
 /**
- * Listens for a specific event type from a `ReadableStream` and returns the first matching event.
- * Supports aborting the operation using an `AbortSignal`.
+ * Waits for the next occurrence of a specific event on a typed event bus.
+ * Resolves with the event payload when the named event fires.
+ * Can be aborted or optionally reject if the bus closes first.
  *
- * This function continuously reads from the provided `ReadableStream` until it finds an event
- * that matches the specified type. It also supports cancellation through an `AbortSignal`,
- * allowing the operation to be aborted if necessary. If the stream ends without a matching
- * event and `throwOnNoMatch` is set to `true`, the function will throw an error.
+ * @typeParam E    - The event map type.
+ * @typeParam K    - The specific event key to listen for.
  *
- * ## AbortSignal Support:
- * If an `AbortSignal` is provided and the operation is aborted:
- * - The function will resolve with the reason for the abortion.
- * - The reader lock will be released before the stream is canceled.
- *
- * ## Lock Handling:
- * The function automatically releases the lock on the stream's reader when the operation completes,
- * either by finding a matching event, reaching the end of the stream, or encountering an abort signal.
- *
- * ## Edge Cases:
- * - If the stream ends without finding a matching event and `throwOnNoMatch` is `false`, the function will return `undefined`.
- * - If the stream is aborted, the function will return the abort reason.
- * - If `throwOnNoMatch` is `true` and no matching event is found, the function will throw an error.
- *
- * @template T - The type of events in the `ReadableStream`.
- * @template K - The specific event type to listen for.
- * @param stream - The `ReadableStream` or `ReadableStreamDefaultReader` to listen to.
- * @param type - The event type to match against the stream's events.
- * @param options.signal - An optional `AbortSignal` to cancel the operation.
- * @param options.throwOnNoMatch - A boolean that, when true, throws an error if none of the events match. Defaults to `false`.
- * @returns A promise that resolves with the first event that matches the specified type, the abort reason, or `undefined` if no match is found and `throwOnNoMatch` is `false`.
+ * @param bus      - An object with an `events` Observable emitting `{ type, payload }`.
+ * @param type     - The event name to wait for.
+ * @param options  - Optional signal to abort, and throwOnClose behavior.
+ * @returns A promise resolving to the payload of the event, or rejecting on error/abort/close.
  *
  * @example
- * ```typescript
- * const statusEventStream = createStatusEventDispatcher().readable;
+ * ```ts
+ * interface MyEvents {
+ *   data: { value: number };
+ *   done: void;
+ * }
  *
- * // Listen for the "Running" status event
- * const runningEvent = await waitForEvent(statusEventStream, Status.Running, {
- *   signal: abortSignal
+ * const bus = createTypedEventBus<MyEvents>();
+ *
+ * // somewhere else...
+ * waitForEvent(bus, 'data').then(payload => {
+ *   console.log('Data arrived:', payload.value);
  * });
  *
- * if (runningEvent) {
- *   console.log('Received running event:', runningEvent);
- * } else {
- *   console.log('No running event received or operation was aborted');
- * }
- * ```
- *
- * @example
- * ```typescript
- * const statusEventStream = createStatusEventDispatcher().readable;
- *
- * // Listen for the "Paused" status event with error handling if no match is found
- * try {
- *   const pausedEvent = await waitForEvent(statusEventStream, Status.Paused, {
- *     signal: abortSignal,
- *     throwOnNoMatch: true
- *   });
- *   console.log('Received paused event:', pausedEvent);
- * } catch (error) {
- *   console.error('Error:', error.message);
- * }
+ * // later
+ * bus.emit('data', { value: 42 });
  * ```
  */
-export async function waitForEvent<
-  T extends Event = CustomEvent<unknown>,
-  K extends unknown = unknown
+export function waitForEvent<
+  E extends EventMap,
+  K extends keyof E
 >(
-  stream: ReadableStream<T> | ReadableStreamDefaultReader<T>,
+  bus: { events: Observable<{ type: keyof E; payload: E[keyof E] }> },
   type: K,
-  { signal, throwOnNoMatch = false }: WaitForEventOptions = {},
-): Promise<T | Event | Error | undefined> {
-  const reader = "getReader" in stream ? stream.getReader() : stream;
-  let result: ReadableStreamReadResult<T> | AbortedReadableStreamReadDoneResult;
+  { signal, throwOnClose = false }: WaitForEventOptions = {}
+): Promise<E[K] | undefined> {
+  const { resolve, reject, promise } = Promise.withResolvers<E[K] | undefined>();
 
-  // Promise that resolves if the signal is aborted
-  const abortable = new Promise<AbortedReadableStreamReadDoneResult>(
-    (resolve) => {
-      if (signal?.aborted) {
-        resolve({
-          done: true,
-          value: { aborted: true, reason: signal.reason },
-        });
-      } else {
-        signal?.addEventListener?.("abort", () => {
-          resolve({
-            done: true,
-            value: { aborted: true, reason: signal.reason },
-          });
-        }, { once: true });
+  // Immediate abort
+  if (signal?.aborted) {
+    reject(signal.reason);
+    return promise;
+  }
+
+  const subscription: Subscription = bus.events.subscribe({
+    next(event) {
+      if (event.type === type) {
+        cleanup();
+        
+        // cast payload to the correct type
+        resolve(event.payload as E[K]);
       }
     },
-  );
+    error(err) {
+      cleanup();
+      reject(err);
+    },
+    complete() {
+      cleanup();
 
-  try {
-    do {
-      if (signal?.aborted) return signal.reason;
-
-      // Wait for either a read result or an abort signal
-      result = await Promise.race([
-        reader.read(),
-        abortable,
-      ]);
-
-      // Check if the operation was aborted
-      if ((result as AbortedReadableStreamReadDoneResult)?.value?.aborted) {
-        return (result as AbortedReadableStreamReadDoneResult)?.value?.reason as
-          | Error
-          | Event;
+      if (throwOnClose) {
+        reject(new Error(`Stream closed before event "${String(type)}" fired`));
+      } else {
+        resolve(undefined);
       }
+    },
+  });
 
-      // Check if the event matches the desired type
-      if ((result as ReadableStreamReadDoneResult<T>)?.value?.type === type) {
-        return (result as ReadableStreamReadDoneResult<T>).value;
-      }
-    } while (!result?.done);
-  } finally {
-    // Release the reader's lock before attempting to cancel the stream
-    reader?.releaseLock?.();
+  function cleanup() {
+    subscription?.unsubscribe?.();
+    signal?.removeEventListener?.('abort', onAbort);
   }
 
-  if (throwOnNoMatch) {
-    throw new Error(`Stream ended without receiving event of type: ${type}`);
+  function onAbort() {
+    cleanup?.();
+    reject(signal!.reason);
   }
+
+  signal?.addEventListener?.('abort', onAbort, { once: true });
+
+  return promise;
 }
-
-/**
- * Represents the return type of the `createStatusEventDispatcher` function.
- *
- * This interface defines the structure of the dispatcher object, which includes methods for dispatching events,
- * accessing the readable stream of events, and managing the lifecycle of the dispatcher.
- */
-export interface EventDispatcher<E extends Event = CustomEvent<unknown>> {
-  /**
-   * Dispatches a status event to the channel.
-   *
-   * @param event - The status event to dispatch.
-   * @returns A promise that resolves when the event has been dispatched.
-   */
-  dispatch(event: E): Promise<void>;
-
-  /**
-   * Provides a new readable stream that can be used with `for await...of`
-   * to listen to status events.
-   *
-   * @returns A new readable stream of StatusEvents.
-   */
-  readonly events: MulticastReadableStream<E>;
-
-  /**
-   * Disposes of the dispatcher asynchronously, releasing resources.
-   *
-   * @returns A promise that resolves when the disposal is complete.
-   */
-  [Symbol.asyncDispose](): Promise<void>;
-}
-
-/**
- * Options for the `waitForEvent` function.
- */
-export interface WaitForEventOptions {
-  /**
-   * Whether to throw an error if no matching event is found.
-   * @defaultValue false
-   */
-  throwOnNoMatch?: boolean;
-
-  /**
-   * An optional `AbortSignal` to cancel the operation.
-   */
-  signal?: AbortSignal;
-}
-
-/**
- * Represents the result of a `ReadableStream` read operation that was aborted.
- * This type is used internally by the `waitForEvent` function to manage abort signals.
- * @internal
- */
-export type AbortedReadableStreamReadDoneResult = ReadableStreamReadDoneResult<
-  { aborted: boolean; reason: unknown }
->;

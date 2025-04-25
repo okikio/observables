@@ -3,12 +3,9 @@
   "version": "0.1.0",
   "exports": {
     ".": "./mod.ts",
-    "./split": "./split.ts",
-    "./utils": "./utils.ts",
     "./types": "./_types.ts",
     "./events": "./events.ts",
-    "./channel": "./channel.ts",
-    "./multicast": "./multicast.ts"
+    "./observable": "./observable.ts"
   },
   "tasks": {
     "test": "deno test -RW --allow-run=deno,bun,node,npx --clean --trace-leaks",
