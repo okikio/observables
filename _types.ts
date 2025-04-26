@@ -28,13 +28,3 @@ export interface Subscription {
   /** Async alias for unsubscribe. */
   [Symbol.asyncDispose](): Promise<void>;
 }
-
-export interface IObservable<T> {
-  /**
-   * Subscribe overloads: Observer or callbacks.
-   * @returns Subscription
-   */
-  subscribe(observer: Partial<Observer<T>>): Subscription;
-  subscribe(next: (value: T) => void, error?: (e: unknown) => void, complete?: () => void): Subscription;
-  [Symbol.observable](): IObservable<T>;
-}

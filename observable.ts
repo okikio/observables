@@ -1,11 +1,9 @@
-// Observable.ts
-
 /**
  * A minimal, TC39-inspired Observable implementation with detailed TSDocs and examples.
  *
  * Features:
  * - Push API via `subscribe()` (Observer or callbacks)
- * - Pull API via `for await...of` (simple) or `.pull()` for backpressure control
+ * - Pull API via `for await...Observable.of` (simple) or `.pull()` for backpressure control
  * - Interop via `Symbol.observable`
  * - Resource cleanup with `Symbol.dispose` and `Symbol.asyncDispose` on subscriptions
  *
@@ -13,10 +11,10 @@
  *
  * @example Basic subscription:
  * ```ts
- * import { of } from './Observable.ts';
+ * import { Observable } from './observable.ts';
  *
  * // Emit 1,2,3 then complete
- * const subscription = of(1, 2, 3).subscribe({
+ * const subscription = Observable.of(1, 2, 3).subscribe({
  *   start(sub) { console.log('Subscribed'); },
  *   next(val)  { console.log('Value:', val); },
  *   complete() { console.log('Complete'); }
@@ -28,10 +26,10 @@
  *
  * @example Simple async iteration:
  * ```ts
- * import { of } from './Observable.ts';
+ * import { Observable } from './observable.ts';
  *
  * (async () => {
- *   for await (const x of of('a', 'b', 'c')) {
+ *   for await (const x of Observable.of('a', 'b', 'c')) {
  *     console.log(x);
  *   }
  * })();
@@ -39,103 +37,198 @@
  *
  * @example Pull with strategy:
  * ```ts
- * import { from } from './Observable.ts';
+ * import { Observable } from './observable.ts';
  *
- * const nums$ = from([1,2,3,4,5]);
+ * const nums$ = Observable.from([1,2,3,4,5]);
  * (async () => {
  *   for await (const n of nums$.pull({ strategy: { highWaterMark: 2 } })) {
  *     console.log('Pulled:', n);
  *   }
  * })();
  * ```
+ * 
+ * @module
  */
 
-import type { IObservable, Observer, Subscription } from "./_types.ts";
+import type { Observer, Subscription } from "./_types.ts";
 import { Symbol } from "./symbol.ts";
 
-/** Teardown callback returned by subscriber. */
+/** A callback for cleaning up resources when unsubscribing or completing. */
 export type Teardown = () => void;
 
-/** Internal wrapper enforcing closed state. */
+/**
+ * Internal wrapper enforcing the closed state of an Observer.
+ * Automatically unsubscribes when error or complete events occur.
+ */
 export class SubscriptionObserver<T> {
   public closed = false;
   #observer: Observer<T>;
-  constructor(obs: Observer<T>) { this.#observer = obs; }
-  next(value: T) { if (!this.closed) this.#observer.next?.(value); }
-  error(err: unknown) { if (!this.closed) { this.closed = true; this.#observer.error?.(err); } }
-  complete() { if (!this.closed) { this.closed = true; this.#observer.complete?.(); } }
+  #subscription?: Subscription | null = null;
+
+  constructor(obs: Observer<T>, subscription?: Subscription | null) {
+    this.#observer = obs;
+    this.#subscription = subscription;
+  }
+
+  /**
+   * Sends the next value if not closed.
+   * @param value - The value to deliver
+   */
+  next(value: T) {
+    if (!this.closed) this.#observer.next?.(value);
+  }
+
+  /**
+   * Sends an error notification, marks closed, and unsubscribes.
+   * @param err - The error to deliver
+   */
+  error(err: unknown) {
+    if (!this.closed) {
+      this.closed = true;
+      this.#observer.error?.(err);
+      this.#subscription?.unsubscribe();
+    }
+  }
+
+  /**
+   * Sends a completion notification, marks closed, and unsubscribes.
+   */
+  complete() {
+    if (!this.closed) {
+      this.closed = true;
+      this.#observer.complete?.();
+      this.#subscription?.unsubscribe();
+    }
+  }
 }
 
 /**
- * Core Observable class.
- * @typeParam T  Type of values emitted.
+ * Core Observable class implementing the TC39 spec with extensions.
+ *
+ * @typeParam T - Type of values this Observable emits.
  */
-export class Observable<T> implements AsyncIterable<T>, IObservable<T> {
-  #subscribeFn: (obs: SubscriptionObserver<T>) => Teardown | void;
+export class Observable<T> implements AsyncIterable<T> {
+  #subscribeFn: (obs: SubscriptionObserver<T>) => Teardown | Subscription | void;
 
   /**
-   * @param subscribeFn  Called for each subscription; can return teardown.
+   * @param subscribeFn - Called for each subscriber; returns an optional teardown.
    */
   constructor(subscribeFn: (obs: SubscriptionObserver<T>) => Teardown | void) {
     this.#subscribeFn = subscribeFn;
   }
 
-  /** Interop: returns this. */
+  /**
+   * Interop: Returns this Observable for chaining.
+   * @returns This Observable
+   */
   [Symbol.observable](): Observable<T> { return this; }
 
-  /**
-   * Subscribe overloads: Observer or callbacks.
-   * @returns Subscription
-   */
-  subscribe(observer: Partial<Observer<T>>): Subscription;
-  subscribe(next: (value: T) => void, error?: (e: unknown) => void, complete?: () => void): Subscription;
-  subscribe(arg1: any, arg2?: any, arg3?: any): Subscription {
-    const obs: Observer<T> = typeof arg1 === 'function'
-      ? { next: arg1, error: arg2, complete: arg3 }
-      : arg1;
+  /** Subscribe to this Observable. */
+  subscribe(observer: Observer<T>): Subscription;
+  subscribe(
+    next: (value: T) => void,
+    error?: (e: unknown) => void,
+    complete?: () => void
+  ): Subscription;
+  subscribe(
+    observerOrNext: Observer<T> | ((value: T) => void), 
+    error?: (e: unknown) => void, 
+    complete?: () => void
+  ): Subscription {
+    // 1) Normalize args into a single Observer<T> shape
+    const observer: Observer<T> =
+      typeof observerOrNext === "function"
+        ? { next: observerOrNext, error, complete }
+        : observerOrNext;
 
-    let teardown: Teardown | void;
+    // 2) This will hold whatever teardown‐callback the user’s subscribeFn returns
+    let teardown: Teardown | Subscription | null = null;
+
+    // 3) Build our Subscription object
     const subscription: Subscription = {
       closed: false,
-      unsubscribe() {
+      unsubscribe(): void {
         if (!this.closed) {
+          // (a) Mark closed so this block only runs once
           this.closed = true;
-          subObs.closed = true;
-          teardown?.();
+          // (b) Tell our SubscriptionObserver to stop sending events
+          subObserver.closed = true;
+          // (c) Actually clean up any resources
+          if (subscription.closed && typeof teardown === 'function') {
+            // Pull the function out and null it so it can’t run twice
+            const fn = teardown;
+            teardown = null;
+            fn?.();
+          }
         }
       },
 
-      [Symbol.dispose]() { this.unsubscribe(); },
-      async [Symbol.asyncDispose]() { return await this.unsubscribe(); }
+      // Support `using` disposal:
+      [Symbol.dispose]() {
+        this.unsubscribe();
+      },
+      // Support async disposal patterns:
+      async [Symbol.asyncDispose]() {
+        this.unsubscribe();
+      }
     };
 
-    const subObs = new SubscriptionObserver<T>(obs);
-    obs.start?.(subscription);
-    try { teardown = this.#subscribeFn(subObs); }
-    catch (err) { subObs.error(err); subscription.unsubscribe(); }
+    // 4) Wrap the raw Observer so we auto‐unsubscribe on error/complete
+    const subObserver = new SubscriptionObserver<T>(observer, subscription);
+
+    // 5) Let user‐provided `start` hook run before any values
+    observer.start?.(subscription);
+
+    // 6) Call their subscribe‐function and capture its cleanup callback
+    try {
+      teardown = this.#subscribeFn(subObserver) ?? null;
+
+      // 7) **Edge‐case**: if their subscribeFn synchronously called `complete()`
+      //    then `subscription.closed` is already true. We need to run teardown
+      //    _right now_, or else we’ll never clean up on a sync complete.
+      if (subscription.closed && typeof teardown === 'function') {
+        // Pull the function out and null it so it can’t run twice
+        const fn = teardown;
+        teardown = null;
+        fn?.();
+      }
+    } catch (err) {
+      // 8) If their subscribeFn throws, send that as an error notification
+      subObserver.error(err);
+    }
+
+    // 9) Finally, hand back the Subscription so callers can cancel whenever they like
     return subscription;
   }
 
-  /** Simple pull: for-await uses pull(). */
+  /** Enables `for await` iteration over this Observable. */
   async *[Symbol.asyncIterator](): AsyncIterator<T> { yield* this.pull(); }
 
   /**
    * Pull-based async generator with backpressure control.
-   * @param strategy  ReadableStream queuing strategy (default {highWaterMark:1}).
+   * @param strategy - Queuing strategy (default: `{ highWaterMark: 1 }`).
+   * @yields Values emitted by this Observable.
+   *
+   * @example
+   * ```ts
+   * for await (const x of obs.pull({ strategy: { highWaterMark: 2 } })) {
+   *   console.log(x);
+   * }
+   * ```
    */
   async *pull({ strategy = { highWaterMark: 1 } }: { strategy?: QueuingStrategy<T> } = {}): AsyncGenerator<T> {
     let subscription!: Subscription;
-    // capture this
-    const _self = this;
+    const self = this;
+
     const stream = new ReadableStream<T>({
       start(controller) {
-        subscription = _self.subscribe({
+        subscription = self.subscribe({
           next(v) { controller.enqueue(v); },
-          error(err) { controller.error(err); subscription.unsubscribe(); },
-          complete() { controller.close(); subscription.unsubscribe(); }
+          error(err) { controller.error(err); },
+          complete() { controller.close(); }
         });
       },
-      cancel() { subscription.unsubscribe(); }
+      cancel() { subscription?.unsubscribe?.(); }
     }, strategy);
 
     const reader = stream.getReader();
@@ -150,40 +243,77 @@ export class Observable<T> implements AsyncIterable<T>, IObservable<T> {
       await stream.cancel();
     }
   }
+
+  static from = from;
+  static of = of;
 }
 
 /**
- * Emit given values synchronously, then complete.
+ * Synchronously emits the provided values, then completes.
+ * @param items - Values to emit
+ * @returns An Observable of the given items
  */
 export function of<T>(...items: T[]): Observable<T> {
-  return new Observable<T>(obs => { for (const v of items) obs.next(v); obs.complete(); });
+  return new Observable<T>(obs => {
+    for (const v of items) obs.next(v);
+    obs.complete();
+  });
 }
 
 /**
- * Convert Observable-like or Iterable to Observable.
+ * Converts an Observable-like, sync iterable, or async iterable into an Observable.
+ * @param input - Something with `Symbol.observable`, or iterable
+ * @throws TypeError if input is not compatible
  */
-export function from<T>(input: Observable<T> | Iterable<T>): Observable<T> {
-  if (input && "Symbol.observable" in input && typeof (input as IObservable<T>)[Symbol.observable] === 'function') {
-    const obs = (input as IObservable<T>)[Symbol.observable]() as Observable<T>;
-    return obs;
+export function from<T>(
+  input: Pick<Observable<T>, typeof Symbol.observable> | 
+         Iterable<T> | AsyncIterable<T>
+): Observable<T> {
+  if (
+    input && 
+    Symbol.observable in input && 
+    typeof (input as Pick<Observable<T>, typeof Symbol.observable>)[Symbol.observable] === 'function'
+  ) {
+    const result = (input as Pick<Observable<T>, typeof Symbol.observable>)[Symbol.observable]() as unknown;
+    if (result instanceof Observable) return result;
+
+    // Wrap foreign Observable-like
+    return new Observable<T>(observer => {
+      const sub = (result as Observable<T>).subscribe({
+        next: v => observer.next(v),
+        error: e => observer.error(e),
+        complete: () => observer.complete()
+      });
+      return () => sub?.unsubscribe?.();
+    });
   }
 
-  if (input && "Symbol.iterator" in input && typeof (input as Iterable<T>)[Symbol.iterator] === 'function') {
-    return new Observable<T>(obs => { 
-      for (const v of input as Iterable<T>) { 
+  // Sync iterable
+  if (
+    input && 
+    Symbol.iterator in input && 
+    typeof (input as Iterable<T>)[Symbol.iterator] === 'function'
+  ) {
+    return new Observable<T>(obs => {
+      for (const v of input as Iterable<T>) {
         obs.next(v);
         if (obs.closed) break;
       }
 
-      obs.complete(); 
+      obs.complete();
     });
   }
 
-  if (input && "Symbol.asyncIterator" in input && typeof (input as AsyncIterable<T>)[Symbol.asyncIterator] === 'function') {
+  // Async iterable
+  if (
+    input && 
+    Symbol.asyncIterator in input && 
+    typeof (input as AsyncIterable<T>)[Symbol.asyncIterator] === 'function'
+  ) {
     return new Observable<T>(obs => {
       (async () => {
         for await (const v of input as AsyncIterable<T>) {
-          obs.next(v); 
+          obs.next(v);
           if (obs.closed) break;
         }
 
@@ -192,5 +322,6 @@ export function from<T>(input: Observable<T> | Iterable<T>): Observable<T> {
     });
   }
 
-  throw new TypeError('Input is not Observable or Iterable');
+  throw new TypeError('Input is not Observable, Iterable, or AsyncIterable');
 }
+
