@@ -1,9 +1,9 @@
 // @ts-nocheck TODO: fix tests
-import type { Observer } from "../_types.ts";
+import type { Observer } from "../../_types.ts";
 import { test, expect, fn } from "@libs/testing";
 
-import { Observable } from "../observable.ts";
-import { Symbol } from "../symbol.ts";
+import { Observable } from "../../observable.ts";
+import { Symbol } from "../../symbol.ts";
 
 // -----------------------------------------------------------------------------
 // Multiple Subscribers and Teardown Behavior

@@ -1,7 +1,7 @@
 // @ts-nocheck WIP
 import { test, expect, fn } from "@libs/testing";
 
-import { Observable } from "../observable.ts";
+import { Observable } from "../../observable.ts";
 
 // -----------------------------------------------------------------------------
 // Documentation Examples - Keyboard Events

@@ -1,7 +1,7 @@
 import { test, expect } from "@libs/testing";
 
-import { Observable } from "../observable.ts";
-import { Symbol } from "../symbol.ts";
+import { Observable } from "../../observable.ts";
+import { Symbol } from "../../symbol.ts";
 
 // -----------------------------------------------------------------------------
 // Basic Push API Tests

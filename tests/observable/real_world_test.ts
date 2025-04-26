@@ -1,7 +1,7 @@
 import { test, expect, fn } from "@libs/testing";
 
-import { Observable } from "../observable.ts";
-import { Symbol } from "../symbol.ts";
+import { Observable } from "../../observable.ts";
+import { Symbol } from "../../symbol.ts";
 
 // -----------------------------------------------------------------------------
 // Observable.from Tests with Real World Examples
