@@ -1,8 +1,8 @@
 import type { Symbol } from "./symbol.ts";
 
 /**
- * Functions to receive notifications from an Observable.
- * @typeParam T  Type of values emitted.
+ * Receives notifications from an {@link Observable}.
+ * All callbacks are optional and will be skipped if missing.
  */
 export interface Observer<T> {
   /** Called immediately after subscribing. */
@@ -15,9 +15,7 @@ export interface Observer<T> {
   complete?(): void;
 }
 
-/**
- * Represents an active subscription to an Observable.
- */
+/** Object returned by {@link Observable.subscribe}. */
 export interface Subscription {
   /** Cancel the subscription and run teardown. */
   unsubscribe(): void;
@@ -27,4 +25,5 @@ export interface Subscription {
   [Symbol.dispose](): void;
   /** Async alias for unsubscribe. */
   [Symbol.asyncDispose](): Promise<void>;
+  readonly [Symbol.toStringTag]: "Subscription";
 }
