@@ -347,11 +347,12 @@ test.only("Observable handles errors in next callback without crashing", () => {
     }
   });
 
-  // Subscription should stay active despite error in next
-  expect(subscription.closed).toBe(true);
-  expect(errorThrown).toBe(true);
-  expect(nextsAfterError).toBe(0); // Second next call succeeded
-  expect(completed).toBe(false);
+  // Subscription should stay active despite error in next  
+  expect(subscription.closed).toBe(false);   // still open
+  expect(errorThrown).toBe(false);
+  expect(nextsAfterError).toBe(1);           // second next delivered
+  expect(completed).toBe(true);              // complete called
+
 });
 
 test("error in user-provided error handler does not prevent cleanup", () => {

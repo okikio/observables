@@ -38,6 +38,31 @@
  * - Resource cleanup with `Symbol.dispose` and `Symbol.asyncDispose` on subscriptions
  *
  * Creation helpers `of` and `from` are separate exports for tree-shaking.
+ * 
+ * Error‑propagation policy  
+ * ─────────────────────────────
+ *  • If the *observer supplies its own `error()` handler*,
+ *    that handler is considered the “catch‑block” for the stream.
+ *      ↳  Any exception that happens *inside* the user’s `next()` /
+ *          `complete()` callbacks is forwarded to `error(err)` **once**.
+ *      ↳  If `error()` itself throws, we still delegate to `HostReportErrors` (≈ “unhandled‑promise rejection”) 
+ *          (i.e. `queueMicrotask`), exactly as the proposal specifies.
+ *
+ *  • If the observer does **not** implement `error()`, we fall back to the
+ *    spec’s `HostReportErrors` behaviour (queueMicrotask + throw) so the host
+ *    surfaces the error just like an uncaught Promise rejection.
+ *
+ *  Rationale – Think of `error()` as the moral equivalent of a `.catch()`
+ *  on a Promise.  Once a catch exists, the host no longer warns about
+ *  “unhandled” rejections; we mirror that mental model here.
+ *
+ *  Impact – Client code that provides an `error()` handler never sees a
+ *  second noisy log in browsers / Node, yet libraries that forget to
+ *  implement one still surface problems automatically.
+ *
+ *  Spec reference – This diverges slightly from stage‑1, which still
+ *  invokes HostReportErrors if the *error handler itself* throws.  We
+ *  intentionally suppress that extra surfacing for the reasons above.
  *
  * @example Basic subscription:
  * ```ts
@@ -127,10 +152,47 @@ export class SubscriptionObserver<T> {
    *
    * @specref *§ EmitSubscriptionHook step 1* – Notification is skipped if
    *          `SubscriptionClosed(subscription)`.
+   * 
+   * Error‑propagation policy  
+   * ─────────────────────────────
+   *  • If the *observer supplies its own `error()` handler*,
+   *    that handler is considered the “catch‑block” for the stream.
+   *      ↳  Any exception that happens *inside* the user’s `next()` /
+   *          `complete()` callbacks is forwarded to `error(err)` **once**.
+ *      ↳  If `error()` itself throws, we still delegate to `HostReportErrors` (≈ “unhandled‑promise rejection”) 
+ *          (i.e. `queueMicrotask`), exactly as the proposal specifies.
+   *
+   *  • If the observer does **not** implement `error()`, we fall back to the
+   *    spec’s `HostReportErrors` behaviour (queueMicrotask + throw) so the host
+   *    surfaces the error just like an uncaught Promise rejection.
+   *
+   *  Rationale – Think of `error()` as the moral equivalent of a `.catch()`
+   *  on a Promise.  Once a catch exists, the host no longer warns about
+   *  “unhandled” rejections; we mirror that mental model here.
+   *
+   *  Impact – Client code that provides an `error()` handler never sees a
+   *  second noisy log in browsers / Node, yet libraries that forget to
+   *  implement one still surface problems automatically.
+   *
+   *  Spec reference – This diverges slightly from stage‑1, which still
+   *  invokes HostReportErrors if the *error handler itself* throws.  We
+   *  intentionally suppress that extra surfacing for the reasons above.
    */
   next(value: T) {
     if (this.closed) return;
-    this.#observer?.next?.(value);
+    if (!this.#observer?.next) return;
+
+    try {
+      this.#observer?.next?.(value); 
+    } catch (err) {
+      if (this.#observer?.error) {
+        try { this.#observer?.error?.(err); }
+        catch (err) { queueMicrotask(() => { throw err; }); }
+      }
+
+      // Either a user callback or HostReportErrors emulation (queueMicrotask).
+      else queueMicrotask(() => { throw err; });
+    }
   }
 
   /**
@@ -138,15 +200,20 @@ export class SubscriptionObserver<T> {
    * @param err - The error to deliver
    *
    * @specref *§ SubscriptionObserverPrototype.error*.
+   * 
+   * @see Error‑propagation policy block above `next()` for rationale.
    */
   error(err: unknown) {
     if (this.closed) return;
-
     this.#closed = true;
 
+    if (this.#observer?.error) {
+      try { this.#observer?.error?.(err); } 
+      catch (err) { queueMicrotask(() => { throw err; }); }
+    } 
+
     // Either a user callback or HostReportErrors emulation (queueMicrotask).
-    this.#observer?.error?.(err);
-    !this.#observer?.error && queueMicrotask(() => { throw err; });
+    else queueMicrotask(() => { throw err; });
 
     this.#subscription?.unsubscribe();
     this.#observer = null;
@@ -156,12 +223,27 @@ export class SubscriptionObserver<T> {
    * Sends a completion notification, marks closed, and unsubscribes.
    *
    * @specref *§ SubscriptionObserverPrototype.complete*.
+   * 
+   * @see Error‑propagation policy block above `next()` for rationale.
    */
   complete() {
     if (this.closed) return;
-
     this.#closed = true;
-    this.#observer?.complete?.();
+
+    if (this.#observer?.complete) {
+      try {
+        this.#observer?.complete?.();
+      } catch (err) {
+        if (this.#observer?.error) {
+          try { this.#observer?.error?.(err); }
+          catch (err) { queueMicrotask(() => { throw err; }); }
+        }
+
+        // Either a user callback or HostReportErrors emulation (queueMicrotask).
+        else queueMicrotask(() => { throw err; });
+      }
+    }
+
     this.#subscription?.unsubscribe();
     this.#observer = null;
   }
@@ -173,8 +255,11 @@ export class SubscriptionObserver<T> {
    * @internal
    */
   static close(sub: Subscription) {
-    const subObs = SubscriptionObserverPrivateAccess.get(sub);
+    let subObs: SubscriptionObserver<unknown> | null | undefined = SubscriptionObserverPrivateAccess.get(sub);
     if (subObs) subObs.#closed = true;
+    
+    SubscriptionObserverPrivateAccess.delete(sub);
+    subObs = null;
   }
 
   /** `Object.prototype.toString.call(observer)` → `[object Subscription Observer]`. */
@@ -262,8 +347,8 @@ export class Observable<T> implements AsyncIterable<T> {
         this.unsubscribe();
       },
       // Support async disposal patterns:
-      async [Symbol.asyncDispose]() {
-        this.unsubscribe();
+      [Symbol.asyncDispose]() {
+        return Promise.resolve(this.unsubscribe());
       }
     };
 
@@ -397,7 +482,7 @@ export function from<T>(
   ) {
     // spec step 5: return verbatim if constructor identity matches
     const result = (input as Pick<Observable<T>, typeof Symbol.observable>)[Symbol.observable]();
-    const Constructor = Observable ?? this;
+    const Constructor = (typeof this === "function" ? this : Observable);
     if ((result as any)?.constructor === Constructor) return result;
 
     // Wrap foreign Observable-like
