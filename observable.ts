@@ -4,9 +4,9 @@
  * ────────────────────────────────────────────────────────────────────────────────
  * Why this file exists
  * --------------------
- * 1.  **Inter‑op with the upcoming TC39 Observable proposal (stage 1 as of May 2025).**
- *      <https://github.com/tc39/proposal-observable>
- * 2.  **Bridge push‑based and pull‑based worlds in a single 250 line module**
+ * 1.  **Inter‑op with the upcoming TC39 Observable proposal (stage 1 as of May 2025).**
+ *      <https://github.com/tc39/proposal-observable>
+ * 2.  **Bridge push‑based and pull‑based worlds in a single 250 line module**
  *     while keeping the public surface identical to the spec so future browsers
  *     can drop in native implementations with zero code changes on your side.
  * 3.  **Teach by example.**  Every exported symbol is fully @link‑ed back to the
@@ -88,7 +88,7 @@ import { Symbol } from "./symbol.ts";
  * resources (DOM handlers, sockets…).
  *
  * @remarks
- * Matches the **«subscription cleanup function»** concept in *spec § Subscription
+ * Matches the **«subscription cleanup function»** concept in *spec § Subscription
  * Cleanup Functions*.
  */
 export type Teardown = () => void;
@@ -105,7 +105,7 @@ const SubscriptionObserverPrivateAccess = new WeakMap<Subscription, Subscription
  *
  * @typeParam T  The type of values delivered by the parent {@link Observable}.
  *
- * @see {@link https://github.com/tc39/proposal-observable | TC39 Observable § Subscription Observer Objects}
+ * @see {@link https://github.com/tc39/proposal-observable | TC39 Observable § Subscription Observer Objects}
  */
 export class SubscriptionObserver<T> {
   /** True once `error`, `complete` or `unsubscribe` ran. */
@@ -125,7 +125,7 @@ export class SubscriptionObserver<T> {
    * Sends the next value if not closed.
    * @param value - The value to deliver
    *
-   * @specref *§ EmitSubscriptionHook step 1* – Notification is skipped if
+   * @specref *§ EmitSubscriptionHook step 1* – Notification is skipped if
    *          `SubscriptionClosed(subscription)`.
    */
   next(value: T) {
@@ -137,7 +137,7 @@ export class SubscriptionObserver<T> {
    * Sends an error notification, marks closed, and unsubscribes.
    * @param err - The error to deliver
    *
-   * @specref *§ SubscriptionObserverPrototype.error*.
+   * @specref *§ SubscriptionObserverPrototype.error*.
    */
   error(err: unknown) {
     if (this.closed) return;
@@ -155,7 +155,7 @@ export class SubscriptionObserver<T> {
   /**
    * Sends a completion notification, marks closed, and unsubscribes.
    *
-   * @specref *§ SubscriptionObserverPrototype.complete*.
+   * @specref *§ SubscriptionObserverPrototype.complete*.
    */
   complete() {
     if (this.closed) return;
@@ -189,14 +189,14 @@ export class SubscriptionObserver<T> {
  * @remarks
  * Differences vs. the raw proposal:
  * * Adds {@link Observable.pull} for back‑pressure via *ReadableStream*.
- * * Adds `Symbol.dispose` / `Symbol.asyncDispose` bridges for TC39 using blocks.
+ * * Adds `Symbol.dispose` / `Symbol.asyncDispose` bridges for TC39 using blocks.
  */
 export class Observable<T> implements AsyncIterable<T> {
   #subscribeFn: (obs: SubscriptionObserver<T>) => Teardown | Subscription | void;
 
   /**
    * @param subscribeFn  Called **once per subscriber**, synchronously, exactly
-   *                     as demanded in *§ ExecuteSubscriber*.
+   *                     as demanded in *§ ExecuteSubscriber*.
    */
   constructor(subscribeFn: (obs: SubscriptionObserver<T>) => Teardown | void) {
     if (typeof subscribeFn !== 'function') {
@@ -223,7 +223,7 @@ export class Observable<T> implements AsyncIterable<T> {
     complete?: () => void
   ): Subscription {   
     /* -------------------------------------------------------------------
-     * 1.  Normalise the observer – mirrors spec step 4.
+     * 1.  Normalise the observer – mirrors spec step 4.
      * ------------------------------------------------------------------- */
     let observer: Observer<T> | null =
       typeof observerOrNext === 'function'
@@ -273,7 +273,7 @@ export class Observable<T> implements AsyncIterable<T> {
     const subObserver = new SubscriptionObserver<T>(observer, subscription);
     SubscriptionObserverPrivateAccess.set(subscription, subObserver);
 
-    /* Shared utility for spec § CleanupSubscription */
+    /* Shared utility for spec § CleanupSubscription */
     function runCleanup() {
       let temp = cleanup;
       cleanup = null;
@@ -292,7 +292,7 @@ export class Observable<T> implements AsyncIterable<T> {
     }
 
     /* -------------------------------------------------------------------
-     * 5.  Call observer.start(subscription) – (spec step 10).
+     * 5.  Call observer.start(subscription) – (spec step 10).
      * ------------------------------------------------------------------- */
     try {
       observer.start?.(subscription);
@@ -314,7 +314,7 @@ export class Observable<T> implements AsyncIterable<T> {
     }
 
     /* -------------------------------------------------------------------
-     * 6.  Execute the user subscriber and capture its cleanup (spec step 12‑16).
+     * 6.  Execute the user subscriber and capture its cleanup (spec step 12‑16).
      * ------------------------------------------------------------------- */
     try {
       cleanup = this.#subscribeFn(subObserver) ?? null;
@@ -338,10 +338,10 @@ export class Observable<T> implements AsyncIterable<T> {
   async *[Symbol.asyncIterator](): AsyncIterator<T> { yield* pull(this); }
 
   /**
-   * Convert push into pull using `ReadableStream` back‑pressure.
+   * Convert push into pull using `ReadableStream` back‑pressure.
    *
    * @param strategy  Optional stream queuing strategy.  Defaults to
-   *                  `{ highWaterMark: 1 }` which effectively means “pause the
+   *                  `{ highWaterMark: 1 }` which effectively means “pause the
    *                  producer until the consumer awaits the next chunk”.
    * @yields Values emitted by the observable.
    *
@@ -358,7 +358,7 @@ export class Observable<T> implements AsyncIterable<T> {
 
   //───────────────── Helper constructors – of / from ──────────────────
 
-  /** See spec § Observable.from.  Handles Observable‑like, iterable and async‑iterable inputs. */
+  /** See spec § Observable.from.  Handles Observable‑like, iterable and async‑iterable inputs. */
   static readonly from = from;
 
   /** Create an Observable that synchronously emits the given items and completes. */
@@ -390,12 +390,12 @@ export function from<T>(
   input: Pick<Observable<T>, typeof Symbol.observable> | 
          Iterable<T> | AsyncIterable<T>
 ): Observable<T> {
-  // Case 1 – object with @@observable
+  // Case 1 – object with @@observable
   if (
     input && Symbol.observable in input && 
     typeof (input as Pick<Observable<T>, typeof Symbol.observable>)[Symbol.observable] === 'function'
   ) {
-    // spec step 5: return verbatim if constructor identity matches
+    // spec step 5: return verbatim if constructor identity matches
     const result = (input as Pick<Observable<T>, typeof Symbol.observable>)[Symbol.observable]();
     const Constructor = Observable ?? this;
     if ((result as any)?.constructor === Constructor) return result;
@@ -407,7 +407,7 @@ export function from<T>(
     });
   }
 
-  // Case 2 – synchronous iterable
+  // Case 2 – synchronous iterable
   if (
     input && Symbol.iterator in input && 
     typeof (input as Iterable<T>)[Symbol.iterator] === 'function'
@@ -427,7 +427,7 @@ export function from<T>(
     });
   }
 
-  // Case 3 – async iterable
+  // Case 3 – async iterable
   if (
     input && Symbol.asyncIterator in input && 
     typeof (input as AsyncIterable<T>)[Symbol.asyncIterator] === 'function'
@@ -458,7 +458,7 @@ export function from<T>(
 //───────────────────────────────────────────────────────────────────────────────
 
 /**
- * Convert **any** {@link Observable} into an *async generator* with proper
+ * Convert **any** {@link Observable} into an *async generator* with proper
  * back‑pressure using **`ReadableStream`**.
  *
  * ### Why a free function?
@@ -478,10 +478,10 @@ export function from<T>(
  * @param options     Pass a custom `highWaterMark` or full `QueuingStrategy`
  *                    to control internal buffering.
  *
- * @returns An `AsyncGenerator<T>` compatible with `for await … of`.
+ * @returns An `AsyncGenerator<T>` compatible with `for await … of`.
  *
- * @example Consume five numbers *slowly* (1 s delay each) without overflowing
- * the buffer.  The producer pauses automatically because `highWaterMark` = 1.
+ * @example Consume five numbers *slowly* (1 s delay each) without overflowing
+ * the buffer.  The producer pauses automatically because `highWaterMark` = 1.
  * ```ts
  * import { pull, Observable } from "./observable.ts";
  *
