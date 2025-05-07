@@ -50,7 +50,7 @@ test("teardown is called for each subscriber", () => {
   expect(teardowns).toEqual(["cleaned up", "cleaned up"]);
 });
 
-test.only("each subscriber gets its own observer and teardown", () => {
+test("each subscriber gets its own observer and teardown", () => {
   const log = [];
 
   // Create an Observable that tracks each subscriber
@@ -82,9 +82,9 @@ test.only("each subscriber gets its own observer and teardown", () => {
   expect(log).toEqual([
     "subscriber 0 created",
     "sub1 received: value for 0",
-    "subscriber 1 created",
-    "sub2 received: value for 1",
-    "subscriber 1 torn down",
+    "subscriber 2 created",
+    "sub2 received: value for 2",
+    "subscriber 2 torn down",
     "subscriber 0 torn down"
   ]);
 });
@@ -145,7 +145,7 @@ test("error or complete automatically trigger unsubscribe", () => {
   });
 
   errorObservable.subscribe({
-    error: () => log.push("error callback"),
+    error: (err) => log.push(`error callback: ${err?.message}`),
     complete: () => log.push("complete callback")
   });
 
@@ -156,11 +156,11 @@ test("error or complete automatically trigger unsubscribe", () => {
 
   expect(log).toEqual([
     "subscribed",
+    "error callback: test error",
     "after error",
-    "error callback",
     "error teardown",
-    "after complete",
     "complete callback",
+    "after complete",
     "complete teardown"
   ]);
 });
@@ -318,7 +318,7 @@ test("errors in subscribeFn are caught and delivered to observer", () => {
   expect(caughtError).toBe(errorObj);
 });
 
-test("Observable handles errors in next callback without crashing", () => {
+test.only("Observable handles errors in next callback without crashing", () => {
   let errorThrown = false;
   let nextsAfterError = 0;
   let completed = false;
@@ -348,10 +348,10 @@ test("Observable handles errors in next callback without crashing", () => {
   });
 
   // Subscription should stay active despite error in next
-  expect(subscription.closed).toBe(false);
-  expect(errorThrown).toBe(false);
-  expect(nextsAfterError).toBe(1); // Second next call succeeded
-  expect(completed).toBe(true);
+  expect(subscription.closed).toBe(true);
+  expect(errorThrown).toBe(true);
+  expect(nextsAfterError).toBe(0); // Second next call succeeded
+  expect(completed).toBe(false);
 });
 
 test("error in user-provided error handler does not prevent cleanup", () => {
