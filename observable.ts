@@ -46,7 +46,7 @@
  *      ↳  Any exception that happens *inside* the user’s `next()` /
  *          `complete()` callbacks is forwarded to `error(err)` **once**.
  *      ↳  If `error()` itself throws, we still delegate to `HostReportErrors` (≈ “unhandled‑promise rejection”) 
- *          (i.e. `queueMicrotask`), exactly as the proposal specifies.
+ *          (i.e. `queueMicrotask`), exactly as the proposal specifies.
  *
  *  • If the observer does **not** implement `error()`, we fall back to the
  *    spec’s `HostReportErrors` behaviour (queueMicrotask + throw) so the host
@@ -257,7 +257,7 @@ export class SubscriptionObserver<T> {
   static close(sub: Subscription) {
     let subObs: SubscriptionObserver<unknown> | null | undefined = SubscriptionObserverPrivateAccess.get(sub);
     if (subObs) subObs.#closed = true;
-    
+
     SubscriptionObserverPrivateAccess.delete(sub);
     subObs = null;
   }
