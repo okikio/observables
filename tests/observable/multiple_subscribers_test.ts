@@ -1,8 +1,10 @@
-// @ts-nocheck TODO: fix tests
-import type { Observer } from "../../_types.ts";
-import { test, expect, fn } from "@libs/testing";
+import type { Subscription } from "../../_types.ts";
+import type { SpecObservable, SpecObserver, SpecSubscription } from "../../_spec.ts";
 
-import { Observable } from "../../observable.ts";
+import { captureUnhandledOnce } from "../_utils/_uncaught.ts";
+import { test, expect } from "@libs/testing";
+
+import { Observable, SubscriptionObserver, create } from "../../observable.ts";
 import { Symbol } from "../../symbol.ts";
 
 // -----------------------------------------------------------------------------
@@ -10,8 +12,8 @@ import { Symbol } from "../../symbol.ts";
 // -----------------------------------------------------------------------------
 
 test("multiple subscribers receive the same values", () => {
-  const results1 = [];
-  const results2 = [];
+  const results1: number[] = [];
+  const results2: number[] = [];
 
   const observable = Observable.of(1, 2, 3);
 
@@ -30,7 +32,7 @@ test("multiple subscribers receive the same values", () => {
 });
 
 test("teardown is called for each subscriber", () => {
-  const teardowns = [];
+  const teardowns: string[] = [];
 
   // Create an Observable that tracks teardowns
   const observable = new Observable(observer => {
@@ -51,7 +53,7 @@ test("teardown is called for each subscriber", () => {
 });
 
 test("each subscriber gets its own observer and teardown", () => {
-  const log = [];
+  const log: string[] = [];
 
   // Create an Observable that tracks each subscriber
   const observable = new Observable(observer => {
@@ -110,7 +112,7 @@ test("unsubscribe is idempotent and only triggers teardown once", () => {
 });
 
 test("error or complete automatically trigger unsubscribe", () => {
-  const log = [];
+  const log: string[] = [];
 
   // Create an Observable that logs teardown
   const observable = new Observable(observer => {
@@ -170,10 +172,41 @@ test("error or complete automatically trigger unsubscribe", () => {
 // -----------------------------------------------------------------------------
 
 test("Observable properly handles multiple subscribers with separate resources", () => {
-  const resources = { sub1: false, sub2: false };
+  const resources = { sub1: false, sub2: false } as Record<string, boolean>;
+
+
+  /* 1. create() – inference from next(...) */
+  /* 1 – stand-alone helper */
+  const ids$ = create(emit => {
+    emit("sub-1");
+    emit("sub-2");
+  });
+  //          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  //          Observable<string>
+
+  /* 2. of() – inference from arguments */
+  const nums$ = Observable.of(1, 2, 3);       // Observable<number>
+
+  /* 3. from() – inference from iterable element type */
+  const asyncIter = async function* () { yield true as const; }();
+  const bool$ = Observable.from(asyncIter);   // Observable<boolean>
+
+
+  //    ^ Observable<string>  (T inferred)
+
+  /* 2 – static helper */
+  const clock$ = Observable.create((emit, obs) => {
+    const id = setInterval(() => {
+      if (!obs.closed) emit(new Date());
+    }, 1000);
+    return () => clearInterval(id);
+  });
+  //           ^ Observable<Date>
+
+
 
   // Create an Observable that tracks subscription-specific resources
-  const observable = new Observable(observer => {
+  const observable = Observable.create(next => {
     // Determine which subscriber we are
     const id = Object.values(resources).filter(Boolean).length + 1;
     const subId = `sub${id}`;
@@ -182,7 +215,7 @@ test("Observable properly handles multiple subscribers with separate resources",
     resources[subId] = true;
 
     // Emit the subscriber ID
-    observer.next(subId);
+    next(subId);
 
     // Return teardown to release resource
     return () => {
@@ -191,8 +224,8 @@ test("Observable properly handles multiple subscribers with separate resources",
   });
 
   // Capture emitted values
-  const values1 = [];
-  const values2 = [];
+  const values1: string[] = [];
+  const values2: string[] = [];
 
   // Create two subscriptions
   const sub1 = observable.subscribe(value => values1.push(value));
@@ -243,8 +276,8 @@ test("multiple subscribers with shared mutable resource", () => {
   });
 
   // Subscribe multiple times
-  const results1 = [];
-  const results2 = [];
+  const results1: number[] = [];
+  const results2: number[] = [];
 
   observable.subscribe(v => results1.push(v));
   observable.subscribe(v => results2.push(v));
@@ -261,7 +294,7 @@ test("multiple subscribers with shared mutable resource", () => {
 // -----------------------------------------------------------------------------
 
 test("Observable can be iterated with for-await-of", async () => {
-  const results = [];
+  const results: string[] = [];
   const obs = Observable.of("a", "b", "c");
 
   for await (const value of obs) {
@@ -318,24 +351,26 @@ test("errors in subscribeFn are caught and delivered to observer", () => {
   expect(caughtError).toBe(errorObj);
 });
 
-test.only("Observable handles errors in next callback without crashing", () => {
-  let errorThrown = false;
+test.only("Observable handles errors in next callback without crashing", async () => {
   let nextsAfterError = 0;
-  let completed = false;
+  let completed = false; 
+  let closedWhenCompleteRuns = false;
+  let subscription: Subscription | null = null;          // will be set in start()
 
-  // Create observable that will emit multiple values
-  const obs = new Observable(observer => {
-    try {
-      observer.next(1); // This will throw in the next handler
-      observer.next(2); // This should still be delivered
-      observer.complete();
-    } catch (e) {
-      errorThrown = true;
-    }
+  // Will emit 1 (→ throws), then 2, then complete
+  const obs = new Observable((observer) => {
+    observer.next(1);
+    observer.next(2);
+    observer.complete();
   });
 
-  // Subscribe with a handler that throws on first value
-  const subscription = obs.subscribe({
+  // Capture the *first* unhandled error in this tick
+  const unhandled = captureUnhandledOnce();
+
+  obs.subscribe({
+    start(sub) {               // ← runs first, before any next/complete
+      subscription = sub;
+    },
     next(value) {
       if (value === 1) {
         throw new Error("Error in next handler");
@@ -343,15 +378,26 @@ test.only("Observable handles errors in next callback without crashing", () => {
       nextsAfterError++;
     },
     complete() {
+      closedWhenCompleteRuns = subscription!.closed; // should be false here
       completed = true;
-    }
+    },
   });
 
-  // Subscription should stay active despite error in next  
-  expect(subscription.closed).toBe(false);   // still open
-  expect(errorThrown).toBe(false);
-  expect(nextsAfterError).toBe(1);           // second next delivered
-  expect(completed).toBe(true);              // complete called
+  // Give the queued micro-task time to run
+  await Promise.resolve();
+
+  // ── assertions ──────────────────────────────────────────────────────────
+  const err = await unhandled; // should have been reported exactly once
+  expect(err).toBeInstanceOf(Error);
+  expect((err as Error).message).toBe("Error in next handler");
+
+  // stream behaviour
+  expect(nextsAfterError).toBe(1);
+  expect(completed).toBe(true);
+
+  // verify closed-state semantics
+  expect(closedWhenCompleteRuns).toBe(false);  // still open inside complete()
+  expect(subscription!.closed).toBe(true);      // closed immediately after
 
 });
 
@@ -397,15 +443,20 @@ test("complete/error makes subscription closed before calling observer", () => {
     };
   });
 
-  let closed;
+  let closed = false;
+  let subscription: Subscription | null = null;
 
   obs.subscribe({
+    start(sub) {
+      subscription = sub;
+      closed = subscription.closed;
+    },
     next(value) {
       log.push(`next:${value}`);
     },
     complete() {
       // Check closed status during the complete callback
-      closed = this.closed;
+      closed = subscription!.closed;
       log.push("complete");
     }
   });
@@ -443,15 +494,26 @@ test("Observable.from correctly delegates to Symbol.observable", () => {
   let subscribeCount = 0;
 
   // Create a foreign Observable-like object
-  const foreign = {
+  const foreign: SpecObservable<string> = {
     [Symbol.observable]() {
       subscribeCount++;
+
       return {
-        subscribe(observer: Observer<string>) {
-          for (const value of values) {
-            observer?.next?.(value);
+        // one implementation, but union‐typed first arg
+        subscribe(
+          observerOrNext,
+          error?: (err: unknown) => void,
+          complete?: () => void
+        ): SpecSubscription {
+          const obs: SpecObserver<string> =
+            typeof observerOrNext === "function"
+              ? { next: observerOrNext, error, complete }
+              : observerOrNext;
+
+          for (const v of values) {
+            obs.next?.(v);
           }
-          observer?.complete?.();
+          obs.complete?.();
           return { unsubscribe() { } };
         }
       };
@@ -506,7 +568,7 @@ test("Subscription implements Symbol.dispose and Symbol.asyncDispose", () => {
 
 test("observer.start is called with the subscription before any values", () => {
   const log: string[] = [];
-  let startSubscription;
+  let startSubscription: Subscription | null = null;
 
   const obs = new Observable(observer => {
     log.push("subscriber called");
@@ -537,7 +599,7 @@ test("observer.start is called with the subscription before any values", () => {
 
   // Verify start is called with the subscription object
   expect(typeof startSubscription).toBe("object");
-  expect(typeof startSubscription.unsubscribe).toBe("function");
+  expect(typeof startSubscription!.unsubscribe).toBe("function");
 });
 
 test("unsubscribing in start prevents subscriber from being called", () => {
@@ -566,18 +628,18 @@ test("unsubscribing in start prevents subscriber from being called", () => {
 
 test("Observable constructor requires a function argument", () => {
   // These should throw
-  // @ts-ignore 
-  expect(() => new Observable({})).toThrow(TypeError);
-  expect(() => new Observable(null)).toThrow(TypeError);
-  expect(() => new Observable(undefined)).toThrow(TypeError);
-  expect(() => new Observable(1)).toThrow(TypeError);
-  expect(() => new Observable("string")).toThrow(TypeError);
+  expect(() => new Observable({} as (() => void))).toThrow(TypeError);
+  expect(() => new Observable(null as unknown as (() => void))).toThrow(TypeError);
+  expect(() => new Observable(undefined as unknown as (() => void))).toThrow(TypeError);
+  expect(() => new Observable(1 as unknown as (() => void))).toThrow(TypeError);
+  expect(() => new Observable("string" as unknown as (() => void))).toThrow(TypeError);
 
   // This should not throw
   expect(() => new Observable(() => { })).not.toThrow();
 });
 
 test("Observable cannot be called as a function", () => {
+  // @ts-ignore Observable is a class not a function
   expect(() => Observable(() => { })).toThrow(TypeError);
 });
 
@@ -593,7 +655,7 @@ test("Observable.prototype has correct methods", () => {
 
 test("Observable subscriber function is not called by constructor", () => {
   let called = 0;
-  new Observable(() => called++);
+  new Observable(() => { called++ });
 
   expect(called).toBe(0);
 });
@@ -603,10 +665,10 @@ test("Observable subscriber function is not called by constructor", () => {
 // -----------------------------------------------------------------------------
 
 test("Observable.from throws for incompatible inputs", () => {
-  expect(() => Observable.from(null)).toThrow(TypeError);
-  expect(() => Observable.from(undefined)).toThrow(TypeError);
-  expect(() => Observable.from(123)).toThrow(TypeError);
-  expect(() => Observable.from(true)).toThrow(TypeError);
+  expect(() => Observable.from(null as unknown as [])).toThrow(TypeError);
+  expect(() => Observable.from(undefined as unknown as [])).toThrow(TypeError);
+  expect(() => Observable.from(123 as unknown as [])).toThrow(TypeError);
+  expect(() => Observable.from(true as unknown as [])).toThrow(TypeError);
 });
 
 test("Observable.from uses the this value if it's a function", () => {
@@ -645,7 +707,7 @@ test("Observable.from throws if Symbol.observable doesn't return an object", () 
 
 test("Observable.of delivers all arguments to subscribers", () => {
   const args = [1, "two", { three: 3 }, [4]];
-  const received = [];
+  const received: (number | string | object)[] = [];
 
   Observable.of(...args).subscribe({
     next(x) { received.push(x); }
@@ -675,7 +737,7 @@ test("Observable.of uses Observable if the this value is not a function", () => 
 // -----------------------------------------------------------------------------
 
 test("SubscriptionObserver.closed reflects subscription state", () => {
-  let observer;
+  let observer: SubscriptionObserver<unknown> | null = null;
 
   // Create an observable that captures the observer
   const obs = new Observable(obs => {
@@ -686,14 +748,14 @@ test("SubscriptionObserver.closed reflects subscription state", () => {
   const subscription = obs.subscribe({});
 
   // Initially the observer is not closed
-  expect(observer.closed).toBe(false);
+  expect(observer!.closed).toBe(false);
 
   // After unsubscribe, the observer is closed
   subscription.unsubscribe();
-  expect(observer.closed).toBe(true);
+  expect(observer!.closed).toBe(true);
 
   // Create another observer that completes right away
-  let observer2;
+  let observer2: SubscriptionObserver<unknown> | null = null;
   const obs2 = new Observable(obs => {
     observer2 = obs;
     obs.complete();
@@ -701,10 +763,10 @@ test("SubscriptionObserver.closed reflects subscription state", () => {
   });
 
   obs2.subscribe({});
-  expect(observer2.closed).toBe(true);
+  expect(observer2!.closed).toBe(true);
 
   // Create another observer that errors right away
-  let observer3;
+  let observer3: SubscriptionObserver<unknown> | null = null;
   const obs3 = new Observable(obs => {
     observer3 = obs;
     obs.error(new Error());
@@ -712,14 +774,15 @@ test("SubscriptionObserver.closed reflects subscription state", () => {
   });
 
   obs3.subscribe({ error() { } });
-  expect(observer3.closed).toBe(true);
+  expect(observer3!.closed).toBe(true);
 });
 
 test("SubscriptionObserver.next delivers values to observer.next", () => {
-  const values = [];
-  const token = {};
+  const values: (object | number)[] = [];
+  const token: object = {};
 
-  new Observable(observer => {
+  new Observable<object>(observer => {
+    // @ts-expect-error Error will occur with more that 1 argument
     observer.next(token, 1, 2); // Extra args should be ignored
   }).subscribe({
     next(value, ...args) {
@@ -746,7 +809,7 @@ test("SubscriptionObserver methods return undefined regardless of observer retur
 });
 
 test("SubscriptionObserver ignores non-function observer methods", () => {
-  let observer;
+  let observer: SubscriptionObserver<unknown> | null = null;
 
   const obs = new Observable(obs => {
     observer = obs;
@@ -761,9 +824,9 @@ test("SubscriptionObserver ignores non-function observer methods", () => {
   });
 
   // These calls should not throw
-  expect(() => observer.next(1)).not.toThrow();
-  expect(() => observer.error(new Error())).not.toThrow();
-  expect(() => observer.complete()).not.toThrow();
+  expect(() => observer!.next?.(1)).not.toThrow();
+  expect(() => observer!.error?.(new Error())).not.toThrow();
+  expect(() => observer!.complete?.()).not.toThrow();
 });
 
 // -----------------------------------------------------------------------------
@@ -819,10 +882,10 @@ test("teardown is called when subscriber function throws", () => {
     }).subscribe({
       error() { },
       // Instead, we'll add a start function that sets up the cleanup
-      start() {
+      start(sub) {
         // Set up the cleanup function by monkey-patching the subscription
-        const originalUnsubscribe = this.unsubscribe;
-        this.unsubscribe = function () {
+        const originalUnsubscribe = sub.unsubscribe;
+        sub.unsubscribe = function () {
           cleanupCalled = true;
           originalUnsubscribe.call(this);
         };
