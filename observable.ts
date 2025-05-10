@@ -109,7 +109,7 @@
  * 
  * @module
  */
-import type { SpecObservable, ObservableProtocol, SpecSubscription, SpecObserver } from "./_spec.ts";
+import type { SpecObservable, ObservableProtocol, SpecSubscription } from "./_spec.ts";
 import type { Observer, Subscription } from "./_types.ts";
 import { Symbol } from "./symbol.ts";
 
@@ -805,10 +805,29 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
       // Store the cleanup function in the subscription state
       const state = SubscriptionStateMap.get(subscription);
       if (state && cleanup) (state.cleanup = cleanup as Subscription | Teardown);
-      cleanup = null;
 
-      // If already closed (via synchronous complete/error), no need to do anything
-      // The unsubscribe call from those methods already performed cleanup
+      /**
+       * If already closed (via synchronous complete/error), we need to follow through
+       * The unsubscribe call from those methods wouldn't have the cleanup function yet
+       * @example
+       * ```ts
+       * const errorObservable = new Observable(observer => {
+       *   observer.error(new Error("test error"));
+       *   log.push("after error"); // This should still run
+       *   return () => {
+       *     log.push("error teardown");
+       *   };
+       * });
+       * ```
+       * 
+       * `observer.error` fires before the teardown function is defined, so we would need to manually cleanup ourselves
+       * by manually running the teardown function
+       */
+      if (subscription.closed && cleanup) {
+        cleanupSubscription(cleanup as Subscription | Teardown);
+      }
+
+      cleanup = null;
     } catch (err) {
       // 6) If their subscribeFn throws, send that as an error notification
       subObserver.error(err);
@@ -1098,7 +1117,7 @@ export function from<T>(
   }
 
   // Case 2 – synchronous iterable
-  if ( typeof (input as Iterable<T>)?.[Symbol.iterator] === 'function') {
+  if (typeof (input as Iterable<T>)?.[Symbol.iterator] === 'function') {
     return new Observable<T>(obs => {
       const iterator = (input as Iterable<T>)[Symbol.iterator]();
       for (let step = iterator.next(); !step.done; step = iterator.next()) {

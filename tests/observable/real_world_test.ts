@@ -1,4 +1,4 @@
-import { test, expect, fn } from "@libs/testing";
+import { test, expect } from "@libs/testing";
 
 import { Observable } from "../../observable.ts";
 import { Symbol } from "../../symbol.ts";
@@ -40,7 +40,7 @@ test("Observable.from with Symbol.observable object", () => {
     }
   };
 
-  const subscription = Observable.from(observable).subscribe({
+  Observable.from(observable).subscribe({
     next(value) {
       results.push(value);
     },
@@ -62,7 +62,7 @@ test("Observable.from with Symbol.observable object", () => {
 });
 
 test("Observable.from returns the same Observable if passed an Observable", () => {
-  const original = new Observable(observer => { });
+  const original = new Observable(_ => { });
   const result = Observable.from(original);
 
   expect(result).toBe(original);

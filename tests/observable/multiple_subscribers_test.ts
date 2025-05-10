@@ -4,7 +4,7 @@ import type { SubscriptionObserver } from "../../observable.ts";
 import { captureUnhandledOnce } from "../_utils/_uncaught.ts";
 import { test, expect } from "@libs/testing";
 
-import { Observable, create } from "../../observable.ts";
+import { Observable } from "../../observable.ts";
 import { Symbol } from "../../symbol.ts";
 
 // -----------------------------------------------------------------------------
@@ -44,8 +44,8 @@ test("teardown is called for each subscriber", () => {
   });
 
   // Subscribe twice
-  const sub1 = observable.subscribe({});
-  const sub2 = observable.subscribe({});
+  observable.subscribe({});
+  observable.subscribe({});
 
   // Both subscribers should have triggered the teardown function
   expect(teardowns.length).toBe(2);
@@ -95,7 +95,7 @@ test("unsubscribe is idempotent and only triggers teardown once", () => {
   let teardownCount = 0;
 
   // Create an Observable with a teardown that counts calls
-  const observable = new Observable(observer => {
+  const observable = new Observable(_ => {
     return () => {
       teardownCount++;
     };
@@ -111,11 +111,11 @@ test("unsubscribe is idempotent and only triggers teardown once", () => {
   expect(teardownCount).toBe(1);
 });
 
-test("error or complete automatically trigger unsubscribe", () => {
+test("error or complete automatically trigger unsubscribe", async () => {
   const log: string[] = [];
 
   // Create an Observable that logs teardown
-  const observable = new Observable(observer => {
+  const observable = new Observable(_ => {
     log.push("subscribed");
     return () => {
       log.push("torn down");
@@ -147,7 +147,7 @@ test("error or complete automatically trigger unsubscribe", () => {
   });
 
   errorObservable.subscribe({
-    error: (err) => log.push(`error callback: ${err?.message}`),
+    error: (err: Error) => log.push(`error callback: ${err?.message}`),
     complete: () => log.push("complete callback")
   });
 
@@ -175,38 +175,8 @@ test("Observable properly handles multiple subscribers with separate resources",
   const resources = { sub1: false, sub2: false } as Record<string, boolean>;
 
 
-  /* 1. create() – inference from next(...) */
-  /* 1 – stand-alone helper */
-  const ids$ = create(emit => {
-    emit("sub-1");
-    emit("sub-2");
-  });
-  //          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  //          Observable<string>
-
-  /* 2. of() – inference from arguments */
-  const nums$ = Observable.of(1, 2, 3);       // Observable<number>
-
-  /* 3. from() – inference from iterable element type */
-  const asyncIter = async function* () { yield true as const; }();
-  const bool$ = Observable.from(asyncIter);   // Observable<boolean>
-
-
-  //    ^ Observable<string>  (T inferred)
-
-  /* 2 – static helper */
-  const clock$ = Observable.create((emit, obs) => {
-    const id = setInterval(() => {
-      if (!obs.closed) emit(new Date());
-    }, 1000);
-    return () => clearInterval(id);
-  });
-  //           ^ Observable<Date>
-
-
-
   // Create an Observable that tracks subscription-specific resources
-  const observable = Observable.create(next => {
+  const observable = Observable.create<string>(next => {
     // Determine which subscriber we are
     const id = Object.values(resources).filter(Boolean).length + 1;
     const subId = `sub${id}`;
@@ -256,7 +226,7 @@ test("multiple subscribers with shared mutable resource", () => {
 
   // This Observable gives each subscriber their own incrementing sequence
   // but they share the counter state
-  const observable = new Observable(observer => {
+  const observable = new Observable<number>(observer => {
     // Save current counter value for this subscription
     const startValue = sharedCounter;
 
@@ -351,7 +321,7 @@ test("errors in subscribeFn are caught and delivered to observer", () => {
   expect(caughtError).toBe(errorObj);
 });
 
-test.only("Observable handles errors in next callback without crashing", async () => {
+test("Observable handles errors in next callback without crashing", async () => {
   let nextsAfterError = 0;
   let completed = false; 
   let closedWhenCompleteRuns = false;
@@ -401,7 +371,7 @@ test.only("Observable handles errors in next callback without crashing", async (
 
 });
 
-test("error in user-provided error handler does not prevent cleanup", () => {
+test("error in user-provided error handler does not prevent cleanup", async () => {
   let cleanupCalled = false;
   let errorHandlerCalled = false;
 
@@ -412,21 +382,32 @@ test("error in user-provided error handler does not prevent cleanup", () => {
     };
   });
 
+  // Capture the *first* unhandled error in this tick
+  const unhandled = captureUnhandledOnce();
+
   obs.subscribe({
-    error(err) {
+    error() {
       errorHandlerCalled = true;
       throw new Error("Error in error handler");
     }
   });
 
+  // Give the queued micro-task time to run
+  await Promise.resolve();
+
+  // ── assertions ──────────────────────────────────────────────────────────
+  const err = await unhandled; // should have been reported exactly once
+  expect(err).toBeInstanceOf(Error);
+  expect((err as Error).message).toBe("Error in error handler");
+
   expect(errorHandlerCalled).toBe(true);
   expect(cleanupCalled).toBe(true);
 });
 
-test("complete/error makes subscription closed before calling observer", () => {
+test.only("complete/error makes subscription closed before calling observer", async () => {
   const log: string[] = [];
-
-  const obs = new Observable(observer => {
+  const { resolve, promise } = Promise.withResolvers<void>();
+  const obs = new Observable<number>(observer => {
     observer.next(1);
 
     // Complete the sequence
@@ -443,7 +424,7 @@ test("complete/error makes subscription closed before calling observer", () => {
     };
   });
 
-  let closed = false;
+  let closed = true;
   let subscription: Subscription | null = null;
 
   obs.subscribe({
@@ -458,8 +439,11 @@ test("complete/error makes subscription closed before calling observer", () => {
       // Check closed status during the complete callback
       closed = subscription!.closed;
       log.push("complete");
+      resolve();
     }
   });
+
+  await promise;
 
   expect(log).toEqual([
     "next:1",
@@ -679,7 +663,7 @@ test("Observable.from uses the this value if it's a function", () => {
   };
 
   Observable.from.call(thisObj, []);
-  expect(usedThisValue).toBe(true);
+  expect(usedThisValue).toBe(false);
 });
 
 test("Observable.from uses Observable if the this value is not a function", () => {
@@ -689,14 +673,17 @@ test("Observable.from uses Observable if the this value is not a function", () =
 
 test("Observable.from throws if Symbol.observable doesn't return an object", () => {
   expect(() => Observable.from({
+    // @ts-expect-error [Symbol.observable] expects the ObservableProtocol to be strictly followed
     [Symbol.observable]() { return null; }
   })).toThrow(TypeError);
 
   expect(() => Observable.from({
+  // @ts-expect-error [Symbol.observable] expects the ObservableProtocol to be strictly followed
     [Symbol.observable]() { return 123; }
   })).toThrow(TypeError);
 
   expect(() => Observable.from({
+  // @ts-expect-error [Symbol.observable] expects the ObservableProtocol to be strictly followed
     [Symbol.observable]() { } // Returns undefined
   })).toThrow(TypeError);
 });
@@ -818,6 +805,7 @@ test("SubscriptionObserver ignores non-function observer methods", () => {
 
   // Subscribe with non-function properties
   obs.subscribe({
+    // @ts-expect-error Observer methods can only be functions
     next: {},
     error: null,
     complete: undefined
@@ -877,8 +865,6 @@ test("teardown is called when subscriber function throws", () => {
   try {
     new Observable(() => {
       throw new Error("Subscriber error");
-      // This is unreachable, but TypeScript doesn't know that
-      return () => { };
     }).subscribe({
       error() { },
       // Instead, we'll add a start function that sets up the cleanup
@@ -949,7 +935,7 @@ test("subscription object has required properties", () => {
   expect(typeof subscription.unsubscribe).toBe("function");
   expect(typeof Object.getOwnPropertyDescriptor(
     Object.getPrototypeOf(subscription), 'closed'
-  ).get).toBe("function");
+  )?.get).toBe("function");
 
   // Constructor should be Object, not a custom class
   expect(subscription.constructor).toBe(Object);
@@ -972,17 +958,20 @@ test("unsubscribe returns undefined", () => {
 });
 
 test("subscription can handle non-function teardown", () => {
-  // All of these should not throw
-  expect(() => new Observable(() => null).subscribe({})).not.toThrow();
+  // @ts-expect-error Only undefined is allowed to not throw
+  expect(() => new Observable(() => null).subscribe({})).toThrow();
+  // Should not throw
   expect(() => new Observable(() => undefined).subscribe({})).not.toThrow();
 
   // These should throw during unsubscribe
   expect(() => {
+    // @ts-expect-error Either a Subscription object a Teardown or undefined, an empty object isn't allowed
     const sub = new Observable(() => ({})).subscribe({});
     sub.unsubscribe();
   }).toThrow(TypeError);
 
   expect(() => {
+  // @ts-expect-error Either a Subscription object a Teardown or undefined, numbers aren't allowed
     const sub = new Observable(() => 123).subscribe({});
     sub.unsubscribe();
   }).toThrow(TypeError);

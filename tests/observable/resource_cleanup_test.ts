@@ -1,4 +1,4 @@
-import { test, expect, fn } from "@libs/testing";
+import { test, expect } from "@libs/testing";
 
 import { Observable } from "../../observable.ts";
 import { Symbol } from "../../symbol.ts";

@@ -10,15 +10,15 @@ import { Observable } from "../../observable.ts";
 test("listen example creates an Observable for DOM events", () => {
   // Mock DOM element
   const element = {
-    addEventListener: fn((name, handler, options) => { }),
-    removeEventListener: fn((name, handler, options) => { })
+    addEventListener: fn(() => { }),
+    removeEventListener: fn(() => { })
   };
 
   // Create a listen function as shown in the docs
   function listen(element, eventName) {
     return new Observable(observer => {
       // Create an event handler which sends data to the sink
-      let handler = event => observer.next(event);
+      const handler = event => observer.next(event);
 
       // Attach the event handler
       element.addEventListener(eventName, handler, true);
@@ -32,8 +32,8 @@ test("listen example creates an Observable for DOM events", () => {
   }
 
   // Spy on the element's methods
-  let addEventSpy = element.addEventListener;
-  let removeEventSpy = element.removeEventListener;
+  const addEventSpy = element.addEventListener;
+  const removeEventSpy = element.removeEventListener;
 
   // Create the Observable
   const keydown$ = listen(element, "keydown");
@@ -58,7 +58,7 @@ test("commandKeys example filters and maps key events", () => {
   // Mock DOM element with simulated events
   const mockEvents = [];
   const element = {
-    addEventListener: fn((name, handler, options) => {
+    addEventListener: fn(() => {
       // Store the handler for later triggering
       mockEvents.push(handler);
     }),
@@ -68,7 +68,7 @@ test("commandKeys example filters and maps key events", () => {
   // Create helper functions as shown in the docs
   function listen(element, eventName) {
     return new Observable(observer => {
-      let handler = event => observer.next(event);
+      const handler = event => observer.next(event);
       element.addEventListener(eventName, handler, true);
       return () => {
         element.removeEventListener(eventName, handler, true);
@@ -102,7 +102,7 @@ test("commandKeys example filters and maps key events", () => {
   };
 
   function commandKeys(element) {
-    let keyCommands = { "38": "up", "40": "down" };
+    const keyCommands = { "38": "up", "40": "down" };
 
     return listen(element, "keydown")
       .filter(event => event.keyCode in keyCommands)
@@ -138,12 +138,12 @@ test("listen function creates an Observable for DOM events", () => {
   const eventLog = [];
   const mockElement = {
     listeners: {},
-    addEventListener(eventName, handler, options) {
+    addEventListener(eventName, handler) {
       this.listeners[eventName] = this.listeners[eventName] || [];
       this.listeners[eventName].push(handler);
       eventLog.push(`added ${eventName} listener`);
     },
-    removeEventListener(eventName, handler, options) {
+    removeEventListener(eventName, handler) {
       if (this.listeners[eventName]) {
         this.listeners[eventName] = this.listeners[eventName].filter(h => h !== handler);
       }
@@ -161,7 +161,7 @@ test("listen function creates an Observable for DOM events", () => {
   function listen(element, eventName) {
     return new Observable(observer => {
       // Create an event handler which sends data to the sink
-      let handler = event => observer.next(event);
+      const handler = event => observer.next(event);
 
       // Attach the event handler
       element.addEventListener(eventName, handler, true);
@@ -211,18 +211,18 @@ test("listen function creates an Observable for DOM events", () => {
 test("commandKeys function filters and maps keyboard events", () => {
   // Mock DOM element with event simulation
   const mockElement = {
-    listeners: {} as Record<string, Function[]>,
-    addEventListener(this: { listeners: Record<string, Function[]> }, eventName: string, handler: Function, options: unknown) {
+    listeners: {} as Record<string, ((...args: unknown) => unknown)[]>,
+    addEventListener(this: { listeners: Record<string, ((...args: unknown) => unknown)[]> }, eventName: string, handler: ((...args: unknown) => unknown)) {
       this.listeners[eventName] = this.listeners[eventName] || [];
       this.listeners[eventName].push(handler);
     },
-    removeEventListener(this: { listeners: Record<string, Function[]> }, eventName: string, handler: Function, options: unknown) {
+    removeEventListener(this: { listeners: Record<string, ((...args: unknown) => unknown)[]> }, eventName: string, handler: ((...args: unknown) => unknown)) {
       if (this.listeners[eventName]) {
         this.listeners[eventName] = this.listeners[eventName].filter(h => h !== handler);
       }
     },
     // Helper to simulate events
-    dispatchEvent(this: { listeners: Record<string, Function[]> }, eventName: string, data: unknown) {
+    dispatchEvent(this: { listeners: Record<string, ((...args: unknown) => unknown)[]> }, eventName: string, data: unknown) {
       if (this.listeners[eventName]) {
         this.listeners[eventName].forEach(handler => handler(data));
       }
@@ -230,7 +230,7 @@ test("commandKeys function filters and maps keyboard events", () => {
   };
 
   // Add filter and map methods to Observable prototype for testing
-  Observable.prototype.filter = function (predicate: Function) {
+  Observable.prototype.filter = function (predicate: ((...args: unknown) => unknown)) {
     return new Observable(observer => {
       const subscription = this.subscribe({
         next(value) {
@@ -245,7 +245,7 @@ test("commandKeys function filters and maps keyboard events", () => {
     });
   };
 
-  Observable.prototype.map = function (mapper: Function) {
+  Observable.prototype.map = function (mapper: ((...args: unknown) => unknown)) {
     return new Observable(observer => {
       const subscription = this.subscribe({
         next(value) { observer.next(mapper(value)); },
@@ -259,7 +259,7 @@ test("commandKeys function filters and maps keyboard events", () => {
   // Implement the listen function
   function listen(element: typeof mockElement, eventName: string) {
     return new Observable(observer => {
-      let handler = event => observer.next(event);
+      const handler = event => observer.next(event);
       element.addEventListener(eventName, handler, true);
       return () => element.removeEventListener(eventName, handler, true);
     });
