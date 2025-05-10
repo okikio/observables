@@ -1,10 +1,10 @@
-import type { Subscription } from "../../_types.ts";
-import type { SpecObservable, SpecObserver, SpecSubscription } from "../../_spec.ts";
+import type { Subscription, SpecObservable, SpecObserver, SpecSubscription } from "../../_types.ts";
+import type { SubscriptionObserver } from "../../observable.ts";
 
 import { captureUnhandledOnce } from "../_utils/_uncaught.ts";
 import { test, expect } from "@libs/testing";
 
-import { Observable, SubscriptionObserver, create } from "../../observable.ts";
+import { Observable, create } from "../../observable.ts";
 import { Symbol } from "../../symbol.ts";
 
 // -----------------------------------------------------------------------------
@@ -891,7 +891,7 @@ test("teardown is called when subscriber function throws", () => {
         };
       }
     });
-  } catch (e) {
+  } catch (_e) {
     // Ignore error
   }
 
@@ -916,9 +916,9 @@ test("teardown is only called once when unsubscribe is called multiple times", (
 });
 
 test("teardown is called when unsubscribe is called in start", () => {
-  const log = [];
+  const log: string[] = [];
 
-  const obs = new Observable(observer => {
+  const obs = new Observable(_ => {
     log.push("subscriber called");
     return () => { log.push("teardown called"); };
   });

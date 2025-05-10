@@ -109,7 +109,7 @@
  * 
  * @module
  */
-import type { SpecObservable, ObservableProtocol } from "./_spec.ts";
+import type { SpecObservable, ObservableProtocol, SpecSubscription, SpecObserver } from "./_spec.ts";
 import type { Observer, Subscription } from "./_types.ts";
 import { Symbol } from "./symbol.ts";
 
@@ -592,7 +592,7 @@ export class SubscriptionObserver<T> {
  */
 export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, ObservableProtocol<T> {
   /** The subscriber function provided when the Observable was created */
-  #subscribeFn: (obs: SubscriptionObserver<T>) => Teardown | Subscription | void;
+  #subscribeFn: (obs: SubscriptionObserver<T>) => Teardown | SpecSubscription | void;
 
   /**
    * Creates a new Observable with the given subscriber function.
@@ -628,7 +628,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * });
    * ```
    */
-  constructor(subscribeFn: (obs: SubscriptionObserver<T>) => Teardown | void) {
+  constructor(subscribeFn: (obs: SubscriptionObserver<T>) => Teardown | SpecSubscription | void) {
     if (typeof subscribeFn !== 'function') {
       throw new TypeError('Observable initializer must be a function');
     }
@@ -804,7 +804,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
 
       // Store the cleanup function in the subscription state
       const state = SubscriptionStateMap.get(subscription);
-      if (state && cleanup) (state.cleanup = cleanup);
+      if (state && cleanup) (state.cleanup = cleanup as Subscription | Teardown);
       cleanup = null;
 
       // If already closed (via synchronous complete/error), no need to do anything
