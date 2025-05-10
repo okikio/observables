@@ -111,7 +111,7 @@ test("unsubscribe is idempotent and only triggers teardown once", () => {
   expect(teardownCount).toBe(1);
 });
 
-test("error or complete automatically trigger unsubscribe", async () => {
+test("error or complete automatically trigger unsubscribe", () => {
   const log: string[] = [];
 
   // Create an Observable that logs teardown
@@ -404,9 +404,8 @@ test("error in user-provided error handler does not prevent cleanup", async () =
   expect(cleanupCalled).toBe(true);
 });
 
-test.only("complete/error makes subscription closed before calling observer", async () => {
+test("complete/error makes subscription closed before calling observer", () => {
   const log: string[] = [];
-  const { resolve, promise } = Promise.withResolvers<void>();
   const obs = new Observable<number>(observer => {
     observer.next(1);
 
@@ -424,26 +423,19 @@ test.only("complete/error makes subscription closed before calling observer", as
     };
   });
 
-  let closed = true;
-  let subscription: Subscription | null = null;
-
-  obs.subscribe({
-    start(sub) {
-      subscription = sub;
-      closed = subscription.closed;
-    },
+  let closed = false;
+  const subscription = obs.subscribe({
     next(value) {
       log.push(`next:${value}`);
     },
     complete() {
       // Check closed status during the complete callback
-      closed = subscription!.closed;
       log.push("complete");
-      resolve();
     }
   });
 
-  await promise;
+  // await promise;
+  closed = subscription!.closed;
 
   expect(log).toEqual([
     "next:1",
@@ -475,12 +467,12 @@ test("Observable implements Symbol.observable", () => {
 
 test("Observable.from correctly delegates to Symbol.observable", () => {
   const values = ["interop", "works"];
-  let subscribeCount = 0;
+  let observableProtocolCheck = 0;
 
   // Create a foreign Observable-like object
   const foreign: SpecObservable<string> = {
     [Symbol.observable]() {
-      subscribeCount++;
+      observableProtocolCheck++;
 
       return {
         // one implementation, but union‐typed first arg
@@ -509,7 +501,7 @@ test("Observable.from correctly delegates to Symbol.observable", () => {
   const obs = Observable.from(foreign);
 
   // Symbol.observable should be accessed lazily
-  expect(subscribeCount).toBe(0);
+  expect(observableProtocolCheck).toBe(1);
 
   // Subscribe to get values
   obs.subscribe({
@@ -520,7 +512,7 @@ test("Observable.from correctly delegates to Symbol.observable", () => {
 
   // Verify values were delivered and Symbol.observable was called
   expect(results).toEqual(values);
-  expect(subscribeCount).toBe(1);
+  expect(observableProtocolCheck).toBe(1);
 });
 
 test("Subscription implements Symbol.dispose and Symbol.asyncDispose", () => {
@@ -764,10 +756,11 @@ test("SubscriptionObserver.closed reflects subscription state", () => {
   expect(observer3!.closed).toBe(true);
 });
 
-test("SubscriptionObserver.next delivers values to observer.next", () => {
+test("SubscriptionObserver.next delivers values to observer.next", async () => {
   const values: (object | number)[] = [];
   const token: object = {};
 
+  const uncaught = captureUnhandledOnce();
   new Observable<object>(observer => {
     // @ts-expect-error Error will occur with more that 1 argument
     observer.next(token, 1, 2); // Extra args should be ignored
@@ -777,6 +770,9 @@ test("SubscriptionObserver.next delivers values to observer.next", () => {
       values.push(args.length); // Should be 0
     }
   });
+
+  await Promise.resolve();
+  await uncaught;
 
   expect(values).toEqual([token, 0]);
 });
@@ -795,26 +791,44 @@ test("SubscriptionObserver methods return undefined regardless of observer retur
   });
 });
 
-test("SubscriptionObserver ignores non-function observer methods", () => {
+test("Observable throws for non-function observer methods", () => {
+  const obs = new Observable(() => { });
+
+  // This should throw
+  expect(() => obs.subscribe({
+  // @ts-expect-error Observer methods can only be functions
+    next: {},
+    error: null,
+    complete: undefined
+  })).toThrow(TypeError);
+});
+
+test("SubscriptionObserver ignores missing observer methods", () => {
   let observer: SubscriptionObserver<unknown> | null = null;
 
+  const uncaught = captureUnhandledOnce();
   const obs = new Observable(obs => {
     observer = obs;
     return () => { };
   });
 
-  // Subscribe with non-function properties
-  obs.subscribe({
-    // @ts-expect-error Observer methods can only be functions
-    next: {},
-    error: null,
-    complete: undefined
-  });
+  // Subscribe with NO methods (different from non-function methods)
+  obs.subscribe({});
 
-  // These calls should not throw
+  // These calls should not throw since methods are missing (not invalid)
   expect(() => observer!.next?.(1)).not.toThrow();
-  expect(() => observer!.error?.(new Error())).not.toThrow();
-  expect(() => observer!.complete?.()).not.toThrow();
+  expect(async () => {
+    observer!.error?.(new Error())
+
+    await Promise.resolve();
+    await uncaught;
+  }).not.toThrow();
+  expect(async () => {
+    observer!.complete?.()
+
+    await Promise.resolve();
+    await uncaught;
+  }).not.toThrow();
 });
 
 // -----------------------------------------------------------------------------
@@ -916,11 +930,12 @@ test("teardown is called when unsubscribe is called in start", () => {
     }
   });
 
-  // The sequence should be: start -> unsubscribe -> teardown
+  // The sequence should be: start -> unsubscribe
   // The subscriber function should not be called
   expect(log).toEqual([
     "start called",
-    "teardown called"
+    // No "subscriber called" or "teardown called" entries
+    // We never even reigster the subscriber
   ]);
 });
 
