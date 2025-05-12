@@ -271,56 +271,6 @@ function createSubscription<T>(observer: Observer<T>): Subscription {
  * 3. State is properly cleared to prevent memory leaks
  * 4. WeakMap entry is removed to aid garbage collection
  * 
- * This function implements a subtle but important deviation from the TC39 Observable
- * proposal's strict synchronous cleanup. We intentionally schedule cleanup in a microtask
- * to avoid race conditions with synchronous complete/error notifications during subscription.
- * 
- * ## The Problem
- * 
- * Consider this sequence:
- * ```ts
- * new Observable(observer => {
- *   observer.complete(); // Triggers unsubscribe immediately
- *   return () => console.log('This cleanup might never run!');
- * }).subscribe({});
- * ```
- * 
- * Without deferred cleanup, the teardown function would never be stored or executed
- * because unsubscribe() is called before the subscriber function returns.
- * 
- * ## How This Differs From The Spec
- * 
- * The TC39 proposal (as of May 2025) doesn't explicitly address this timing issue. The spec
- * implies synchronous cleanup, but JavaScript's execution model makes this problematic
- * when observers call complete/error inside the subscriber function before it returns.
- * 
- * ## Why This Approach Is Better
- * 
- * By using queueMicrotask:
- * 1. We ensure teardown functions are properly captured and executed
- * 2. Resources are still released promptly (just one microtask later)
- * 3. The behavior is more predictable and less prone to subtle bugs
- * 4. It aligns with JavaScript's typical approach to resource cleanup
- * 
- * @example 
- * ```ts
- * // Without deferred cleanup (problematic):
- * const connection = connectToServer();
- * new Observable(observer => {
- *   if (!validateConnection(connection)) {
- *     observer.error(new Error('Invalid connection')); // Triggers cleanup
- *   }
- *   return () => connection.close(); // But this never runs!
- * }).subscribe({
- *   error: err => console.error(err)
- * });
- * // Result: Connection remains open despite error (leak!)
- * 
- * // With our implementation (correct):
- * // Even though error is called before the teardown function is returned,
- * // connection.close() will be called in the next microtask.
- * ```
- * 
  * @param subscription - The subscription to close
  * @internal
  */
@@ -339,38 +289,12 @@ function closeSubscription(subscription: Subscription): void {
   state.observer = null;
 
   // This conditional check runs synchronously
-  if (cleanup) {
-    try {
-      cleanupSubscription(cleanup);
-    } finally {
-      // Ensure WeakMap entry is deleted even if cleanup throws
-      SubscriptionStateMap.delete(subscription);
-      cleanup = null;
-    }
-  } else {
-    // Schedule cleanup in a microtask to ensure proper teardown
-    // This is a subtle but important deviation from the TC39 spec that
-    // makes our implementation more resilient to race conditions
-
-    // The race condition case - we might get a cleanup soon 
-    // during the subscribe process
-
-    // Schedule a check to run after the current execution context,
-    // by which time the subscriber function might have returned
-    queueMicrotask(() => {
-      // Get the latest cleanup value directly from the subscription
-      const lateState = SubscriptionStateMap.get(subscription);
-      let lateCleanup = lateState?.cleanup;
-
-      try {
-        if (!lateCleanup) return;
-        cleanupSubscription(lateCleanup);
-      } finally {
-        // Ensure WeakMap entry is deleted even if cleanup throws
-        SubscriptionStateMap.delete(subscription);
-        lateCleanup = null;
-      }
-    });
+  try {
+    cleanupSubscription(cleanup);
+  } finally {
+    // Ensure WeakMap entry is deleted even if cleanup throws
+    SubscriptionStateMap.delete(subscription);
+    cleanup = null;
   }
 }
 
@@ -386,22 +310,9 @@ function closeSubscription(subscription: Subscription): void {
  * Any errors during cleanup are reported asynchronously to prevent
  * them from disrupting the unsubscribe flow.
  * 
- * ## Relationship with Microtask Scheduling
- * 
- * This function is designed to be called directly from `closeSubscription`, but is typically
- * scheduled inside a microtask. This timing detail is crucial for handling scenarios where
- * error/complete is called synchronously during subscription setup before the teardown
- * function is returned.
- * 
- * The scheduling allows the subscription process to complete and capture any teardown function
- * before executing it, preventing resource leaks in edge cases.
- * 
- * Any errors thrown during cleanup are reported asynchronously to prevent them from
- * disrupting the main execution flow, matching the TC39 spec's intent for error isolation.
- * 
  * @param cleanup - Function or object to perform cleanup
  */
-function cleanupSubscription(cleanup: Teardown | Subscription | null) {
+function cleanupSubscription(cleanup: Teardown | Subscription | null | undefined | void) {
   let temp = cleanup;
   cleanup = null;
 
@@ -615,11 +526,13 @@ export class SubscriptionObserver<T> {
     // No error handler, delegate to host
     else queueMicrotask(() => { throw err; });
 
-    if (this.#subscription && typeof this.#subscription?.unsubscribe === 'function') {
-      const sub = this.#subscription;
-      this.#subscription = null; // Clear reference first
-      sub.unsubscribe();
-    }
+    try { 
+      if (this.#subscription && typeof this.#subscription?.unsubscribe === 'function') {
+        const sub = this.#subscription;
+        this.#subscription = null; // Clear reference first
+        sub.unsubscribe();
+      }
+    } catch (innerErr) { queueMicrotask(() => { throw innerErr; }); }
   }
 
   /**
@@ -661,11 +574,13 @@ export class SubscriptionObserver<T> {
       }
     }
 
-    if (this.#subscription && typeof this.#subscription?.unsubscribe === 'function') {
-      const sub = this.#subscription;
-      this.#subscription = null; // Clear reference first
-      sub.unsubscribe();
-    }
+    try {
+      if (this.#subscription && typeof this.#subscription?.unsubscribe === 'function') {
+        const sub = this.#subscription;
+        this.#subscription = null; // Clear reference first
+        sub.unsubscribe();
+      }
+    } catch (innerErr) { queueMicrotask(() => { throw innerErr; }); }
   }
 
   /**
@@ -693,36 +608,12 @@ export class SubscriptionObserver<T> {
  * Extensions beyond the TC39 proposal:
  * - Pull API via AsyncIterable interface
  * - Using/await using support via Symbol.dispose/asyncDispose
- * - Helper factories like create() for easier construction
- * 
- * ## Resource Management and Cleanup Timing
- * 
- * Our implementation uses a subtle but important deviation from the TC39 spec regarding
- * cleanup timing. When an Observable's cleanup happens due to error/complete/unsubscribe,
- * we schedule the actual teardown in a microtask rather than executing it synchronously.
- * 
- * This solves a critical edge case where error() or complete() is called during the subscriber
- * function execution, potentially before the teardown function is returned.
- * 
- * @example
- * ```ts
- * new Observable(observer => {
- *   if (!isValid) {
- *     observer.error(new Error('Invalid state')); // Triggers cleanup
- *   }
- *   // Without our microtask approach, this teardown would never run
- *   return () => releaseResources(); 
- * });
- * ```
- * 
- * This approach ensures proper resource cleanup in all situations, preventing potential
- * resource leaks without any observable difference in behavior for consumers.
  * 
  * @typeParam T - Type of values emitted by this Observable
  */
 export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, ObservableProtocol<T> {
   /** The subscriber function provided when the Observable was created */
-  #subscribeFn: (obs: SubscriptionObserver<T>) => Teardown | SpecSubscription | void;
+  #subscribeFn: (obs: SubscriptionObserver<T>) => Teardown | SpecSubscription | null | undefined | void;
 
   /**
    * Creates a new Observable with the given subscriber function.
@@ -758,7 +649,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * });
    * ```
    */
-  constructor(subscribeFn: (obs: SubscriptionObserver<T>) => Teardown | SpecSubscription | void) {
+  constructor(subscribeFn: (obs: SubscriptionObserver<T>) => Teardown | SpecSubscription | null | undefined | void) {
     if (typeof subscribeFn !== 'function') {
       throw new TypeError('Observable initializer must be a function');
     }
@@ -923,7 +814,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
       let cleanup = this.#subscribeFn?.call(undefined, subObserver) ?? null;
 
       // Validate the cleanup value if provided
-      if (cleanup !== undefined) {
+      if (cleanup !== undefined && cleanup !== null) {
         if (!(
           typeof cleanup === 'function' ||
           typeof cleanup?.unsubscribe === 'function'
@@ -935,24 +826,6 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
       // Store the cleanup function in the subscription state
       const state = SubscriptionStateMap.get(subscription);
       if (state && cleanup) (state.cleanup = cleanup as Subscription | Teardown);
-
-      /**
-       * If already closed (via synchronous complete/error), we need to follow through
-       * The unsubscribe call from those methods wouldn't have the cleanup function yet
-       * @example
-       * ```ts
-       * const errorObservable = new Observable(observer => {
-       *   observer.error(new Error("test error"));
-       *   log.push("after error"); // This should still run
-       *   return () => {
-       *     log.push("error teardown");
-       *   };
-       * });
-       * ```
-       * 
-       * `observer.error` fires before the teardown function is defined, so we would need to manually cleanup ourselves
-       * by manually running the teardown function
-       */
 
       /**
        * Handle the case where complete/error was called synchronously during the subscribe function.
@@ -1132,17 +1005,6 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * ```
    */
   static readonly of = of;
-
-  /**
-   * Ergonomic factory for creating Observables with automatic type inference.
-   * 
-   * @remarks
-   * This static method provides a more concise way to create Observables,
-   * with better TypeScript type inference in many cases.
-   * 
-   * @see create
-   */
-  static readonly create = create;
 
   /**
    * Standard string tag for the object.
@@ -1401,79 +1263,4 @@ export async function* pull<T>(
     reader.releaseLock();
     await stream.cancel();
   }
-}
-
-/**
- * Creates Observables with automatic type inference and simplified syntax.
- * 
- * @remarks
- * This factory function provides:
- * 
- * 1. Better TypeScript type inference than the Observable constructor
- * 2. A more concise API without requiring 'new'
- * 3. Options for simple emit-only or full observer access
- * 
- * It comes in two forms:
- * - Basic: Just provide an `emit` function
- * - Advanced: Access both `emit` and the full observer
- * 
- * Benefits:
- * - TypeScript infers the generic type parameter automatically
- * - No need for explicit type annotations in most cases
- * - Same runtime behavior as Observable constructor
- * 
- * @example Creating a simple string Observable:
- * ```ts
- * // Type inferred as Observable<string>
- * const names$ = create(emit => {
- *   emit("Alice");
- *   emit("Bob");
- *   emit("Charlie");
- * });
- * ```
- * 
- * @example With observer access for lifecycle control:
- * ```ts
- * const timer$ = create<number>((emit, observer) => {
- *   let count = 0;
- *   const id = setInterval(() => {
- *     if (count < 5) {
- *       emit(count++);
- *     } else {
- *       observer.complete();
- *     }
- *   }, 1000);
- *   
- *   return () => clearInterval(id);
- * });
- * ```
- */
-
-/* ── Overload signatures ──────────────────────────────────────────────── */
-export function create<T>(
-  subscribe: (emit: (value: T) => void) => Teardown | void,
-): Observable<T>;
-
-export function create<T>(
-  subscribe: (
-    emit: (value: T) => void,
-    observer?: SubscriptionObserver<T>,
-  ) => Teardown | void,
-): Observable<T>;
-
-/* ── Shared implementation (no generic) ───────────────────────────────── */
-export function create(
-  subscribe: (
-    emit: (value: unknown) => void,                        // ← any, not unknown
-    observer?: SubscriptionObserver<unknown>,              // ← any, not unknown
-  ) => Teardown | void,
-): Observable<unknown> {                                   // ← any, then cast
-  const obs = new Observable<unknown>(observer => {
-    const emit = (v: unknown) => observer.next(v);
-    return subscribe.length < 2
-      ? subscribe(emit)                    // emit-only
-      : subscribe(emit, observer);         // emit + observer
-  });
-
-  return obs as Observable<unknown>;           // satisfies every overload
 }
