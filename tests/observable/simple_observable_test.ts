@@ -2,6 +2,7 @@ import { test, expect } from "@libs/testing";
 
 import { Observable } from "../../observable.ts";
 import { Symbol } from "../../symbol.ts";
+import { captureUnhandledOnce } from "../_utils/_uncaught.ts";
 
 // -----------------------------------------------------------------------------
 // Basic Push API Tests
@@ -144,7 +145,7 @@ test("static from async iterable emits all items", async () => {
 // Teardown on Complete Tests
 // -----------------------------------------------------------------------------
 
-test("teardown called on complete", () => {
+test("teardown called on complete", async () => {
   let cleaned = false;
 
   const obs = new Observable<number>((observer) => {
@@ -158,6 +159,8 @@ test("teardown called on complete", () => {
 
   const result: number[] = [];
   obs.subscribe({ next: (v) => result.push(v) });
+
+  await Promise.resolve();
 
   expect(result).toEqual([1]);
   expect(cleaned).toBe(true);
@@ -283,3 +286,50 @@ test("Subscription[Symbol.asyncDispose]() calls unsubscribe", async () => {
   expect(sub.closed).toBe(true);
 });
 
+test("teardown works when error/complete called before teardown function returned", () => {
+  const log: string[] = [];
+
+  // This is the critical test case - observer.error called BEFORE return
+  new Observable(observer => {
+    observer.error(new Error("test error"));
+    log.push("after error"); // This should still run
+    return () => {
+      log.push("teardown called");
+    };
+  }).subscribe({
+    error: () => log.push("error callback")
+  });
+
+  // Need to wait for microtask queue to flush
+  // await new Promise(resolve => setTimeout(resolve, 0));
+
+  expect(log).toEqual([
+    "error callback",
+    "after error",
+    "teardown called"
+  ]);
+});
+
+test("errors in next callback are forwarded to error handler", () => {
+  const errorObj = new Error("next callback error");
+  let caughtError = null;
+
+  Observable.of(1).subscribe({
+    next() { throw errorObj; },
+    error(err) { caughtError = err; }
+  });
+
+  expect(caughtError).toBe(errorObj);
+});
+
+test("errors in error handler are reported to host", async () => {
+  const errorObj = new Error("error in error handler");
+
+  Observable.of(1).subscribe({
+    next() { throw new Error("initial error"); },
+    error() { throw errorObj; }
+  });
+
+  const unhandledError = await captureUnhandledOnce();
+  expect(unhandledError).toBe(errorObj);
+});

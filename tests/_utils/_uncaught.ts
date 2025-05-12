@@ -2,10 +2,10 @@ import type process from "node:process"
 
 // Portable helper that returns a promise resolving with the first unhandled
 // error (or `null` if none occurred within this tick).
-export function captureUnhandledOnce(): Promise<unknown | null> {
+export function captureUnhandledOnce() {
   const _process = (globalThis as unknown as { process: typeof process })?.process;
-  return new Promise<unknown | null>((resolve) => {
-    function done(err?: unknown) {
+  return new Promise<ErrorEvent | Error | null>((resolve) => {
+    function done<T>(err?: ErrorEvent | Error | null) {
       cleanup();
       resolve(err ?? null);
     }
@@ -18,7 +18,7 @@ export function captureUnhandledOnce(): Promise<unknown | null> {
       globalThis.removeEventListener?.("error", domHandler as EventListener);
     }
 
-    function nodeHandler(err: unknown) {
+    function nodeHandler(err: Error) {
       done(err);
       // prevent Jest/Vitest default handler from failing the run
     }

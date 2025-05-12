@@ -50,7 +50,7 @@ test("teardown is called for each subscriber", () => {
   // Both subscribers should have triggered the teardown function
   expect(teardowns.length).toBe(2);
   expect(teardowns).toEqual(["cleaned up", "cleaned up"]);
-});
+}); 
 
 test("each subscriber gets its own observer and teardown", () => {
   const log: string[] = [];
@@ -174,9 +174,8 @@ test("error or complete automatically trigger unsubscribe", () => {
 test("Observable properly handles multiple subscribers with separate resources", () => {
   const resources = { sub1: false, sub2: false } as Record<string, boolean>;
 
-
   // Create an Observable that tracks subscription-specific resources
-  const observable = Observable.create<string>(next => {
+  const observable = new Observable<string>(obs => {
     // Determine which subscriber we are
     const id = Object.values(resources).filter(Boolean).length + 1;
     const subId = `sub${id}`;
@@ -185,7 +184,7 @@ test("Observable properly handles multiple subscribers with separate resources",
     resources[subId] = true;
 
     // Emit the subscriber ID
-    next(subId);
+    obs.next(subId);
 
     // Return teardown to release resource
     return () => {
@@ -756,13 +755,12 @@ test("SubscriptionObserver.closed reflects subscription state", () => {
   expect(observer3!.closed).toBe(true);
 });
 
-test("SubscriptionObserver.next delivers values to observer.next", async () => {
+test("SubscriptionObserver.next delivers values to observer.next", () => {
   const values: (object | number)[] = [];
   const token: object = {};
 
-  const uncaught = captureUnhandledOnce();
   new Observable<object>(observer => {
-    // @ts-expect-error Error will occur with more that 1 argument
+    // @ts-expect-error Ignore extra args
     observer.next(token, 1, 2); // Extra args should be ignored
   }).subscribe({
     next(value, ...args) {
@@ -770,9 +768,6 @@ test("SubscriptionObserver.next delivers values to observer.next", async () => {
       values.push(args.length); // Should be 0
     }
   });
-
-  await Promise.resolve();
-  await uncaught;
 
   expect(values).toEqual([token, 0]);
 });
@@ -948,9 +943,10 @@ test("subscription object has required properties", () => {
 
   expect(typeof subscription).toBe("object");
   expect(typeof subscription.unsubscribe).toBe("function");
-  expect(typeof Object.getOwnPropertyDescriptor(
-    Object.getPrototypeOf(subscription), 'closed'
-  )?.get).toBe("function");
+  expect(typeof Object.getOwnPropertyDescriptor(subscription, 'closed')?.get)
+    .toBe("function");
+  expect(typeof Object.getOwnPropertyDescriptor(subscription, 'closed')?.set)
+    .toBe("undefined");
 
   // Constructor should be Object, not a custom class
   expect(subscription.constructor).toBe(Object);
@@ -972,24 +968,40 @@ test("unsubscribe returns undefined", () => {
   expect(subscription.unsubscribe()).toBe(undefined);
 });
 
-test("subscription can handle non-function teardown", () => {
-  // @ts-expect-error Only undefined is allowed to not throw
-  expect(() => new Observable(() => null).subscribe({})).toThrow();
+test("subscription can handle non-function teardown", async () => {
+  // Should not throw
+  expect(() => new Observable(() => null).subscribe({})).not.toThrow();
   // Should not throw
   expect(() => new Observable(() => undefined).subscribe({})).not.toThrow();
 
   // These should throw during unsubscribe
-  expect(() => {
+  const objTest = (async () => {
+    const uncaught = captureUnhandledOnce();
+
     // @ts-expect-error Either a Subscription object a Teardown or undefined, an empty object isn't allowed
     const sub = new Observable(() => ({})).subscribe({});
     sub.unsubscribe();
-  }).toThrow(TypeError);
 
-  expect(() => {
-  // @ts-expect-error Either a Subscription object a Teardown or undefined, numbers aren't allowed
+    await Promise.resolve();
+    const error = await uncaught;
+
+    return error;
+  })()
+  expect(await objTest).toBeInstanceOf(TypeError);
+
+  const numTest = (async () => {
+    const uncaught = captureUnhandledOnce();
+
+    // @ts-expect-error Either a Subscription object a Teardown or undefined, numbers aren't allowed
     const sub = new Observable(() => 123).subscribe({});
     sub.unsubscribe();
-  }).toThrow(TypeError);
+
+    await Promise.resolve();
+    const error = await uncaught;
+
+    return error;
+  })()
+  expect(await numTest).toBeInstanceOf(TypeError);
 });
 
 test("subscription can handle object with unsubscribe method", () => {
