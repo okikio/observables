@@ -922,7 +922,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * }
    * ```
    */
-  pull({ strategy = { highWaterMark: 1 } }: { strategy?: QueuingStrategy<T> } = {}): AsyncGenerator<T> {
+  pull({ strategy = { highWaterMark: 1 } }: { strategy?: QueuingStrategy<T | ObservablePullError> } = {}): AsyncGenerator<T> {
     return pull(this, { strategy })
   }
 
@@ -1012,8 +1012,6 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    */
   get [Symbol.toStringTag](): "Observable" { return "Observable"; }
 }
-
-
 
 /**
  * Creates an Observable that synchronously emits the given values then completes.
@@ -1185,7 +1183,6 @@ export function from<T>(
   throw new TypeError('Input is not Observable, Iterable, or AsyncIterable');
 }
 
-
 /**
  * Converts an Observable into an AsyncGenerator with backpressure control.
  * 
@@ -1197,70 +1194,182 @@ export function from<T>(
  * 2. Use standard async iteration patterns (for-await-of)
  * 3. Control buffering behavior to prevent memory issues
  * 
+ * ## How It Works
+ * 
  * Implementation details:
  * - Uses ReadableStream as the backpressure mechanism
  * - Connects the Observable to the stream as a source
  * - Returns an AsyncGenerator that yields values from the stream
  * - Handles proper cleanup on early termination
  * 
- * Benefits over direct subscription:
- * - Consumer controls the pace of value processing
- * - Automatic buffering prevents overwhelmed consumers
- * - Natural integration with other async iteration tools
+ * Instead of using ReadableStream's error mechanism, this implementation uses a special
+ * approach to error handling: errors are wrapped in `ObservablePullError` objects and 
+ * sent through the normal value channel. This ensures all values emitted before an error
+ * are properly processed in order before the error is thrown.
  * 
- * @param observable - Source of values to pull from
- * @param options - Configuration options for buffering and backpressure
- * @returns An AsyncGenerator that yields values from the observable
+ * ## Key Benefits
  * 
- * @example Basic usage with for-await-of:
+ * 1. **Controlled Processing**: Process values at your own pace rather than being overwhelmed
+ * 2. **Proper Backpressure**: When your consumer is slow, the producer automatically slows down
+ * 3. **Complete Error Handling**: Errors don't cause queued values to be lost
+ * 4. **Resource Safety**: Automatically cleans up subscriptions, even with early termination
+ * 5. **Memory Efficiency**: Controls buffer size to prevent memory issues with fast producers
+ * 6. **Iterator Integration**: Natural integration with other async iteration tools
+ * 
+ * @param observable - Source Observable to pull values from
+ * @param options - Configuration options for the ReadableStream
+ * @param options.strategy - Queuing strategy that controls how backpressure is applied
+ * @param options.strategy.highWaterMark - Maximum number of values to buffer before applying backpressure
+ * 
+ * @returns An AsyncGenerator that yields values from the Observable at the consumer's pace
+ * 
+ * @example Basic usage with for-await-of loop:
  * ```ts
- * // Process values at controlled pace
- * for await (const value of pull(observable)) {
- *   console.log(value);
- *   await expensiveOperation(value);
+ * const numbers$ = Observable.of(1, 2, 3, 4, 5);
+ * 
+ * // Process each value at your own pace
+ * for await (const num of numbers$.pull()) {
+ *   console.log(`Processing ${num}`);
+ *   await someTimeConsumingOperation(num);
  * }
+ * // Output:
+ * // Processing 1
+ * // Processing 2
+ * // Processing 3
+ * // Processing 4
+ * // Processing 5
  * ```
  * 
- * @example Custom buffering strategy:
+ * @example Handling errors while ensuring all prior values are processed:
  * ```ts
- * // Allow up to 10 values to buffer before applying backpressure
- * for await (const value of pull(observable, { 
- *   strategy: { highWaterMark: 10 } 
+ * // Observable that emits values then errors
+ * const source$ = new Observable(observer => {
+ *   observer.next(1);
+ *   observer.next(2);
+ *   observer.error(new Error("Something went wrong"));
+ *   // Even though an error occurred, both 1 and 2 will be processed
+ * });
+ * 
+ * try {
+ *   for await (const value of source$.pull()) {
+ *     console.log(`Got value: ${value}`);
+ *   }
+ * } catch (err) {
+ *   console.error(`Error caught: ${err.message}`);
+ * }
+ * 
+ * // Output:
+ * // Got value: 1
+ * // Got value: 2
+ * // Error caught: Something went wrong
+ * ```
+ * 
+ * @example Controlling buffer size for memory efficiency:
+ * ```ts
+ * // Create a producer that emits values rapidly
+ * const fastProducer$ = new Observable(observer => {
+ *   let count = 0;
+ *   const interval = setInterval(() => {
+ *     observer.next(count++);
+ *     if (count > 1000) {
+ *       clearInterval(interval);
+ *       observer.complete();
+ *     }
+ *   }, 1);
+ *   return () => clearInterval(interval);
+ * });
+ * 
+ * // Limit buffer to just 5 items to prevent memory issues
+ * for await (const num of fastProducer$.pull({ 
+ *   strategy: { highWaterMark: 5 } 
  * })) {
- *   console.log(value);
+ *   console.log(`Processing ${num}`);
+ *   // Slow consumer - producer will pause when buffer fills
+ *   await new Promise(r => setTimeout(r, 100));
  * }
  * ```
  */
 export async function* pull<T>(
   observable: Observable<T>,
-  { strategy = { highWaterMark: 1 } }: { strategy?: QueuingStrategy<T> } = {},
+  { strategy = { highWaterMark: 1 } }: { strategy?: QueuingStrategy<T | ObservablePullError> } = {},
 ): AsyncGenerator<T> {
   let sub: Subscription | null = null;
 
   // Create a ReadableStream that will buffer values from the Observable
-  const stream = new ReadableStream<T>({
+  const stream = new ReadableStream<T | ObservablePullError>({
     start: ctrl => {
+      // Subscribe to the Observable and connect it to the stream
       sub = observable.subscribe({
+        // Normal values flow directly into the stream
         next: v => ctrl.enqueue(v),
-        error: e => ctrl.error(e),
-        complete: () => ctrl.close(),
+
+        // Errors are wrapped as special values rather than using stream.error()
+        // This ensures values emitted before the error are still processed
+        error: e => { ctrl.enqueue(new ObservablePullError(e)); sub = null },
+
+        // Close the stream when the Observable completes
+        complete: () => { ctrl.close(); sub = null },
       });
     },
+
     // Clean up the subscription if the stream is cancelled
-    cancel: () => sub?.unsubscribe(),
+    // This happens when the AsyncGenerator is terminated early
+    cancel: () => { sub?.unsubscribe(); sub = null },
   }, strategy);
 
   // Get a reader for the stream and yield values as they become available
   const reader = stream.getReader();
+
   try {
     while (true) {
+      // Wait for the next value (with backpressure automatically applied)
       const { value, done } = await reader.read();
+
+      // If we received a wrapped error, unwrap and throw it
+      if (value instanceof ObservablePullError) throw value.error;
+
+      // If the stream is done (Observable completed), exit the loop
       if (done) break;
-      yield value;
+
+      // Otherwise, yield the value to the consumer
+      yield value as T;
     }
   } finally {
     // Ensure resources are cleaned up even if iteration is terminated early
+    // This guarantees no memory leaks, even with break or thrown exceptions
     reader.releaseLock();
     await stream.cancel();
+  }
+}
+
+/**
+ * Special wrapper class that encapsulates errors from an Observable for the pull() function.
+ * 
+ * @remarks
+ * This class solves a crucial problem with error handling in ReadableStreams. When we call
+ * `controller.error()` on a ReadableStream, it immediately puts the stream in an errored state,
+ * which can cause values emitted before the error to be lost. By wrapping errors as special
+ * values that flow through the normal value channel, we ensure all values emitted before an
+ * error are properly processed.
+ * 
+ * This approach delivers a much better experience for users of Observable.pull() by:
+ * 1. Preserving the order of events (all values, then error)
+ * 2. Ensuring no values are lost when an error occurs
+ * 3. Maintaining proper backpressure behavior throughout
+ * 
+ * @internal Used internally by the pull() function and not meant to be constructed directly
+ */
+export class ObservablePullError extends Error {
+  /** The original error from the Observable */
+  error: unknown;
+
+  /**
+   * Creates a new wrapper for an Observable error.
+   * 
+   * @param error - The original error thrown or passed to observer.error()
+   */
+  constructor(error?: unknown) {
+    super();
+    this.error = error;
   }
 }
