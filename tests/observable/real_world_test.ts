@@ -157,14 +157,14 @@ test("breaking out of for-await loop triggers cleanup", async () => {
 });
 
 test("pull with error during async iteration", async () => {
-  const errorObs = new Observable(observer => {
+  const errorObs = new Observable<number>(observer => {
     observer.next(1);
     observer.next(2);
     observer.error(new Error("stream error"));
     return () => { };
   });
 
-  const results = [];
+  const results: number[] = [];
   let caughtError: Error | null = null;
 
   try {

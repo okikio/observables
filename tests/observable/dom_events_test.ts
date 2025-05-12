@@ -1,4 +1,3 @@
-// @ts-nocheck WIP
 import { test, expect, fn } from "@libs/testing";
 
 import { Observable } from "../../observable.ts";
@@ -15,18 +14,18 @@ test("listen example creates an Observable for DOM events", () => {
   };
 
   // Create a listen function as shown in the docs
-  function listen(element, eventName) {
-    return new Observable(observer => {
+  function listen(el: typeof element, eventName: string) {
+    return new Observable<Event>(observer => {
       // Create an event handler which sends data to the sink
-      const handler = event => observer.next(event);
+      const handler = (event: Event) => observer.next(event);
 
       // Attach the event handler
-      element.addEventListener(eventName, handler, true);
+      el.addEventListener(eventName, handler, true);
 
       // Return a cleanup function which will cancel the event stream
       return () => {
         // Detach the event handler from the element
-        element.removeEventListener(eventName, handler, true);
+        el.removeEventListener(eventName, handler, true);
       };
     });
   }
@@ -56,7 +55,7 @@ test("listen example creates an Observable for DOM events", () => {
 
 test("commandKeys example filters and maps key events", () => {
   // Mock DOM element with simulated events
-  const mockEvents = [];
+  const mockEvents: Event[] = [];
   const element = {
     addEventListener: fn(() => {
       // Store the handler for later triggering
@@ -66,12 +65,12 @@ test("commandKeys example filters and maps key events", () => {
   };
 
   // Create helper functions as shown in the docs
-  function listen(element, eventName) {
+  function listen(el: typeof element, eventName: string) {
     return new Observable(observer => {
-      const handler = event => observer.next(event);
-      element.addEventListener(eventName, handler, true);
+      const handler = (event: Event) => observer.next(event);
+      el.addEventListener(eventName, handler, true);
       return () => {
-        element.removeEventListener(eventName, handler, true);
+        el.removeEventListener(eventName, handler, true);
       };
     });
   }
