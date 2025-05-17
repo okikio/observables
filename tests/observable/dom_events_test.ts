@@ -1,6 +1,7 @@
 import { test, expect, fn } from "@libs/testing";
-
 import { Observable } from "../../observable.ts";
+
+type EventListener = (ev: Event) => any
 
 // -----------------------------------------------------------------------------
 // Documentation Examples - Keyboard Events
@@ -55,69 +56,77 @@ test("listen example creates an Observable for DOM events", () => {
 
 test("commandKeys example filters and maps key events", () => {
   // Mock DOM element with simulated events
-  const mockEvents: Event[] = [];
+  const mockEventHandlers: EventListener[] = [];
   const element = {
-    addEventListener: fn(() => {
+    addEventListener: fn((_event: string, handler: EventListener) => {
       // Store the handler for later triggering
-      mockEvents.push(handler);
+      mockEventHandlers.push(handler);
     }),
     removeEventListener: fn(() => { })
   };
 
   // Create helper functions as shown in the docs
   function listen(el: typeof element, eventName: string) {
-    return new Observable(observer => {
+    return new Observable<Event>(observer => {
       const handler = (event: Event) => observer.next(event);
       el.addEventListener(eventName, handler, true);
       return () => {
         el.removeEventListener(eventName, handler, true);
       };
-    });
+    }) as ExtendedObservable<Event>;
   }
 
-  // Basic filter and map extension for Observable
-  Observable.prototype.filter = function (predicate) {
-    return new Observable(observer => {
-      return this.subscribe({
-        next(value) {
-          if (predicate(value)) {
-            observer.next(value);
-          }
-        },
-        error(err) { observer.error(err); },
-        complete() { observer.complete(); }
-      });
-    });
-  };
+  Object.assign(Observable.prototype, {
+    // Basic filter and map extension for Observable
+    filter<T>(predicate: (value: T) => boolean) {
+      let obs: Observable<T>;
+      return (obs = new Observable<T>(observer => {
+        return obs.subscribe({
+          next(value) {
+            if (predicate(value)) {
+              observer.next(value);
+            }
+          },
+          error(err) { observer.error(err); },
+          complete() { observer.complete(); }
+        });
+      }));
+    },
+    map<T>(mapper: (value: T) => T) {
+      let obs: Observable<T>;
+      return (obs = new Observable<T>(observer => {
+        return obs.subscribe({
+          next(value) { observer.next(mapper(value)); },
+          error(err) { observer.error(err); },
+          complete() { observer.complete(); }
+        });
+      }));
+    }
+  })
 
-  Observable.prototype.map = function (mapper) {
-    return new Observable(observer => {
-      return this.subscribe({
-        next(value) { observer.next(mapper(value)); },
-        error(err) { observer.error(err); },
-        complete() { observer.complete(); }
-      });
-    });
-  };
+  interface ExtendedObservable<T> extends Observable<T> {
+    filter<E>(predicate: (value: E) => boolean): ExtendedObservable<E>;
+    map<E>(mapper: (value: E) => E): ExtendedObservable<E>
+  }
 
-  function commandKeys(element) {
+  function commandKeys(el: typeof element) {
     const keyCommands = { "38": "up", "40": "down" };
 
-    return listen(element, "keydown")
-      .filter(event => event.keyCode in keyCommands)
-      .map(event => keyCommands[event.keyCode]);
+    return listen(el, "keydown")
+      .filter(event => ((event as KeyboardEvent).keyCode) in keyCommands)
+      .map(event => keyCommands[(event as KeyboardEvent).keyCode as unknown as "38" | "40"]);
   }
 
   // Test the example
-  const results = [];
+  const results: string[] = [];
   const subscription = commandKeys(element).subscribe({
-    next(val) { results.push(val); }
+    next(val: string) { results.push(val); }
   });
 
   // Simulate keydown events
-  mockEvents[0]({ keyCode: "38" }); // up arrow
-  mockEvents[0]({ keyCode: "37" }); // left arrow (should be filtered out)
-  mockEvents[0]({ keyCode: "40" }); // down arrow
+  mockEventHandlers[0]({ keyCode: "38" } as unknown as KeyboardEvent); // up arrow
+  mockEventHandlers[0]({ keyCode: "37" } as unknown as KeyboardEvent); // left arrow (should be filtered out)
+  mockEventHandlers[0]({ keyCode: "40" } as unknown as KeyboardEvent); // down arrow
 
   // Verify correct keys were processed
   expect(results).toEqual(["up", "down"]);
@@ -134,22 +143,22 @@ test("commandKeys example filters and maps key events", () => {
 
 test("listen function creates an Observable for DOM events", () => {
   // Mock DOM element with event tracking
-  const eventLog = [];
+  const eventLog: string[] = [];
   const mockElement = {
-    listeners: {},
-    addEventListener(eventName, handler) {
+    listeners: {} as Record<string, EventListener[]>,
+    addEventListener(eventName: string, handler: EventListener) {
       this.listeners[eventName] = this.listeners[eventName] || [];
       this.listeners[eventName].push(handler);
       eventLog.push(`added ${eventName} listener`);
     },
-    removeEventListener(eventName, handler) {
+    removeEventListener(eventName: string, handler: EventListener) {
       if (this.listeners[eventName]) {
         this.listeners[eventName] = this.listeners[eventName].filter(h => h !== handler);
       }
       eventLog.push(`removed ${eventName} listener`);
     },
     // Helper to simulate events
-    dispatchEvent(eventName, data) {
+    dispatchEvent(eventName: string, data: Event) {
       if (this.listeners[eventName]) {
         this.listeners[eventName].forEach(handler => handler(data));
       }
@@ -157,24 +166,24 @@ test("listen function creates an Observable for DOM events", () => {
   };
 
   // Create the listen function as defined in the docs
-  function listen(element, eventName) {
+  function listen(el: typeof mockElement, eventName: string) {
     return new Observable(observer => {
       // Create an event handler which sends data to the sink
-      const handler = event => observer.next(event);
+      const handler = (event: Event) => observer.next(event);
 
       // Attach the event handler
-      element.addEventListener(eventName, handler, true);
+      el.addEventListener(eventName, handler);
 
       // Return a cleanup function which will cancel the event stream
       return () => {
         // Detach the event handler from the element
-        element.removeEventListener(eventName, handler, true);
+        el.removeEventListener(eventName, handler);
       };
     });
   }
 
   // Test values received through the Observable
-  const receivedEvents = [];
+  const receivedEvents: Event[] = [];
   const keydown$ = listen(mockElement, "keydown");
 
   // Verify lazy behavior - no listeners added yet
