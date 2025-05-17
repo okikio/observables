@@ -5,7 +5,8 @@
     ".": "./mod.ts",
     "./types": "./_types.ts",
     "./events": "./events.ts",
-    "./observable": "./observable.ts"
+    "./observable": "./observable.ts",
+    "./helpers": "./helpers/mod.ts"
   },
   "tasks": {
     "test": "deno test -RW --allow-run=deno,bun,node,npx --clean --trace-leaks",
