@@ -1169,29 +1169,42 @@ export function from<T>(
   if (typeof (input as Iterable<T>)?.[Symbol.iterator] === 'function') {
     return new Observable<T>(obs => {
       const iterator = (input as Iterable<T>)[Symbol.iterator]();
-      for (let step = iterator.next(); !step.done; step = iterator.next()) {
-        obs.next(step.value);
 
-        // If subscription was closed during iteration, clean up and exit
-        if (obs.closed) {
-          if (typeof iterator?.return === 'function')
-            iterator.return(); // IteratorClose
-          break;
+      try {
+        for (let step = iterator.next(); !step.done; step = iterator.next()) {
+          if (step.value instanceof ObservableError) throw step.value;
+          obs.next(step.value);
+
+          // If subscription was closed during iteration, clean up and exit
+          if (obs.closed) {
+            if (typeof iterator?.return === 'function')
+              iterator.return(); // IteratorClose
+            break;
+          }
         }
+
+        obs.complete();
+      } catch (err) {
+        obs.error(err);
       }
 
-      obs.complete();
+      return () => {
+        if (typeof iterator?.return === 'function')
+          iterator.return(); // IteratorClose
+      }
     });
   }
 
   // Case 3 – async iterable
   if (typeof (input as AsyncIterable<T>)?.[Symbol.asyncIterator] === 'function') {
     return new Observable<T>(obs => {
+      const iterator = (input as AsyncIterable<T>)[Symbol.asyncIterator]();
+
       // Start consuming the async iterable
       (async () => {
-        const iterator = (input as AsyncIterable<T>)[Symbol.asyncIterator]();
         try {
           for (let step = await iterator.next(); !step.done; step = await iterator.next()) {
+            if (step.value instanceof ObservableError) throw step.value;
             obs.next(step.value);
 
             // If subscription was closed during iteration, clean up and exit
@@ -1209,6 +1222,11 @@ export function from<T>(
           obs.error(err);
         }
       })()
+
+      return () => {
+        if (typeof iterator?.return === 'function')
+          iterator.return(); // IteratorClose
+      }
     });
   }
 
@@ -1337,7 +1355,7 @@ export async function* pull<T>(
 
         // Errors are wrapped as special values rather than using stream.error()
         // This ensures values emitted before the error are still processed
-        error: e => { ctrl.enqueue(ObservableError.from(e, "pull")); ctrl.close(); sub = null },
+        error: e => { ctrl.enqueue(ObservableError.from(e, "pull")); sub = null },
 
         // Close the stream when the Observable completes
         complete: () => { ctrl.close(); sub = null },
