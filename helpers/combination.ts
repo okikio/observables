@@ -1,8 +1,13 @@
 // helpers/combination.ts
 // Operators that combine Observables or transform to new Observables
+// Reimplemented using createStatefulOperator for better compatibility with streaming pipeline
 
-import type { Subscription } from "../_types.ts";
-import { Observable } from "../observable.ts";
+import type { SpecObservable } from "../_spec.ts";
+import type { Operator } from "./utils.ts";
+
+import { createStatefulOperator } from "./utils.ts";
+import { ObservableError } from "./error.ts";
+import { pull } from "../observable.ts";
 
 /**
  * Transforms each value from the source Observable into an Observable, then
@@ -56,120 +61,112 @@ import { Observable } from "../observable.ts";
  * ```
  */
 export function mergeMap<T, R>(
-  project: (value: T, index: number) => Observable<R>, 
+  project: (value: T, index: number) => SpecObservable<R>,
   concurrent: number = Infinity
-): (source: Observable<T>) => Observable<R> {
-  return (source: Observable<T>): Observable<R> => {
-    return new Observable<R>(observer => {
-      // Track active inner subscriptions
-      const activeSubscriptions = new Map<number, Subscription>();
-      // Queue of source values waiting for subscription slots
-      const buffer: Array<[T, number]> = [];
-      // Track source completion
-      let sourceCompleted = false;
-      // Track the source index
-      let index = 0;
-      // Track number of active inner subscriptions
-      let activeCount = 0;
-      
-      // Process the buffer if we're under the concurrency limit
-      const processBuffer = () => {
-        // While we have room for more inner Observables and
-        // there are items in the buffer, subscribe to inner Observables
-        while (activeCount < concurrent && buffer.length > 0) {
-          const [value, bufferIndex] = buffer.shift()!;
-          subscribeToProjection(value, bufferIndex);
-        }
-        
-        // If the source is completed and we have no active inner
-        // subscriptions, complete the output Observable
-        if (sourceCompleted && activeCount === 0) {
-          observer.complete();
-        }
-      };
-      
-      // Subscribe to an inner Observable created from a source value
-      const subscribeToProjection = (value: T, innerIndex: number) => {
-        let innerObservable: Observable<R>;
-        
+): Operator<T, R | ObservableError> {
+  return createStatefulOperator<T, R | ObservableError, {
+    // State for tracking active subscriptions and buffer
+    activeSubscriptions: Map<number, { unsubscribe: () => void }>;
+    buffer: Array<[T, number]>;
+    sourceCompleted: boolean;
+    index: number;
+    activeCount: number;
+  }>({
+    name: "mergeMap",
+
+    // Initialize state
+    createState: () => ({
+      activeSubscriptions: new Map(),
+      buffer: [],
+      sourceCompleted: false,
+      index: 0,
+      activeCount: 0
+    }),
+
+    // Process each incoming chunk
+    async transform(chunk, state, controller) {
+      // If we're under the concurrency limit, process immediately
+      if (state.activeCount < concurrent) {
+        await subscribeToProjection(chunk, state.index++);
+      } else {
+        // Otherwise, buffer for later
+        state.buffer.push([chunk, state.index++]);
+      }
+
+      // Helper function to subscribe to inner Observable
+      async function subscribeToProjection(value: T, innerIndex: number) {
+        let innerObservable: SpecObservable<R>;
+
         try {
           // Apply projection function to get inner Observable
           innerObservable = project(value, innerIndex);
         } catch (err) {
           // Forward any errors from the projection function
-          observer.error(err);
+          controller.enqueue(ObservableError.from(err, "mergeMap:project", value));
           return;
         }
-        
-        activeCount++;
-        
-        // Subscribe to the inner Observable
-        const innerSubscription = innerObservable.subscribe({
-          next(innerValue) {
-            // Forward values from the inner Observable
-            observer.next(innerValue);
-          },
-          error(err) {
-            // Forward errors from the inner Observable
-            observer.error(err);
-          },
-          complete() {
-            // When an inner Observable completes, clean up and check if we're done
-            activeSubscriptions.delete(innerIndex);
-            activeCount--;
-            
-            // Process the buffer in case we have pending items
-            processBuffer();
-          },
-        });
-        
-        // Store the subscription for cleanup
-        activeSubscriptions.set(innerIndex, innerSubscription);
-      };
-      
-      // Subscribe to the source Observable
-      const sourceSubscription = source.subscribe({
-        next(value) {
-          // If we're under the concurrency limit, subscribe immediately
-          if (activeCount < concurrent) {
-            subscribeToProjection(value, index++);
-          } else {
-            // Otherwise, buffer the value for later
-            buffer.push([value, index++]);
+
+        state.activeCount++;
+
+        // Use pull to iterate asynchronously
+        try {
+          for await (const innerValue of pull(innerObservable)) {
+            controller.enqueue(innerValue);
           }
-        },
-        error(err) {
-          // Forward errors from the source
-          observer.error(err);
-        },
-        complete() {
-          // Mark the source as completed
-          sourceCompleted = true;
-          
-          // If no active inner subscriptions, complete the output
-          if (activeCount === 0) {
-            observer.complete();
-          }
-          // Otherwise, completion will happen when all inners complete
-        },
-      });
-      
-      // Return a teardown function to clean up all subscriptions
-      return () => {
-        sourceSubscription.unsubscribe();
-        
-        // Clean up all inner subscriptions
-        for (const subscription of activeSubscriptions.values()) {
-          subscription.unsubscribe();
+        } catch (err) {
+          controller.enqueue(ObservableError.from(err, "operator:stateful:mergeMap:innerObservable", value));
+        } finally {
+          // Clean up after inner Observable completes
+          state.activeSubscriptions.delete(innerIndex);
+          state.activeCount--;
+
+          // Process the buffer if we have space
+          processBuffer();
         }
-        
-        // Clear the buffer and state
-        buffer.length = 0;
-        activeSubscriptions.clear();
-        activeCount = 0;
-      };
-    });
-  };
+      }
+
+      // Helper function to process the buffer
+      async function processBuffer() {
+        // While we have room for more inner Observables and
+        // there are items in the buffer, subscribe to inner Observables
+        while (state.activeCount < concurrent && state.buffer.length > 0) {
+          const [value, bufferIndex] = state.buffer.shift()!;
+          await subscribeToProjection(value, bufferIndex);
+        }
+
+        // If the source is completed and we have no active inner
+        // subscriptions, complete the output stream
+        if (state.sourceCompleted && state.activeCount === 0) {
+          // Nothing more to do, transformation is complete
+        }
+      }
+    },
+
+    // Handle the end of the source stream
+    flush(state) {
+      // Mark the source as completed
+      state.sourceCompleted = true;
+
+      // If no active inner subscriptions, we're done
+      if (state.activeCount === 0) {
+        // Stream will close naturally
+      }
+      // Otherwise, let the active subscriptions complete
+    },
+
+    // Handle cancellation
+    cancel(state) {
+      // Clean up all inner subscriptions
+      for (const subscription of state.activeSubscriptions.values()) {
+        subscription.unsubscribe();
+      }
+
+      // Clear the buffer and state
+      state.buffer.length = 0;
+      state.activeSubscriptions.clear();
+      state.activeCount = 0;
+    }
+  });
 }
 
 /**
@@ -204,8 +201,8 @@ export function mergeMap<T, R>(
  * ```
  */
 export function concatMap<T, R>(
-  project: (value: T, index: number) => Observable<R>
-): (source: Observable<T>) => Observable<R> {
+  project: (value: T, index: number) => SpecObservable<R>
+): Operator<T, R | ObservableError> {
   // concatMap is just mergeMap with concurrency = 1
   return mergeMap(project, 1);
 }
@@ -227,51 +224,6 @@ export function concatMap<T, R>(
  * 2. Any previous inner Observable subscription is cancelled
  * 3. The new inner Observable is subscribed to
  * 4. Values from the new inner Observable are forwarded to the output
- * 
- * ## When to Use switchMap
- * 
- * `switchMap` is ideal for scenarios where:
- * 
- * - You only care about the results from the most recent action
- * - Older in-progress operations should be cancelled when a new one starts
- * - Resources tied to previous operations should be released
- * 
- * Common use cases include:
- * 
- * - Search operations where new input invalidates previous searches
- * - UI interactions where only the latest user action matters
- * - Navigation where previous data loading should be cancelled
- * - Auto-complete where only the latest typed string matters
- * 
- * ## Comparison to Other Flattening Operators
- * 
- * - **switchMap**: Cancels previous inner Observables when a new one starts (keeps 1 active)
- * - **mergeMap**: Maintains multiple active inner Observables concurrently
- * - **concatMap**: Processes inner Observables sequentially, one after another
- * 
- * ## Important Nuances
- * 
- * - **Cancellation Effects**: When an inner Observable is cancelled, it stops emitting 
- *   values, but any side effects it already produced aren't reversed. Understanding this 
- *   is critical when working with irreversible operations.
- * 
- * - **Race Condition Handling**: `switchMap` effectively handles race conditions by ensuring
- *   only the latest request's results are used.
- * 
- * - **Completion Behavior**: The output Observable completes when both the source Observable
- *   completes and the final inner Observable completes.
- * 
- * ## Potential Pitfalls
- * 
- * - **Lost Data**: Values from previous inner Observables are completely ignored once
- *   a new source value arrives. If you need all results, consider using `mergeMap` instead.
- * 
- * - **Side Effect Duplication**: If your projection function has side effects (like HTTP requests),
- *   they'll still occur even if the subscription is later cancelled.
- * 
- * - **Resource Usage**: Frequent source emissions can cause rapid creation and disposal
- *   of inner Observables. Consider adding a `debounceTime` before `switchMap` for
- *   high-frequency events.
  * 
  * @typeParam T - Type of values from the source Observable
  * @typeParam R - Type of values in the result Observable
@@ -304,129 +256,106 @@ export function concatMap<T, R>(
  *   });
  * }
  * 
- * // Simulate user typing in a search box
- * const searchInput$ = ["user input events"];
- * 
  * // For each input, wait for typing to pause, then switch to a new search request
  * const searchResults$ = pipe(
  *   searchInput$,
  *   debounceTime(300), // Wait for typing to pause
  *   switchMap(query => searchApi(query))
  * );
- * 
- * searchResults$.subscribe({
- *   next: results => console.log('Results:', results),
- *   complete: () => console.log('Search completed')
- * });
- * ```
- * 
- * @example
- * Handling navigation with route parameters:
- * ```ts
- * import { pipe, switchMap, catchError } from "./helpers/mod.ts";
- * 
- * // Route change events with route parameters
- * const route$ = ["route change events"];
- * 
- * // For each route change, load data for that route
- * const pageData$ = pipe(
- *   route$,
- *   switchMap(route => {
- *     // Previous data loading is cancelled when route changes
- *     return pipe(
- *       loadDataForRoute(route.id),
- *       catchError(err => {
- *         console.error(`Failed to load data for route ${route.id}:`, err);
- *         return Observable.of({ error: true, route: route.id });
- *       })
- *     );
- *   })
- * );
- * 
- * // Only data for the current route is displayed
- * pageData$.subscribe(data => {
- *   updatePageDisplay(data);
- * });
  * ```
  */
 export function switchMap<T, R>(
-  project: (value: T, index: number) => Observable<R>
-): (source: Observable<T>) => Observable<R> {
-  return (source: Observable<T>): Observable<R> => {
-    return new Observable<R>(observer => {
-      // Track current inner subscription
-      let innerSubscription: Subscription | null = null;
-      // Track if source has completed
-      let sourceCompleted = false;
-      // Track the source index
-      let index = 0;
-      
-      // Subscribe to the source Observable
-      const sourceSubscription = source.subscribe({
-        next(value) {
-          // Cancel any existing inner subscription
-          if (innerSubscription) {
-            innerSubscription.unsubscribe();
-            innerSubscription = null;
+  project: (value: T, index: number) => SpecObservable<R>
+): Operator<T, R | ObservableError> {
+  return createStatefulOperator<T, R | ObservableError, {
+    // State for tracking inner subscription
+    currentController: AbortController | null;
+    sourceCompleted: boolean;
+    index: number;
+  }>({
+    name: "switchMap",
+
+    // Initialize state
+    createState: () => ({
+      currentController: null,
+      sourceCompleted: false,
+      index: 0
+    }),
+
+    // Process each incoming chunk
+    transform(chunk, state, controller) {
+      // Cancel any existing inner subscription
+      if (state.currentController) {
+        state.currentController.abort();
+        state.currentController = null;
+      }
+
+      let innerObservable: SpecObservable<R>;
+
+      try {
+        // Apply projection function to get inner Observable
+        innerObservable = project(chunk, state.index++);
+      } catch (err) {
+        // Forward any errors from the projection function
+        controller.enqueue(ObservableError.from(err, "switchMap:project", chunk));
+        return;
+      }
+
+      // Create a new abort controller for this inner subscription
+      const abortController = new AbortController();
+      state.currentController = abortController;
+
+      // Subscribe to the new inner Observable
+      (async () => {
+        try {
+          const iterator = pull(innerObservable)[Symbol.asyncIterator]();
+
+          while (!abortController.signal.aborted) {
+            const { value, done } = await iterator.next();
+
+            // If the controller is aborted or we're done, exit the loop
+            if (abortController.signal.aborted || done) break;
+
+            // Forward the value
+            controller.enqueue(value);
           }
-          
-          let innerObservable: Observable<R>;
-          
-          try {
-            // Apply projection function to get inner Observable
-            innerObservable = project(value, index++);
-          } catch (err) {
-            // Forward any errors from the projection function
-            observer.error(err);
-            return;
+        } catch (err) {
+          if (!abortController.signal.aborted) {
+            controller.enqueue(ObservableError.from(err, "operator:stateful:switchMap:innerObservable", chunk));
           }
-          
-          // Subscribe to the new inner Observable
-          innerSubscription = innerObservable.subscribe({
-            next(innerValue) {
-              // Forward values from the inner Observable
-              observer.next(innerValue);
-            },
-            error(err) {
-              // Forward errors from the inner Observable
-              observer.error(err);
-            },
-            complete() {
-              // When inner completes, clear reference
-              innerSubscription = null;
-              
-              // If source has already completed, complete output
-              if (sourceCompleted) {
-                observer.complete();
-              }
-            },
-          });
-        },
-        error(err) {
-          // Forward errors from the source
-          observer.error(err);
-        },
-        complete() {
-          // Mark source as completed
-          sourceCompleted = true;
-          
-          // If there's no active inner subscription, complete output
-          if (!innerSubscription) {
-            observer.complete();
+        } finally {
+          // Only handle completion if this is still the current controller
+          if (state.currentController === abortController) {
+            state.currentController = null;
+
+            // If source is completed and we have no active inner, we're done
+            if (state.sourceCompleted) {
+              // Stream will close naturally
+            }
           }
-          // Otherwise, output will complete when inner completes
-        },
-      });
-      
-      // Return a teardown function to clean up all subscriptions
-      return () => {
-        sourceSubscription.unsubscribe();
-        
-        if (innerSubscription) {
-          innerSubscription.unsubscribe();
-          innerSubscription = null;
         }
-      };
-    });
-  };
+      })();
+    },
+
+    // Handle the end of the source stream
+    flush(state) {
+      // Mark the source as completed
+      state.sourceCompleted = true;
+
+      // If there's no active inner subscription, we're done
+      if (!state.currentController) {
+        // Stream will close naturally
+      }
+      // Otherwise, let the active inner subscription complete
+    },
+
+    // Handle cancellation
+    cancel(state) {
+      // Cancel the current inner subscription
+      if (state.currentController) {
+        state.currentController.abort();
+        state.currentController = null;
+      }
+    }
+  });
 }

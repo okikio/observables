@@ -29,6 +29,7 @@ export function delay<T>(ms: number): Operator<T, T> {
     pendingTimeouts: Set<ReturnType<typeof setTimeout>>,
     completed: boolean
   }>({
+    name: 'delay',
     createState: () => ({
       pendingTimeouts: new Set(),
       completed: false
@@ -104,6 +105,7 @@ export function debounce<T>(ms: number): Operator<T, T> {
     lastValue: T | null,
     hasValue: boolean
   }>({
+    name: 'debounce',
     createState: () => ({
       timeout: null,
       lastValue: null,
@@ -192,6 +194,7 @@ export function throttle<T>(ms: number): Operator<T, T> {
     hasNextValue: boolean,
     timeoutId: ReturnType<typeof setTimeout> | null
   }>({
+    name: 'throtle',
     createState: () => ({
       lastEmitTime: 0,
       nextValue: null,

@@ -1340,22 +1340,23 @@ export function from<T>(
  * ```
  */
 export async function* pull<T>(
-  observable: Observable<T>,
+  observable: SpecObservable<T>,
   { strategy = { highWaterMark: 64 } }: { strategy?: QueuingStrategy<T | ObservableError> } = {},
 ): AsyncGenerator<T> {
-  let sub: Subscription | null = null;
+  const obs = observable?.[Symbol.observable]?.();
+  let sub: SpecSubscription | null = null;
 
   // Create a ReadableStream that will buffer values from the Observable
   const stream = new ReadableStream<T | ObservableError>({
     start: ctrl => {
       // Subscribe to the Observable and connect it to the stream
-      sub = observable.subscribe({
+      sub = obs?.subscribe({
         // Normal values flow directly into the stream
         next: v => ctrl.enqueue(v),
 
         // Errors are wrapped as special values rather than using stream.error()
         // This ensures values emitted before the error are still processed
-        error: e => { ctrl.enqueue(ObservableError.from(e, "pull")); sub = null },
+        error: e => { ctrl.enqueue(ObservableError.from(e, "observable:pull")); sub = null },
 
         // Close the stream when the Observable completes
         complete: () => { ctrl.close(); sub = null },

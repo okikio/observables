@@ -11,6 +11,11 @@ export type Operator<T, R> = (stream: ReadableStream<T>) => ReadableStream<R | I
  */
 export interface TransformOptions<T, R> {
   /**
+   * Optional name for the operator (used in error reporting)
+   */
+  name?: string;
+
+  /**
    * Function to transform each chunk
    * @param chunk - The input chunk
    * @param controller - The TransformStreamDefaultController
@@ -81,7 +86,11 @@ export interface TransformOptions<T, R> {
  * ```
  */
 export function createOperator<T, R>(options: TransformOptions<T, R>): Operator<T, R> {
+  // Extract operator name from options or the function name for better error reporting
+  const operatorName = `operator:${options.name || 'unknown'}`;
+
   return (source: ReadableStream<T>): ReadableStream<R | Iterable<R> | R[] | ObservableError> => {
+    try {
     // Create a transform stream with the provided options
     const transformStream = new TransformStream<T, R | Iterable<R> | R[] | ObservableError>({
       // Transform function to process each chunk
@@ -95,23 +104,54 @@ export function createOperator<T, R>(options: TransformOptions<T, R>): Operator<
             controller.enqueue(result);
           }
         } catch (err) {
-          // If an error occurs during transformation, error the stream
-          controller.enqueue(ObservableError.from(err, "operator"));
+          // If an error occurs during transformation, wrap it with context
+          controller.enqueue(ObservableError.from(err, operatorName, chunk));
         }
       },
 
+
       // Start function called when the stream is initialized
-      start: options.start,
+      start: async (controller) => {
+        try {
+          if (options.start)
+            return await options.start(controller);
+        } catch (err) {
+          controller.enqueue(ObservableError.from(err, `${operatorName}:start`));
+          controller.terminate();
+        }
+      },
 
       // Flush function called when the input is done
-      flush: options.flush,
+      flush: async (controller) => {
+        try {
+          if (options.flush)
+            await options.flush(controller);
+        } catch (err) {
+          controller.enqueue(ObservableError.from(err, `${operatorName}:flush`));
+          controller.terminate();
+        }
+      },
 
       // Cancel function called if the stream is cancelled
-      cancel: options.cancel
+      cancel: async (reason) => {
+        try {
+          if (options.cancel)
+            return await options.cancel(reason);
+        } catch (err) {
+          // Just log cancellation errors as they can't be propagated
+          console.warn(`Error in ${operatorName} cancel:`, err);
+        }
+      }
     });
 
     // Pipe the source through the transform
     return source.pipeThrough(transformStream);
+  } catch (err) {
+    // If setup fails, return a stream that errors immediately
+    return toStream([
+      ObservableError.from(err, `${operatorName}:setup`, options)
+    ]);
+  }
   };
 }
 
@@ -119,6 +159,11 @@ export function createOperator<T, R>(options: TransformOptions<T, R>): Operator<
  * Options for creating a stateful operator
  */
 export interface StatefulOperatorOptions<T, R, S> {
+  /**
+   * Optional name for the operator (used in error reporting)
+   */
+  name?: string;
+
   /**
    * Function to create the initial state
    * @returns The initial state
@@ -221,43 +266,145 @@ export interface StatefulOperatorOptions<T, R, S> {
 export function createStatefulOperator<T, R, S>(
   options: StatefulOperatorOptions<T, R, S>
 ): Operator<T, R> {
-  return (source: ReadableStream<T>): ReadableStream<R | Iterable<R> | R[] | ObservableError> => {
-    // Create state only when the stream is used
-    let state: S;
+  // Extract operator name from options or the function name for better error reporting
+  const operatorName = `operator:stateful:${options.name || 'unknown'}`;
 
-    // Create a transform stream with the provided options
-    const transformStream = new TransformStream<T, R | Iterable<R> | R[] | ObservableError>({
-      start(controller) {
+  return (source: ReadableStream<T>): ReadableStream<R | Iterable<R> | R[] | ObservableError> => {
+    try {
+      // Create state only when the stream is used
+      let state: S;
+
+      try {
         // Initialize the state
         state = options.createState();
-
-        // Call the start function if provided
-        if (options.start) {
-          return options.start(state, controller);
-        }
-      },
-
-      transform(chunk, controller) {
-        // Apply the transform function with the current state
-        return options.transform(chunk, state, controller);
-      },
-
-      flush(controller) {
-        // Call the flush function if provided
-        if (options.flush) {
-          return options.flush(state, controller);
-        }
-      },
-
-      cancel(reason) {
-        // Call the cancel function if provided
-        if (options.cancel) {
-          return options.cancel(state, reason);
-        }
+      } catch (err) {
+        // If state creation fails, return a stream that errors immediately
+        return toStream([
+          ObservableError.from(err, `${operatorName}:create:state`, options)
+        ]);
       }
-    });
 
-    // Pipe the source through the transform
-    return source.pipeThrough(transformStream);
+      // Create a transform stream with the provided options
+      const transformStream = new TransformStream<T, R | Iterable<R> | R[] | ObservableError>({
+        start(controller) {
+          try {
+            // Call the start function if provided
+            if (options.start)
+              return options.start(state, controller);
+          } catch (err) {
+            // If an error occurs during transformation, wrap it with context
+            controller.enqueue(ObservableError.from(err, `${operatorName}:start`, { state }));
+            controller.terminate();
+          }
+        },
+
+        transform(chunk, controller) {
+          try {
+            // Apply the transform function with the current state
+            return options.transform(chunk, state, controller);
+          } catch (err) {
+            // If an error occurs during transformation, wrap it with context
+            controller.enqueue(ObservableError.from(err, operatorName, { chunk, state }));
+          }
+        },
+
+        flush(controller) {
+          try {
+            // Call the flush function if provided
+            if (options.flush)
+              return options.flush(state, controller);
+          } catch (err) {
+            // If an error occurs during transformation, wrap it with context
+            controller.enqueue(ObservableError.from(err, `${operatorName}:flush`, { state }));
+            controller.terminate();
+          }
+        },
+
+        cancel(reason) {
+          try {
+            // Call the cancel function if provided
+            if (options.cancel)
+              return options.cancel(state, reason);
+          } catch (err) {
+            // Just log cancellation errors as they can't be propagated
+            console.warn(`Error in ${operatorName} cancel:`, err);
+          }
+        }
+      });
+
+      // Pipe the source through the transform
+      return source.pipeThrough(transformStream);
+    } catch (err) {
+      // If setup fails, return a stream that errors immediately
+      return toStream([
+        ObservableError.from(err, `${operatorName}:setup`, options)
+      ]);
+    }
   };
+}
+
+
+/**
+ * Creates a ReadableStream from an iterable or async iterable
+ * 
+ * @remarks
+ * This utility function creates a ReadableStream from any iterable or async iterable,
+ * such as arrays, generators, or custom iterables.
+ * 
+ * @typeParam T - Type of values in the iterable
+ * @param iterable - The iterable or async iterable to convert
+ * @returns A ReadableStream that emits values from the iterable
+ * 
+ * @example
+ * ```ts
+ * import { fromIterable, pipe, map } from "./helpers/mod.ts";
+ * 
+ * // Create a stream from an array
+ * const numbers = fromIterable([1, 2, 3, 4, 5]);
+ * 
+ * // Create a stream from a generator
+ * function* generateNumbers() {
+ *   for (let i = 0; i < 5; i++) {
+ *     yield i;
+ *   }
+ * }
+ * const generated = fromIterable(generateNumbers());
+ * 
+ * // Process with operators
+ * const result = pipe(
+ *   numbers,
+ *   map(x => x * 2)
+ * );
+ * ```
+ */
+export function toStream<T>(
+  iterable: Iterable<T> | AsyncIterable<T>
+): ReadableStream<T | ObservableError> {
+  // Not all runtimes support `ReadableStreams.from` yet
+  if (typeof ReadableStream?.from === "function")
+    return ReadableStream.from(iterable);
+
+  // Check if it's an async iterable
+  const isAsync = Symbol.asyncIterator in Object(iterable);
+
+  return new ReadableStream<T | ObservableError>({
+    async start(controller) {
+      try {
+        if (isAsync) {
+          for await (const item of iterable as AsyncIterable<T>) {
+            controller.enqueue(item);
+          }
+        } else {
+          for (const item of iterable as Iterable<T>) {
+            controller.enqueue(item);
+          }
+        }
+
+        controller.close();
+      } catch (err) {
+        controller.enqueue(ObservableError.from(err, "toStream"));
+        controller.close();
+      }
+    }
+  });
 }

@@ -105,7 +105,7 @@ export interface Subscription extends SpecSubscription {
    * console.log(sub.closed); // true
    * ```
    */
-  closed: boolean;
+  readonly closed: boolean;
 
   /**
    * Enables automatic cleanup in `using` blocks.

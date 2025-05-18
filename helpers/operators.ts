@@ -1,4 +1,4 @@
-import { ObservableError } from "./error.ts";
+import type { ObservableError } from "./error.ts";
 import type { Operator } from "./utils.ts";
 import { createOperator, createStatefulOperator } from "./utils.ts";
 
@@ -34,14 +34,11 @@ import { createOperator, createStatefulOperator } from "./utils.ts";
  */
 export function map<T, R>(project: (value: T, index: number) => R): Operator<T, R | ObservableError> {
   return createStatefulOperator<T, R | ObservableError, { index: number }>({
+    name: 'map',
     createState: () => ({ index: 0 }),
     transform(chunk, state, controller) {
-      try {
-        const result = project(chunk, state.index++);
-        controller.enqueue(result);
-      } catch (err) {
-        controller.enqueue(ObservableError.from(err, "operator:map"));
-      }
+      const result = project(chunk, state.index++);
+      controller.enqueue(result);
     }
   });
 }
@@ -76,14 +73,11 @@ export function map<T, R>(project: (value: T, index: number) => R): Operator<T, 
  */
 export function filter<T>(predicate: (value: T, index: number) => boolean): Operator<T, T | ObservableError> {
   return createStatefulOperator<T, T | ObservableError, { index: number }>({
+    name: 'filter',
     createState: () => ({ index: 0 }),
     transform(chunk, state, controller) {
-      try {
-        if (predicate(chunk, state.index++)) {
-          controller.enqueue(chunk);
-        }
-      } catch (err) {
-        controller.enqueue(ObservableError.from(err, "operator:filter"));
+      if (predicate(chunk, state.index++)) {
+        controller.enqueue(chunk);
       }
     }
   });
@@ -114,6 +108,7 @@ export function filter<T>(predicate: (value: T, index: number) => boolean): Oper
  */
 export function take<T>(count: number): Operator<T, T | ObservableError> {
   return createStatefulOperator<T, T | ObservableError, { taken: number }>({
+    name: 'take',
     createState: () => ({ taken: 0 }),
     transform(chunk, state, controller) {
       if (state.taken < count) {
@@ -154,6 +149,7 @@ export function take<T>(count: number): Operator<T, T | ObservableError> {
  */
 export function drop<T>(count: number): Operator<T, T | ObservableError> {
   return createStatefulOperator<T, T | ObservableError, { dropped: number }>({
+    name: 'drop',
     createState: () => ({ dropped: 0 }),
     transform(chunk, state, controller) {
       if (state.dropped < count) {
@@ -211,18 +207,15 @@ export function scan<T, R>(
   seed: R
 ): Operator<T, R | ObservableError> {
   return createStatefulOperator<T, R | ObservableError, { acc: R, index: number }>({
+    name: 'scan',
     createState: () => ({ acc: seed, index: 0 }),
     start(state, controller) {
       // Emit the seed value immediately
       controller.enqueue(state.acc);
     },
     transform(chunk, state, controller) {
-      try {
-        state.acc = accumulator(state.acc, chunk, state.index++);
-        controller.enqueue(state.acc);
-      } catch (err) {
-        controller.enqueue(ObservableError.from(err, "operator:scan"));
-      }
+      state.acc = accumulator(state.acc, chunk, state.index++);
+      controller.enqueue(state.acc);
     }
   });
 }
@@ -254,6 +247,7 @@ export function scan<T, R>(
  */
 export function toArray<T>(): Operator<T, T[]> {
   return createStatefulOperator<T, T[], T[]>({
+    name: 'toArray',
     createState: () => [],
     transform(chunk, state) {
       state.push(chunk);
@@ -295,6 +289,7 @@ export function batch<T>(size: number): Operator<T, T[]> {
   }
 
   return createStatefulOperator<T, T[], T[]>({
+    name: 'batch',
     createState: () => [],
     transform(chunk, buffer, controller) {
       buffer.push(chunk);
@@ -340,13 +335,10 @@ export function batch<T>(size: number): Operator<T, T[]> {
  */
 export function tap<T>(fn: (value: T) => void): Operator<T, T | ObservableError> {
   return createOperator<T, T | ObservableError>({
+    name: 'tap',
     transform(chunk, controller) {
-      try {
-        fn(chunk);
-        controller.enqueue(chunk);
-      } catch (err) {
-        controller.enqueue(ObservableError.from(err, "operator:tap"));
-      }
+      fn(chunk);
+      controller.enqueue(chunk);
     }
   });
 }

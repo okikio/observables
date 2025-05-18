@@ -1,9 +1,12 @@
 // helpers/pipe.ts
 // Composition utility for Observable operators
 
+import type { SpecObservable } from "../_spec.ts";
 import type { Operator } from "./utils.ts";
-import { Observable } from "../observable.ts";
+
+import { Observable, pull } from "../observable.ts";
 import { ObservableError } from "./error.ts";
+import { toStream } from "./utils.ts";
 
 /**
  * Pipe function with 9 overloads to handle up to 9 operators with proper typing.
@@ -48,58 +51,58 @@ import { ObservableError } from "./error.ts";
 
 // Overload 1: Single operator
 export function pipe<T, A>(
-  source: Observable<T>,
+  source: SpecObservable<T>,
   op1: Operator<T, A>
-): Observable<A>;
+): SpecObservable<A>;
 
 // Overload 2: Two operators
 export function pipe<T, A, B>(
-  source: Observable<T>,
+  source: SpecObservable<T>,
   op1: Operator<T, A>,
   op2: Operator<A, B>
-): Observable<B>;
+): SpecObservable<B>;
 
 // Overload 3: Three operators
 export function pipe<T, A, B, C>(
-  source: Observable<T>,
+  source: SpecObservable<T>,
   op1: Operator<T, A>,
   op2: Operator<A, B>,
   op3: Operator<B, C>
-): Observable<C>;
+): SpecObservable<C>;
 
 // Overload 4: Four operators
 export function pipe<T, A, B, C, D>(
-  source: Observable<T>,
+  source: SpecObservable<T>,
   op1: Operator<T, A>,
   op2: Operator<A, B>,
   op3: Operator<B, C>,
   op4: Operator<C, D>
-): Observable<D>;
+): SpecObservable<D>;
 
 // Overload 5: Five operators
 export function pipe<T, A, B, C, D, E>(
-  source: Observable<T>,
+  source: SpecObservable<T>,
   op1: Operator<T, A>,
   op2: Operator<A, B>,
   op3: Operator<B, C>,
   op4: Operator<C, D>,
   op5: Operator<D, E>
-): Observable<E>;
+): SpecObservable<E>;
 
 // Overload 6: Six operators
 export function pipe<T, A, B, C, D, E, F>(
-  source: Observable<T>,
+  source: SpecObservable<T>,
   op1: Operator<T, A>,
   op2: Operator<A, B>,
   op3: Operator<B, C>,
   op4: Operator<C, D>,
   op5: Operator<D, E>,
   op6: Operator<E, F>
-): Observable<F>;
+): SpecObservable<F>;
 
 // Overload 7: Seven operators
 export function pipe<T, A, B, C, D, E, F, G>(
-  source: Observable<T>,
+  source: SpecObservable<T>,
   op1: Operator<T, A>,
   op2: Operator<A, B>,
   op3: Operator<B, C>,
@@ -107,11 +110,11 @@ export function pipe<T, A, B, C, D, E, F, G>(
   op5: Operator<D, E>,
   op6: Operator<E, F>,
   op7: Operator<F, G>
-): Observable<G>;
+): SpecObservable<G>;
 
 // Overload 8: Eight operators
 export function pipe<T, A, B, C, D, E, F, G, H>(
-  source: Observable<T>,
+  source: SpecObservable<T>,
   op1: Operator<T, A>,
   op2: Operator<A, B>,
   op3: Operator<B, C>,
@@ -120,11 +123,11 @@ export function pipe<T, A, B, C, D, E, F, G, H>(
   op6: Operator<E, F>,
   op7: Operator<F, G>,
   op8: Operator<G, H>
-): Observable<H>;
+): SpecObservable<H>;
 
 // Overload 9: Nine operators
 export function pipe<T, A, B, C, D, E, F, G, H, I>(
-  source: Observable<T>,
+  source: SpecObservable<T>,
   op1: Operator<T, A>,
   op2: Operator<A, B>,
   op3: Operator<B, C>,
@@ -134,13 +137,13 @@ export function pipe<T, A, B, C, D, E, F, G, H, I>(
   op7: Operator<F, G>,
   op8: Operator<G, H>,
   op9: Operator<H, I>
-): Observable<I>;
+): SpecObservable<I>;
 
 // Implementation
 export function pipe<T, R>(
-  source: Observable<T>,
+  source: SpecObservable<T>,
   ...operators: Array<Operator<unknown, unknown>>
-): Observable<R> {
+): SpecObservable<R> {
   // Error if too many operators
   if (operators.length > 9) {
     throw new Error('pipe: Too many operators (maximum 9). Use compose to group operators.');
@@ -148,7 +151,7 @@ export function pipe<T, R>(
 
   // Convert the source Observable to a ReadableStream
   let stream: ReadableStream<unknown> = toStream(
-    Observable.pull(source)
+    pull(source)
   );
 
   // Apply each operator in sequence
@@ -164,12 +167,12 @@ export function pipe<T, R>(
             `pipe:operator[${i}]`
           )
         ])
-      ) as Observable<R>;
+      ) as SpecObservable<R>;
     }
   }
 
   // Convert the resulting ReadableStream back to an Observable
-  return Observable.from(stream) as Observable<R>;
+  return Observable.from(stream) as SpecObservable<R>;
 }
 
 /**
@@ -301,69 +304,4 @@ export function compose<T, R>(
       source as ReadableStream<unknown>
     ) as ReadableStream<R>;
   };
-}
-
-/**
- * Creates a ReadableStream from an iterable or async iterable
- * 
- * @remarks
- * This utility function creates a ReadableStream from any iterable or async iterable,
- * such as arrays, generators, or custom iterables.
- * 
- * @typeParam T - Type of values in the iterable
- * @param iterable - The iterable or async iterable to convert
- * @returns A ReadableStream that emits values from the iterable
- * 
- * @example
- * ```ts
- * import { fromIterable, pipe, map } from "./helpers/mod.ts";
- * 
- * // Create a stream from an array
- * const numbers = fromIterable([1, 2, 3, 4, 5]);
- * 
- * // Create a stream from a generator
- * function* generateNumbers() {
- *   for (let i = 0; i < 5; i++) {
- *     yield i;
- *   }
- * }
- * const generated = fromIterable(generateNumbers());
- * 
- * // Process with operators
- * const result = pipe(
- *   numbers,
- *   map(x => x * 2)
- * );
- * ```
- */
-export function toStream<T>(
-  iterable: Iterable<T> | AsyncIterable<T>
-): ReadableStream<T | ObservableError> {
-  // Not all runtimes support `ReadableStreams.from` yet
-  if (typeof ReadableStream?.from === "function") 
-    return ReadableStream.from(iterable);
-
-  // Check if it's an async iterable
-  const isAsync = Symbol.asyncIterator in Object(iterable);
-
-  return new ReadableStream<T | ObservableError>({
-    async start(controller) {
-      try {
-        if (isAsync) {
-          for await (const item of iterable as AsyncIterable<T>) {
-            controller.enqueue(item);
-          }
-        } else {
-          for (const item of iterable as Iterable<T>) {
-            controller.enqueue(item);
-          }
-        }
-        
-        controller.close();
-      } catch (err) {
-        controller.enqueue(ObservableError.from(err, "toStream"));
-        controller.close();
-      }
-    }
-  });
 }

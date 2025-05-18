@@ -1,115 +1,6 @@
-import { ObservableError } from "./error.ts";
+import type { ObservableError } from "./error.ts";
 import type { Operator } from "./utils.ts";
 import { createStatefulOperator } from "./utils.ts";
-
-/**
- * Emits values from the source stream until a notifier stream emits or completes.
- * 
- * @remarks
- * The `takeUntil` operator creates a stream that mirrors the source stream,
- * but stops emitting values when the notifier stream emits any value or completes.
- * 
- * This is particularly useful for:
- * - Creating cancellable operations
- * - Limiting streams based on external events
- * - Managing subscription lifetimes in component lifecycles
- * 
- * @typeParam T - Type of values from the source stream
- * @typeParam R - Type of values from the notifier stream (not used)
- * @param notifier - The stream whose emissions or completion will stop the output
- * @returns A stream operator that takes values until the notifier emits
- * 
- * @example
- * ```ts
- * import { pipe, takeUntil } from "./helpers/mod.ts";
- * 
- * // Component cleanup pattern
- * const destroy$ = new ReadableStream({
- *   start(controller) {
- *     // Called when component is destroyed
- *     onDestroy(() => controller.enqueue(undefined));
- *   }
- * });
- * 
- * // Auto-cancelling subscription
- * const data = pipe(
- *   dataStream,
- *   takeUntil(destroy$)
- * );
- * ```
- */
-export function takeUntil<T, R>(notifier: ReadableStream<R>): Operator<T, T> {
-  return (source: ReadableStream<T>): ReadableStream<T> => {
-    let sourceReader: ReadableStreamDefaultReader<T>;
-    let notifierReader: ReadableStreamDefaultReader<R>;
-    let resultController: ReadableStreamDefaultController<T>;
-    let isCancelled = false;
-
-    // Create the resulting stream
-    return new ReadableStream<T>({
-      start(controller) {
-        resultController = controller;
-
-        // Set up the readers
-        sourceReader = source.getReader();
-        notifierReader = notifier.getReader();
-
-        // Start reading from both streams
-        readSource();
-        readNotifier();
-      },
-
-      cancel() {
-        isCancelled = true;
-
-        // Clean up readers
-        sourceReader.releaseLock();
-        notifierReader.releaseLock();
-      }
-    });
-
-    // Function to read from the source stream
-    function readSource() {
-      if (isCancelled) return;
-
-      sourceReader.read().then(({ done, value }) => {
-        if (done || isCancelled) return;
-
-        // Forward the value
-        resultController.enqueue(value);
-
-        // Continue reading
-        readSource();
-      }).catch(err => {
-        resultController.error(err);
-      });
-    }
-
-    // Function to read from the notifier stream
-    function readNotifier() {
-      if (isCancelled) return;
-
-      notifierReader.read().then(({ done, value }) => {
-        if (isCancelled) return;
-
-        // If the notifier emits any value or completes, close the result stream
-        if (done || value !== undefined) {
-          isCancelled = true;
-          resultController.close();
-          sourceReader.releaseLock();
-          notifierReader.releaseLock();
-          return;
-        }
-
-        // Continue reading from the notifier
-        readNotifier();
-      }).catch(err => {
-        // If the notifier errors, propagate the error
-        resultController.error(err);
-      });
-    }
-  };
-}
 
 /**
  * Tests whether all values emitted by the source stream satisfy a predicate.
@@ -141,22 +32,18 @@ export function takeUntil<T, R>(notifier: ReadableStream<R>): Operator<T, T> {
  */
 export function every<T>(predicate: (value: T, index: number) => boolean): Operator<T, boolean | ObservableError> {
   return createStatefulOperator<T, boolean | ObservableError, { index: number, finished: boolean }>({
+    name: 'every',
     createState: () => ({ index: 0, finished: false }),
-
     transform(chunk, state, controller) {
       if (state.finished) return;
 
-      try {
-        const result = predicate(chunk, state.index++);
+      const result = predicate(chunk, state.index++);
 
-        // If the predicate fails, emit false and complete
-        if (!result) {
-          state.finished = true;
-          controller.enqueue(false);
-          controller.terminate();
-        }
-      } catch (err) {
-        controller.enqueue(ObservableError.from(err, "operator:every"));
+      // If the predicate fails, emit false and complete
+      if (!result) {
+        state.finished = true;
+        controller.enqueue(false);
+        controller.terminate();
       }
     },
 
@@ -199,22 +86,18 @@ export function every<T>(predicate: (value: T, index: number) => boolean): Opera
  */
 export function some<T>(predicate: (value: T, index: number) => boolean): Operator<T, boolean | ObservableError> {
   return createStatefulOperator<T, boolean | ObservableError, { index: number, finished: boolean }>({
+    name: 'some',
     createState: () => ({ index: 0, finished: false }),
-
     transform(chunk, state, controller) {
       if (state.finished) return;
 
-      try {
-        const result = predicate(chunk, state.index++);
+      const result = predicate(chunk, state.index++);
 
-        // If the predicate passes, emit true and complete
-        if (result) {
-          state.finished = true;
-          controller.enqueue(true);
-          controller.terminate();
-        }
-      } catch (err) {
-        controller.enqueue(ObservableError.from(err, "operator:some"));
+      // If the predicate passes, emit true and complete
+      if (result) {
+        state.finished = true;
+        controller.enqueue(true);
+        controller.terminate();
       }
     },
 
@@ -255,19 +138,15 @@ export function some<T>(predicate: (value: T, index: number) => boolean): Operat
  */
 export function find<T>(predicate: (value: T, index: number) => boolean): Operator<T, T | ObservableError> {
   return createStatefulOperator<T, T | ObservableError, { index: number }>({
+    name: 'find',
     createState: () => ({ index: 0 }),
-
     transform(chunk, state, controller) {
-      try {
-        const result = predicate(chunk, state.index++);
+      const result = predicate(chunk, state.index++);
 
-        // If the predicate passes, emit the value and complete
-        if (result) {
-          controller.enqueue(chunk);
-          controller.terminate();
-        }
-      } catch (err) {
-        controller.enqueue(ObservableError.from(err, "operator:find"));
+      // If the predicate passes, emit the value and complete
+      if (result) {
+        controller.enqueue(chunk);
+        controller.terminate();
       }
     }
   });
