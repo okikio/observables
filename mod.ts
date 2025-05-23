@@ -1,7 +1,7 @@
 /**
  * A **spec-faithful** yet ergonomic TC39-inspired Observable implementation with detailed TSDocs and examples.
  *
- * A **push‑based stream abstraction** for events, data, and long‑running
+ * Observables are a **push‑based stream abstraction** for events, data, and long‑running
  * operations. Think of it as a **multi‑value Promise** that keeps sending
  * values until you tell it to stop.
  *
