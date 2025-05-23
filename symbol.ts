@@ -3,19 +3,15 @@
  * > Inspired by https://jsr.io/@nick/dispose/1.1.0/symbol.ts
  * 
  * Extensions to the global Symbol constructor for interoperability with
- * Observable, disposal, and resource management proposals.
+ * Observable.
  * 
  * @remarks
  * This interface extends the standard Symbol constructor with well-known
  * symbols needed for Observable interoperability and resource cleanup:
  * 
  * 1. `Symbol.observable`: For Observable interoperability (TC39 proposal)
- * 2. `Symbol.dispose`: For synchronous resource cleanup (TC39 proposal)
- * 3. `Symbol.asyncDispose`: For asynchronous resource cleanup (TC39 proposal)
  * 
  * These symbols enable our implementation to work with:
- * - `using` statements for automatic cleanup
- * - `await using` statements for async cleanup
  * - Other Observable libraries via Symbol.observable
  * 
  * @example
@@ -29,18 +25,12 @@
  *     });
  *   }
  * };
- * 
- * // Using Symbol.dispose for resource cleanup
- * {
- *   using subscription = observable.subscribe(...);
- *   // Subscription automatically disposed at end of block
- * }
  * ```
  * 
  * @module
  */
 export interface SymbolConstructor
-  extends Omit<typeof globalThis.Symbol, "dispose" | "asyncDispose" | "observable"> {
+  extends Omit<typeof globalThis.Symbol, "observable"> {
   /**
    * Well-known symbol for Observable interoperability.
    * 
@@ -54,33 +44,6 @@ export interface SymbolConstructor
    * @see {@link https://github.com/tc39/proposal-observable | TC39 Observable proposal}
    */
   readonly observable: unique symbol;
-
-  /**
-   * Well-known symbol for synchronous resource disposal.
-   * 
-   * @remarks
-   * Objects that implement this method can be used with the `using` statement
-   * to ensure resources are properly cleaned up when the block exits, even
-   * if an exception occurs.
-   * 
-   * For Observables, this enables automatic unsubscription at block exit.
-   * 
-   * @see {@link https://github.com/tc39/proposal-explicit-resource-management | TC39 Resource Management proposal}
-   */
-  readonly dispose: unique symbol;
-
-  /**
-   * Well-known symbol for asynchronous resource disposal.
-   * 
-   * @remarks
-   * Objects that implement this method can be used with the `await using`
-   * statement to ensure resources are properly cleaned up in async contexts.
-   * 
-   * For Observables, this enables automatic unsubscription in async contexts.
-   * 
-   * @see {@link https://github.com/tc39/proposal-explicit-resource-management | TC39 Resource Management proposal}
-   */
-  readonly asyncDispose: unique symbol;
 }
 
 /**

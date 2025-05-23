@@ -46,15 +46,15 @@ import { pull } from "../observable.ts";
  * }
  * 
  * // Source of IDs to fetch
- * const ids$ = Observable.from([1, 2, 3, 4, 5]);
+ * const ids = Observable.from([1, 2, 3, 4, 5]);
  * 
  * // Map each ID to a data request, with at most 2 concurrent requests
- * const data$ = pipe(
- *   ids$,
+ * const data = pipe(
+ *   ids,
  *   mergeMap(id => fetchData(id), 2)
  * );
  * 
- * data$.subscribe({
+ * data.subscribe({
  *   next: data => console.log('Received:', data),
  *   complete: () => console.log('All data fetched!')
  * });
@@ -189,12 +189,12 @@ export function mergeMap<T, R>(
  * import { Observable } from "./observable.ts";
  * 
  * // Process requests sequentially
- * const responses$ = pipe(
- *   ids$,
+ * const responses = pipe(
+ *   ids,
  *   concatMap(id => simulateRequest(id))
  * );
  * 
- * responses$.subscribe({
+ * responses.subscribe({
  *   next: response => console.log('Received:', response),
  *   complete: () => console.log('All requests completed!')
  * });
@@ -257,8 +257,8 @@ export function concatMap<T, R>(
  * }
  * 
  * // For each input, wait for typing to pause, then switch to a new search request
- * const searchResults$ = pipe(
- *   searchInput$,
+ * const searchResults = pipe(
+ *   searchInput,
  *   debounceTime(300), // Wait for typing to pause
  *   switchMap(query => searchApi(query))
  * );

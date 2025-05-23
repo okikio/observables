@@ -36,13 +36,13 @@ test("listen example creates an Observable for DOM events", () => {
   const removeEventSpy = element.removeEventListener;
 
   // Create the Observable
-  const keydown$ = listen(element, "keydown");
+  const keydown = listen(element, "keydown");
 
   // Verify that addEventListener was not called yet (lazy behavior)
   expect(addEventSpy).not.toHaveBeenCalled();
 
   // Subscribe to the Observable
-  const subscription = keydown$.subscribe({});
+  const subscription = keydown.subscribe({});
 
   // Verify that addEventListener was called with correct arguments
   expect(addEventSpy).toHaveBeenCalledWith("keydown", expect.any(Function), true);
@@ -184,13 +184,13 @@ test("listen function creates an Observable for DOM events", () => {
 
   // Test values received through the Observable
   const receivedEvents: Event[] = [];
-  const keydown$ = listen(mockElement, "keydown");
+  const keydown = listen(mockElement, "keydown");
 
   // Verify lazy behavior - no listeners added yet
   expect(eventLog).toEqual([]);
 
   // Subscribe to events
-  const subscription = keydown$.subscribe({
+  const subscription = keydown.subscribe({
     next: event => receivedEvents.push(event)
   });
 

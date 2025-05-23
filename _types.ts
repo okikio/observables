@@ -83,7 +83,7 @@ export interface Observer<T> extends SpecObserver<T> {
  * } // Awaits cleanup here
  * ```
  */
-export interface Subscription extends SpecSubscription {
+export interface Subscription extends SpecSubscription, Disposable, AsyncDisposable {
   /**
    * Indicates whether this subscription is closed.
    * 

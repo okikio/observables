@@ -2,57 +2,79 @@
 /**
  * A **spec-faithful** yet ergonomic TC39-inspired Observable implementation with detailed TSDocs and examples.
  *
- * ────────────────────────────────────────────────────────────────────────────────
- * Why this file exists
- * --------------------
- * 1.  **Inter-op with the upcoming TC39 Observable proposal (stage 1 as of May 2025).**
- *      <https://github.com/tc39/proposal-observable>
- * 2.  **Bridge push-based and pull-based worlds in a single 250 line module**
- *     while keeping the public surface identical to the spec so future browsers
- *     can drop in native implementations with zero code changes on your side.
- * 3.  **Teach by example.**  Every exported symbol is fully @link-ed back to the
- *     relevant spec algorithm step so you can browse the spec and the code side
- *     by side.
+ * A **push‑based stream abstraction** for events, data, and long‑running
+ * operations. Think of it as a **multi‑value Promise** that keeps sending
+ * values until you tell it to stop.
  *
- * Features
- * --------
- * - **Push API**: Standard Observable `.subscribe()` interface with proper cleanup
- * - **Pull API**: Async iteration with backpressure via ReadableStream
- * - **Interop**: Seamless integration with other Observable implementations
- * - **Resource Management**: Support for `using`/`await using` blocks
- * - **Spec Compliant**: Carefully follows the TC39 proposal semantics
- * - **Performance Optimized**: Streamlined for high-frequency event handling
- * 
- * Example output
- * --------------
- * ```text
- * > node demo/basic.js
- * Subscribed
- * Value: 1
- * Value: 2
- * Value: 3
- * Complete
+ * ## Why This Exists
+ * Apps juggle many async sources—mouse clicks, HTTP requests, timers,
+ * WebSockets, file watchers. Before Observables you glued those together with a
+ * mish‑mash of callbacks, Promises, `EventTarget`s and async iterators, each
+ * with different rules for cleanup and error handling. **Observables give you
+ * one mental model** for subscription → cancellation → propagation → teardown.
+ *
+ * ## ✨ Feature Highlights
+ * - **Unified push + pull** – use callbacks *or* `for await … of` on the same
+ *   stream.
+ * - **Cold by default** – each subscriber gets an independent execution (great
+ *   for predictable side‑effects).
+ * - **Deterministic teardown** – return a function/`unsubscribe`/`[Symbol.dispose]`
+ *   and it *always* runs once, even if the observable errors synchronously.
+ * - **Back‑pressure helper** – `pull()` converts to an `AsyncGenerator` backed
+ *   by `ReadableStream` so the producer slows down when the consumer lags.
+ * - **Tiny surface** – <1 kB min+gzip of logic; treeshakes cleanly.
+ *
+ * ## Error Propagation Policy
+ * 1. **Local catch** – If your observer supplies an `error` callback, **all**
+ *    upstream errors funnel there.
+ * 2. **Unhandled‑rejection style** – If no `error` handler is provided the
+ *    exception is re‑thrown on the micro‑task queue (same timing semantics as
+ *    an unhandled Promise rejection).
+ * 3. **Observer callback failures** – Exceptions thrown inside `next()` or
+ *    `complete()` are routed to `error()` if present, otherwise bubble as in
+ *    (2).
+ * 4. **Errors inside `error()`** – A second‑level failure is *always* queued to
+ *    the micro‑task queue to avoid infinite recursion.
+ *
+ * ## Edge‑Cases & Gotchas
+ * - `subscribe()` can synchronously call `complete()`/`error()` and still have
+ *   its teardown captured – **ordering is guaranteed**.
+ * - Subscribing twice to a *cold* observable triggers two side‑effects (e.g.
+ *   two HTTP requests). Share the source if you want fan‑out.
+ * - Infinite streams leak unless you call `unsubscribe()` or wrap them in a
+ *   `using` block.
+ * - The helper `pull()` encodes thrown errors as `ObservableError` *values* so
+ *   buffered items are not lost – remember to `instanceof` check if you rely
+ *   on it.
+ *
+ * @example Common Patterns
+ * ```ts
+ * // DOM events → Observable
+ * const clicks = new Observable<Event>(obs => {
+ *   const h = (e: Event) => obs.next(e);
+ *   button.addEventListener("click", h);
+ *   return () => button.removeEventListener("click", h);
+ * });
+ *
+ * // HTTP polling every 5 s
+ * const poll = new Observable<Response>(obs => {
+ *   const id = setInterval(async () => {
+ *     try { obs.next(await fetch("/api/data")); }
+ *     catch (e) { obs.error(e); }
+ *   }, 5000);
+ *   return () => clearInterval(id);
+ * });
+ *
+ * // WebSocket stream with graceful close
+ * const live = new Observable<string>(obs => {
+ *   const ws = new WebSocket("wss://example.com");
+ *   ws.onmessage = e => obs.next(e.data);
+ *   ws.onerror   = e => obs.error(e);
+ *   ws.onclose   = () => obs.complete();
+ *   return () => ws.close();
+ * });
  * ```
- *
- * Creation helpers `of` and `from` are separate exports for tree-shaking.
  * 
- * > Error-propagation policy  
- * > ─────────────────────────────
- * > * If the *observer supplies its own `error()` handler*,
- * >   that handler is considered the "catch-block" for the stream.
- * >     ↳  Any exception that happens *inside* the user's `next()` /
- * >         `complete()` callbacks is forwarded to `error(err)` **once**.
- * >     ↳  If `error()` itself throws, we still delegate to `HostReportErrors` (≈ "unhandled-promise rejection") 
- * >         (i.e. `queueMicrotask`), exactly as the proposal specifies.
- * > 
- * > * If the observer does **not** implement `error()`, we fall back to the
- * >   spec's `HostReportErrors` behaviour (queueMicrotask + throw) so the host
- * >   surfaces the error just like an uncaught Promise rejection.
- * > 
- * > Rationale – Think of `error()` as the moral equivalent of a `.catch()`
- * > on a Promise.  Once a catch exists, the host no longer warns about
- * > "unhandled" rejections; we mirror that mental model here.
- *
  * @example Basic subscription:
  * ```ts
  * import { Observable } from './observable.ts';
@@ -76,10 +98,10 @@
  *   using subscription = Observable.of(1, 2, 3).subscribe({
  *     next(val) { console.log('Value:', val); }
  *   });
- *   
+ *
  *   // Code that uses the subscription
  *   doSomething();
- *   
+ *
  * } // Subscription automatically unsubscribed at block end
  * ```
  *
@@ -98,15 +120,124 @@
  * ```ts
  * import { Observable } from './observable.ts';
  *
- * const nums$ = Observable.from([1,2,3,4,5]);
+ * const nums = Observable.from([1,2,3,4,5]);
  * (async () => {
- *   for await (const n of nums$.pull({ strategy: { highWaterMark: 2 } })) {
+ *   for await (const n of nums.pull({ strategy: { highWaterMark: 2 } })) {
  *     console.log('Pulled:', n);
  *     await new Promise(r => setTimeout(r, 1000)); // Slow consumer
  *   }
  * })();
  * ```
- * 
+ *
+ * ## Spec Compliance & Notable Deviations
+ * | Area                       | Proposal Behaviour                     | This Library                                                                            |
+ * |----------------------------|----------------------------------------|-----------------------------------------------------------------------------------------|
+ * | `subscribe` parameters     | Only **observer object**               | Adds `(next, error?, complete?)` triple‑param overload.                                 |
+ * | Teardown shape             | Function or `{ unsubscribe() }`        | Also honours `[Symbol.dispose]` **and** `[Symbol.asyncDispose]`.                        |
+ * | Pull‑mode iteration        | *Not in spec*                          | `pull()` helper returns an `AsyncGenerator` with `ReadableStream`‑backed back‑pressure. |
+ * | Error propagation in pull  | Stream **error** ends iteration        | Error encoded as `ObservableError` value so buffered items drain first.                 |
+ * | `Symbol.toStringTag`       | Optional                               | Provided for `Observable` and `SubscriptionObserver`.                                   |
+ *
+ * Anything not listed above matches the TC39 draft (**May 2025**).
+ *
+ * ## Lifecycle State Machine
+ * ```text
+ * (inactive) --subscribe()--> [  active  ]
+ *     ^                         |  next()
+ *     |   unsubscribe()/error() |  complete()
+ *     |<------------------------|  (closed)
+ * ```
+ * *Teardown executes exactly once on the leftward arrow.*
+ *
+ * @example Type‑Parameter Primer
+ * ```ts
+ * Observable<number>                     // counter
+ * Observable<Response>                   // fetch responses
+ * Observable<{x:number;y:number}>        // mouse coords
+ * Observable<never>                      // signal‑only (no payload)
+ * Observable<string | ErrorPayload>      // unions are fine
+ * ```
+ *
+ * @example Interop Cheat‑Sheet
+ * ```ts
+ * // Promise → Observable (single value then complete)
+ * Observable.from(fetch("/api"));
+ *
+ * // Observable → async iterator (back‑pressure aware)
+ * for await (const chunk of obs) {
+ *   …
+ * }
+ *
+ * // Observable → Promise (first value only)
+ * const first = (await obs.pull().next()).value;
+ * ```
+ *
+ * ## Performance Cookbook (pull())
+ * | Producer speed | Consumer speed | Suggested `highWaterMark` | Notes                                   |
+ * |---------------:|---------------:|--------------------------:|-----------------------------------------|
+ * | 🔥 Very fast   | 🐢 Slow         | 1‑8                       | Minimal RAM; heavy throttling.          |
+ * | ⚡ Fast         | 🚶 Moderate     | 16‑64 (default 64)        | Good balance for most apps.             |
+ * | 🚀 Bursty      | 🚀 Bursty       | 128‑512                   | Smooths spikes at the cost of memory.   |
+ *
+ * ➜ If RSS climbs steadily, halve `highWaterMark`; if you’re dropping messages
+ * under load, raise it (RAM permitting).
+ *
+ * ## Memory Management
+ *
+ * **Critical**: Infinite Observables need manual cleanup via `unsubscribe()` or `using` blocks
+ * to prevent memory leaks. Finite Observables auto-cleanup on complete/error.
+ *
+ * @example Quick start - DOM events
+ * ```ts
+ * const clicks = new Observable(observer => {
+ *   const handler = e => observer.next(e);
+ *   button.addEventListener('click', handler);
+ *   return () => button.removeEventListener('click', handler);
+ * });
+ *
+ * using subscription = clicks.subscribe(event => console.log('Clicked!'));
+ * // Auto-cleanup when leaving scope
+ * ```
+ *
+ * @example Network with backpressure
+ * ```ts
+ * const dataStream = new Observable(observer => {
+ *   const ws = new WebSocket('ws://api.com/live');
+ *   ws.onmessage = e => observer.next(JSON.parse(e.data));
+ *   ws.onerror = e => observer.error(e);
+ *   return () => ws.close();
+ * });
+ *
+ * // Consume at controlled pace
+ * for await (const data of dataStream.pull({ strategy: { highWaterMark: 10 } })) {
+ *   await processSlowly(data); // Producer pauses when buffer fills
+ * }
+ * ```
+ *
+ * @example Testing & Debugging Tips
+ * ```ts
+ * import { assertEquals } from "@std/assert";
+ *
+ * Deno.test("emits three ticks then completes", async () => {
+ *   const ticks = Observable.of(1, 2, 3);
+ *   const out: number[] = [];
+ *   for await (const n of ticks) out.push(n);
+ *   assertEquals(out, [1, 2, 3]);
+ * });
+ *
+ * // Quick console probe
+ * obs.subscribe(v => console.log("[OBS]", v));
+ * ```
+ *
+ *
+ * ## FAQ
+ * - **Why does my network request fire twice?** Cold observables run once per
+ *   subscribe. Reuse a single subscription or share the source.
+ * - **Why does `next()` throw after `complete()`?** The stream is closed; calls
+ *   are ignored by design.
+ * - **Memory leak on interval** — Infinite streams require `unsubscribe()` or
+ *   `using`.
+ *
  * @module
  */
 import type { SpecObservable, ObservableProtocol, SpecSubscription } from "./_spec.ts";
@@ -119,13 +250,17 @@ import { Symbol } from "./symbol.ts";
  * resources (DOM handlers, sockets…).
  *
  * @remarks
- * The TC39 spec allows subscribers to return either:
- * - A function that will be called when the subscription is cancelled
- * - An object with an `unsubscribe()` method
- * - Nothing (`undefined`), indicating no cleanup is needed
+ * A *teardown* function or object returned from the subscriber to release
+ * resources when a subscription terminates.
+ *
+ * - `() => void` – plain cleanup callback.
+ * - `{ unsubscribe() }` – imperative cancel method.
+ * - `{ [Symbol.dispose](): void }` – synchronous disposable.
+ * - `{ [Symbol.asyncDispose](): Promise<void> }` – async disposable.
+ * - `undefined | null` – nothing to clean up.
  * 
- * This type represents the function variant, though our implementation
- * handles all valid return types according to the spec.
+ * **Timing Note**: Cleanup is captured and called **even if** `observer.error()` or 
+ * `observer.complete()` is called synchronously before your subscriber returns.
  * 
  * @example
  * ```ts
@@ -135,8 +270,22 @@ import { Symbol } from "./symbol.ts";
  *   return () => clearInterval(timer);
  * });
  * ```
+ * 
+ * @example Multi-resource cleanup
+ * ```ts
+ * new Observable(observer => {
+ *   const timer = setInterval(tick, 1000);
+ *   const ws = new WebSocket(url);
+ *   const sub = other.subscribe(observer);
+ *   
+ *   return () => {
+ *     clearInterval(timer);
+ *     ws.close();
+ *     sub.unsubscribe();
+ *   };
+ * });
  */
-export type Teardown = () => void;
+export type Teardown = (() => void) | SpecSubscription | AsyncDisposable | Disposable | null | undefined | void;
 
 /**
  * Internal state associated with each Subscription.
@@ -153,7 +302,7 @@ interface StateMap<T> {
   observer: Observer<T> | null;
 
   /** Function or object returned by subscriber; used for resource cleanup */
-  cleanup: Teardown | Subscription | null;
+  cleanup: Teardown;
 }
 
 /**
@@ -313,7 +462,7 @@ function closeSubscription(subscription: Subscription): void {
  * 
  * @param cleanup - Function or object to perform cleanup
  */
-function cleanupSubscription(cleanup: Teardown | Subscription | null | undefined | void) {
+function cleanupSubscription(cleanup: Teardown) {
   let temp = cleanup;
   cleanup = null;
 
@@ -321,11 +470,11 @@ function cleanupSubscription(cleanup: Teardown | Subscription | null | undefined
   try {
     if (typeof temp === 'function') temp();
     else if (typeof temp === "object") {
-      if (typeof temp.unsubscribe === 'function') temp.unsubscribe();
-      else if (typeof temp[Symbol.asyncDispose] === "function")
-        temp[Symbol.asyncDispose]();
-      else if (typeof temp[Symbol.dispose] === "function")
-        temp[Symbol.dispose]();
+      if (typeof (temp as SpecSubscription).unsubscribe === 'function') (temp as SpecSubscription).unsubscribe();
+      else if (typeof (temp as AsyncDisposable)[Symbol.asyncDispose] === "function")
+        (temp as AsyncDisposable)[Symbol.asyncDispose]();
+      else if (typeof (temp as Disposable)[Symbol.dispose] === "function")
+        (temp as Disposable)[Symbol.dispose]();
     }
   } catch (err) {
     // Report cleanup errors asynchronously to avoid disrupting the unsubscribe flow
@@ -363,7 +512,7 @@ export class SubscriptionObserver<T> {
    * 
    * @example
    * ```ts
-   * const timer$ = new Observable(observer => {
+   * const timer = new Observable(observer => {
    *   const id = setInterval(() => {
    *     if (!observer.closed) {
    *       observer.next(Date.now());
@@ -593,7 +742,10 @@ export class SubscriptionObserver<T> {
 
 
 /**
- * Core implementation of the TC39 Observable proposal.
+ * Observale - A push-based stream for handling async data over time.
+ * 
+ * **What it is**: Like a "smart Promise" that can emit multiple values and provides 
+ * unified patterns for resource management, error handling, and subscription lifecycle.
  * 
  * @remarks
  * Observable is the central type in this library, representing a push-based
@@ -601,23 +753,33 @@ export class SubscriptionObserver<T> {
  * and provides lifecycle guarantees around subscription and cleanup.
  * 
  * Key guarantees:
- * 1. Lazy execution - nothing happens until subscribe() is called
- * 2. Multiple independent observers can subscribe to the same Observable
- * 3. Each observer receives its own subscriber execution and cleanup
- * 4. Proper resource management when subscriptions are cancelled
- * 
+ * 1. Lazy execution - nothing happens until `subscribe()` is called
+ * 2. Multiple independent subscriptions to the same Observable
+ * 3. Each subscriber executes and cleans up independently.
+ * 4. Cleanups are deterministic one‑time resource disposal, the occur when subscriptions are cancelled, error or complete
+ *
  * Extensions beyond the TC39 proposal:
  * - Pull API via AsyncIterable interface
  * - Using/await using support via Symbol.dispose/asyncDispose
+ * 
+ * Gotchas:
+ * - Two subscribers → two side‑effects on a cold stream.
+ * - Remember to cancel infinite observables.
+ * - Calling `next()` after `complete()` is a no‑op.
+ * - Errors in observer callbacks go to error handler if provided, else global reporting.
+ * - Synchronous completion during subscribe still captures cleanup functions.
  * 
  * @typeParam T - Type of values emitted by this Observable
  */
 export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, ObservableProtocol<T> {
   /** The subscriber function provided when the Observable was created */
-  #subscribeFn: (obs: SubscriptionObserver<T>) => Teardown | SpecSubscription | null | undefined | void;
+  #subscribeFn: (obs: SubscriptionObserver<T>) => Teardown;
 
   /**
    * Creates a new Observable with the given subscriber function.
+   * 
+   * **Important**: This just stores your function - nothing executes until `subscribe()` is called.
+   * Think of it like writing a recipe vs actually cooking.
    * 
    * @remarks
    * The subscriber function is the heart of an Observable. It:
@@ -630,13 +792,19 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * 
    * @param subscribeFn - Function that implements the Observable's behavior
    * 
+   * Your subscriber function receives a `SubscriptionObserver` to:
+   * - `observer.next(value)` - Emit a value  
+   * - `observer.error(err)` - Emit error (terminates)
+   * - `observer.complete()` - Signal completion (terminates)
+   * - `observer.closed` - Check if subscription is still active
+   * 
    * @throws TypeError if subscribeFn is not a function
    * @throws TypeError if Observable is called without "new"
    * 
-   * @example
+   * @example Timer with cleanup
    * ```ts
    * // Timer that emits the current timestamp every second
-   * const timer$ = new Observable(observer => {
+   * const timer = new Observable(observer => {
    *   console.log('Subscription started!');
    *   const id = setInterval(() => {
    *     observer.next(Date.now());
@@ -649,8 +817,25 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    *   };
    * });
    * ```
+   * 
+   * @example Async operation with error handling
+   * ```ts
+   * const fetch = new Observable(observer => {
+   *   const controller = new AbortController();
+   *   
+   *   fetch('/api/data', { signal: controller.signal })
+   *     .then(res => res.json())
+   *     .then(data => {
+   *       observer.next(data);
+   *       observer.complete();
+   *     })
+   *     .catch(err => observer.error(err));
+   *   
+   *   return () => controller.abort(); // Cleanup
+   * });
+   * ```
    */
-  constructor(subscribeFn: (obs: SubscriptionObserver<T>) => Teardown | SpecSubscription | null | undefined | void) {
+  constructor(subscribeFn: (obs: SubscriptionObserver<T>) => Teardown) {
     if (typeof subscribeFn !== 'function') {
       throw new TypeError('Observable initializer must be a function');
     }
@@ -684,16 +869,23 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * 2. Delivers those values to the observer's callbacks
    * 3. Returns a subscription object for cancellation
    * 
+   * **What happens**: Creates subscription → calls observer.start() → executes subscriber function → 
+   * stores cleanup → returns subscription for cancellation.
+   * 
    * Subscription Lifecycle:
    * - Starts immediately and synchronously
    * - Continues until explicitly cancelled or completed/errored
    * - Guarantees proper resource cleanup on termination
    * 
-   * Critical Note About Infinite Observables:
+   * **Error handling**: If you provide an error callback, it catches all stream errors.
+   * If not, errors become unhandled Promise rejections.
+   * 
+   * **Memory warning**: Infinite Observables need manual `unsubscribe()` or `using` blocks.
    * If the Observable never calls `complete()` or `error()`,
    * resources will not be automatically released unless you call
-   * `unsubscribe()` manually. For long-lived subscriptions, consider:
+   * `unsubscribe()` manually. 
    * 
+   * For long-lived subscriptions, consider:
    * 1. Using a `using` block with this subscription
    * 2. Setting up a timeout or take-until condition
    * 3. Explicitly calling `unsubscribe()` when no longer needed
@@ -701,7 +893,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * @param observer - Object with next/error/complete callbacks
    * @returns Subscription object that can be used to cancel the subscription
    * 
-   * @example
+   * @example Observer object
    * ```ts
    * const subscription = observable.subscribe({
    *   next(value) { console.log('Received:', value) },
@@ -711,6 +903,24 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * 
    * // Later, to cancel:
    * subscription.unsubscribe();
+   * ```
+   * 
+   * @example Two ways to subscribe
+   * ```ts
+   * // Observer object (recommended)
+   * obs.subscribe({
+   *   start(sub) { console.log('Started, can call sub.unsubscribe()'); },
+   *   next(val) { console.log('Value:', val); },
+   *   error(err) { console.error('Error:', err); },
+   *   complete() { console.log('Done'); }
+   * });
+   * 
+   * // Separate functions
+   * obs.subscribe(
+   *   val => console.log(val),
+   *   err => console.error(err), 
+   *   () => console.log('done')
+   * );
    * ```
    */
   subscribe(observer: Observer<T>): Subscription;
@@ -723,11 +933,28 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * See the documentation for the observer-based overload for details
    * on subscription behavior.
    * 
-   * Critical Note About Infinite Observables:
+   * This method creates a subscription that:
+   * 1. Executes the subscriber function to begin producing values
+   * 2. Delivers those values to the observer's callbacks
+   * 3. Returns a subscription object for cancellation
+   * 
+   * **What happens**: Creates subscription → calls observer.start() → executes subscriber function → 
+   * stores cleanup → returns subscription for cancellation.
+   * 
+   * Subscription Lifecycle:
+   * - Starts immediately and synchronously
+   * - Continues until explicitly cancelled or completed/errored
+   * - Guarantees proper resource cleanup on termination
+   * 
+   * **Error handling**: If you provide an error callback, it catches all stream errors.
+   * If not, errors become unhandled Promise rejections.
+   * 
+   * **Memory warning**: Infinite Observables need manual `unsubscribe()` or `using` blocks.
    * If the Observable never calls `complete()` or `error()`,
    * resources will not be automatically released unless you call
-   * `unsubscribe()` manually. For long-lived subscriptions, consider:
+   * `unsubscribe()` manually. 
    * 
+   * For long-lived subscriptions, consider:
    * 1. Using a `using` block with this subscription
    * 2. Setting up a timeout or take-until condition
    * 3. Explicitly calling `unsubscribe()` when no longer needed
@@ -743,6 +970,24 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    *   value => console.log('Received:', value),
    *   err => console.error('Error:', err),
    *   () => console.log('Done!')
+   * );
+   * ```
+   * 
+   * @example Two ways to subscribe
+   * ```ts
+   * // Observer object (recommended)
+   * obs.subscribe({
+   *   start(sub) { console.log('Started, can call sub.unsubscribe()'); },
+   *   next(val) { console.log('Value:', val); },
+   *   error(err) { console.error('Error:', err); },
+   *   complete() { console.log('Done'); }
+   * });
+   * 
+   * // Separate functions
+   * obs.subscribe(
+   *   val => console.log(val),
+   *   err => console.error(err), 
+   *   () => console.log('done')
    * );
    * ```
    */
@@ -818,15 +1063,17 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
       if (cleanup !== undefined && cleanup !== null) {
         if (!(
           typeof cleanup === 'function' ||
-          typeof cleanup?.unsubscribe === 'function'
+          typeof (cleanup as SpecSubscription)?.unsubscribe === 'function' ||
+          typeof (cleanup as Disposable)?.[Symbol.dispose] === 'function' ||
+          typeof (cleanup as AsyncDisposable)?.[Symbol.asyncDispose] === 'function'
         )) {
-          throw new TypeError('Expected subscriber to return a function, an unsubscribe object, or undefined');
+          throw new TypeError('Expected subscriber to return a function, an unsubscribe object, a disposable with a [Symbol.dispose] method, an async-disposable with a [Symbol.asyncDispose] method, or undefined/null');
         }
       }
 
       // Store the cleanup function in the subscription state
       const state = SubscriptionStateMap.get(subscription);
-      if (state && cleanup) (state.cleanup = cleanup as Subscription | Teardown);
+      if (state && cleanup) (state.cleanup = cleanup as Teardown);
 
       /**
        * Handle the case where complete/error was called synchronously during the subscribe function.
@@ -855,7 +1102,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
        * by manually running the teardown function
        */
       if (subscription.closed && cleanup) {
-        cleanupSubscription(cleanup as Subscription | Teardown);
+        cleanupSubscription(cleanup as Teardown);
       }
 
       cleanup = null;
@@ -873,7 +1120,9 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * 
    * @remarks
    * This method allows Observables to be used in any context that accepts an AsyncIterable,
-   * implementing the "pull" mode of consuming an Observable.
+   * implementing the "pull" mode of consuming an Observable. 
+   * 
+   * Uses default buffer size of 64 items.
    * 
    * The implementation delegates to the `pull()` function which:
    * 1. Converts push-based events to pull-based async iteration
@@ -897,6 +1146,9 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
   /**
    * Converts this Observable into an AsyncGenerator with backpressure control.
    * 
+   * **Why use this**: Control buffer size to prevent memory issues when producer is faster than consumer.
+   * Uses ReadableStream internally for efficient buffering.
+   * 
    * @remarks
    * This method provides more control over async iteration than the default
    * Symbol.asyncIterator implementation, allowing consumers to:
@@ -908,10 +1160,20 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * The implementation uses ReadableStream internally to manage buffering
    * and backpressure, pausing the producer when the buffer fills up.
    * 
-   * @param options - Configuration options for the pull operation
-   * @returns An AsyncGenerator that yields values from this Observable
+   * **Buffer sizing**:
+   * - Small (1-10): Memory-constrained environments, large data items
+   * - Medium (10-100): Most applications, good balance  
+   * - Large (100+): High-throughput scenarios, small items
    * 
-   * @example
+   * **Error handling**: Errors are sent through value channel (not stream errors) to ensure 
+   * all buffered values are processed before error is thrown.
+   * 
+   * @param options - Configuration options for the pull operation
+   * @param options.strategy.highWaterMark - Max items to buffer before applying backpressure (default: 64)
+   * @returns Async generator that yields values and slows the producer when the
+   *          buffer is full.
+   * 
+   * @example Memory-efficient processing
    * ```ts
    * // Buffer up to 5 items before applying backpressure
    * for await (const value of observable.pull({ 
@@ -921,6 +1183,16 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    *   // Slow consumer - producer will pause when buffer fills
    *   await new Promise(r => setTimeout(r, 1000));
    * }
+   * 
+   * // Large items, tiny buffer
+   * for await (const item of largeDataStream.pull({ strategy: { highWaterMark: 1 } })) {
+   *   await processLargeItem(item); // Producer pauses when buffer full
+   * }
+   * 
+   * // High throughput, large buffer
+   * for await (const event of fastStream.pull({ strategy: { highWaterMark: 1000 } })) {
+   *   await processFast(event);
+   * }
    * ```
    */
   pull({ strategy = { highWaterMark: 64 } }: { strategy?: QueuingStrategy<T | ObservableError> } = {}): AsyncGenerator<T> {
@@ -928,16 +1200,23 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
   }
 
   /**
-   * Converts an iterable, async iterable, or Observable-like object to an Observable.
+   * Converts Promise, an iterable, async iterable, or Observable-like object to an Observable.
    * 
    * @remarks
    * This static method is a key part of the Observable interoperability mechanism,
    * handling multiple input types in a consistent way.
    * 
+   * **Handles**:
+   * - Arrays, Sets, Maps → sync emission  
+   * - Async generators → values over time
+   * - Symbol.observable objects → delegates to their implementation
+   * 
+   * 
    * Behavior depends on the input type:
    * 1. Objects with Symbol.observable - Delegates to their implementation
    * 2. Synchronous iterables - Emits all values then completes
    * 3. Asynchronous iterables - Emits values as they arrive then completes
+   * 4. Promise - Emits a single value (the resovled value) then completes
    * 
    * Unlike Promise.resolve, Observable.from will not return the input unchanged
    * if it's already an Observable, unless it's an instance of the exact same
@@ -960,7 +1239,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * });
    * 
    * // From another Observable-like object
-   * const foreign$ = {
+   * const foreign = {
    *   [Symbol.observable]() {
    *     return new Observable(obs => {
    *       obs.next("hello");
@@ -968,7 +1247,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    *     });
    *   }
    * };
-   * Observable.from(foreign$).subscribe({
+   * Observable.from(foreign).subscribe({
    *   next: val => console.log(val) // "hello"
    * });
    * ```
@@ -1102,6 +1381,7 @@ export function of<T>(this: unknown, ...items: T[]): Observable<T> {
  * 1. For Symbol.observable objects: delegates to their implementation
  * 2. For iterables: synchronously emits all values, then completes
  * 3. For async iterables: emits values as they arrive, then completes
+ * 4. For Promises: resolves and emits the promise's value
  * 
  * This function properly supports subclassing, preserving the constructor
  * it was called on.
@@ -1123,7 +1403,7 @@ export function of<T>(this: unknown, ...items: T[]): Observable<T> {
  * // Output: ['a', 1], ['b', 2]
  * 
  * // From another Observable implementation
- * const foreign$ = {
+ * const foreign = {
  *   [Symbol.observable]() {
  *     return { subscribe: observer => {
  *       observer.next('hello');
@@ -1132,14 +1412,14 @@ export function of<T>(this: unknown, ...items: T[]): Observable<T> {
  *     }};
  *   }
  * };
- * from(foreign$).subscribe(x => console.log(x));
+ * from(foreign).subscribe(x => console.log(x));
  * // Output: 'hello'
  * ```
  */
 export function from<T>(
   this: unknown,
   input: SpecObservable<T> |
-    Iterable<T> | AsyncIterable<T>
+    Iterable<T> | AsyncIterable<T> | PromiseLike<T>
 ): Observable<T> {
   if (input === null || input === undefined) {
     throw new TypeError('Cannot convert undefined or null to Observable');
@@ -1230,7 +1510,27 @@ export function from<T>(
     });
   }
 
-  throw new TypeError('Input is not Observable, Iterable, AsyncIterable, or ReadableStream');
+  // Case 4 – promise
+  if (typeof (input as PromiseLike<T>)?.then === 'function') {
+    return new Observable<T>(obs => {
+      const promise = (input as PromiseLike<T>);
+      // Start consuming the async iterable
+      (async () => {
+        try {
+          const value = await promise;
+          obs.next(value);
+
+          // Normal completion
+          obs.complete();
+        } catch (err) {
+          // Error during iteration
+          obs.error(err);
+        }
+      })()
+    });
+  }
+
+  throw new TypeError('Input is not Observable, Iterable, AsyncIterable, Promise, or ReadableStream');
 }
 
 /**
@@ -1239,12 +1539,18 @@ export function from<T>(
  * @remarks
  * This function bridges the gap between push-based Observables and
  * pull-based async iteration, allowing consumers to:
- * 
  * 1. Process values at their own pace
  * 2. Use standard async iteration patterns (for-await-of)
  * 3. Control buffering behavior to prevent memory issues
  * 
  * ## How It Works
+ * Observable → ReadableStream (for buffering) → AsyncGenerator
+ * 
+ * **Key features**:
+ * - Automatic backpressure when consumer slower than producer
+ * - Configurable buffer size via highWaterMark
+ * - Proper cleanup on early termination  
+ * - Errors sent through value channel to preserve buffered items
  * 
  * Implementation details:
  * - Uses ReadableStream as the backpressure mechanism
@@ -1269,16 +1575,16 @@ export function from<T>(
  * @param observable - Source Observable to pull values from
  * @param options - Configuration options for the ReadableStream
  * @param options.strategy - Queuing strategy that controls how backpressure is applied
- * @param options.strategy.highWaterMark - Maximum number of values to buffer before applying backpressure
+ * @param options.strategy.highWaterMark - Buffer size before backpressure (default: 64)
  * 
  * @returns An AsyncGenerator that yields values from the Observable at the consumer's pace
  * 
  * @example Basic usage with for-await-of loop:
  * ```ts
- * const numbers$ = Observable.of(1, 2, 3, 4, 5);
+ * const numbers = Observable.of(1, 2, 3, 4, 5);
  * 
  * // Process each value at your own pace
- * for await (const num of numbers$.pull()) {
+ * for await (const num of pull(numbers)) {
  *   console.log(`Processing ${num}`);
  *   await someTimeConsumingOperation(num);
  * }
@@ -1288,12 +1594,24 @@ export function from<T>(
  * // Processing 3
  * // Processing 4
  * // Processing 5
+ * 
+ * const fast = new Observable(obs => {
+ *   let count = 0;
+ *   const id = setInterval(() => obs.next(count++), 10); // 100/sec
+ *   return () => clearInterval(id);
+ * });
+ * 
+ * // Slow consumer with small buffer
+ * for await (const n of pull(fast, { strategy: { highWaterMark: 5 } })) {
+ *   console.log(n);
+ *   await new Promise(r => setTimeout(r, 1000)); // 1/sec - producer slows down
+ * }
  * ```
  * 
  * @example Handling errors while ensuring all prior values are processed:
  * ```ts
  * // Observable that emits values then errors
- * const source$ = new Observable(observer => {
+ * const source = new Observable(observer => {
  *   observer.next(1);
  *   observer.next(2);
  *   observer.error(new Error("Something went wrong"));
@@ -1301,7 +1619,7 @@ export function from<T>(
  * });
  * 
  * try {
- *   for await (const value of source$.pull()) {
+ *   for await (const value of pull(source)) {
  *     console.log(`Got value: ${value}`);
  *   }
  * } catch (err) {
@@ -1317,7 +1635,7 @@ export function from<T>(
  * @example Controlling buffer size for memory efficiency:
  * ```ts
  * // Create a producer that emits values rapidly
- * const fastProducer$ = new Observable(observer => {
+ * const fastProducer = new Observable(observer => {
  *   let count = 0;
  *   const interval = setInterval(() => {
  *     observer.next(count++);
@@ -1330,7 +1648,7 @@ export function from<T>(
  * });
  * 
  * // Limit buffer to just 5 items to prevent memory issues
- * for await (const num of fastProducer$.pull({ 
+ * for await (const num of pull(fastProducer, { 
  *   strategy: { highWaterMark: 5 } 
  * })) {
  *   console.log(`Processing ${num}`);

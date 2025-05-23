@@ -72,11 +72,11 @@ test("error in subscribeFn triggers observer.error and closes subscription", () 
   const errorObj = new Error("failure");
   let caught: unknown;
 
-  const faulty$ = new Observable<number>(() => {
+  const faulty = new Observable<number>(() => {
     throw errorObj;
   });
 
-  const subscription = faulty$.subscribe({
+  const subscription = faulty.subscribe({
     error: (e) => { caught = e; },
   });
 
@@ -194,10 +194,10 @@ test("Basic subscription example calls start, next, complete in order", () => {
 
 test("Pull‐with‐strategy example yields all values with backpressure", async () => {
   // from docs: Observable.from([1,2,3,4,5]).pull({ highWaterMark: 2 })
-  const nums$ = Observable.from([1, 2, 3, 4, 5]);
+  const nums = Observable.from([1, 2, 3, 4, 5]);
   const pulled: number[] = [];
 
-  for await (const n of nums$.pull({ strategy: { highWaterMark: 2 } })) {
+  for await (const n of nums.pull({ strategy: { highWaterMark: 2 } })) {
     pulled.push(n);
   }
 
@@ -225,9 +225,9 @@ test("Simple async-iteration example works", async () => {
 
 test("Pull with highWaterMark strategy example works", async () => {
   const pulled: number[] = [];
-  const nums$ = Observable.from([1, 2, 3, 4, 5]);
+  const nums = Observable.from([1, 2, 3, 4, 5]);
 
-  for await (const n of nums$.pull({ strategy: { highWaterMark: 2 } })) {
+  for await (const n of nums.pull({ strategy: { highWaterMark: 2 } })) {
     pulled.push(n);
   }
 
