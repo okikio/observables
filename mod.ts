@@ -30,36 +30,36 @@
  * ### Creation
  * ```ts
  * // From scratch
- * const timer$ = new Observable(observer => {
+ * const timer = new Observable(observer => {
  *   const id = setInterval(() => observer.next(Date.now()), 1000);
  *   return () => clearInterval(id);
  * });
  *
  * // From values
- * const numbers$ = Observable.of(1, 2, 3, 4, 5);
+ * const numbers = Observable.of(1, 2, 3, 4, 5);
  *
  * // From iterables/promises
- * const data$ = Observable.from(fetch('/api/data'));
- * const items$ = Observable.from([1, 2, 3]);
+ * const data = Observable.from(fetch('/api/data'));
+ * const items = Observable.from([1, 2, 3]);
  * ```
  *
  * ### Consumption
  * ```ts
  * // Push-based (callbacks)
- * using subscription = timer$.subscribe({
+ * using subscription = timer.subscribe({
  *   next: time => console.log('Time:', time),
  *   error: err => console.error('Error:', err),
  *   complete: () => console.log('Done')
  * });
  *
  * // Pull-based (async iteration)
- * for await (const time of timer$) {
+ * for await (const time of timer) {
  *   console.log('Time:', time);
  *   if (shouldStop) break; // Auto-cleanup
  * }
  *
  * // Pull with backpressure control
- * for await (const item of data$.pull({ strategy: { highWaterMark: 5 } })) {
+ * for await (const item of data.pull({ strategy: { highWaterMark: 5 } })) {
  *   await processSlowly(item); // Producer pauses when buffer fills
  * }
  * ```
@@ -73,14 +73,14 @@
  * ```ts
  * import { pipe, map, filter, take } from './helpers/mod.ts';
  *
- * const result$ = pipe(
+ * const result = pipe(
  *   Observable.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
  *   filter(x => x % 2 === 0),     // Keep even numbers: 2, 4, 6, 8, 10
  *   map(x => x * 10),             // Multiply by 10: 20, 40, 60, 80, 100
  *   take(3)                       // Take first 3: 20, 40, 60
  * );
  *
- * result$.subscribe(x => console.log(x)); // 20, 40, 60
+ * result.subscribe(x => console.log(x)); // 20, 40, 60
  * ```
  *
  * ### Operator Categories
@@ -110,7 +110,7 @@
  * **Conditional Operators**
  * - `every(predicate)` – Test if all values pass
  * - `some(predicate)` – Test if any value passes
- * - `takeUntil(notifier$)` – Stop when notifier emits
+ * - `takeUntil(notifier)` – Stop when notifier emits
  *
  * **Utility Operators**
  * - `tap(fn)` – Side effects without modification
@@ -122,8 +122,8 @@
  * ```ts
  * import { pipe, switchMap, map, filter, take } from './helpers/mod.ts';
  *
- * const searchResults$ = pipe(
- *   searchInput$,
+ * const searchResults = pipe(
+ *   searchInput,
  *   debounce(300),                    // Wait for typing pause
  *   filter(query => query.length > 2), // Skip short queries
  *   switchMap(query =>                // Cancel previous searches
@@ -137,8 +137,8 @@
  *
  * **Real-time Data Processing**
  * ```ts
- * const processedStream$ = pipe(
- *   webSocketMessages$,
+ * const processedStream = pipe(
+ *   webSocketMessages,
  *   map(msg => JSON.parse(msg.data)),
  *   filter(data => data.type === 'metric'),
  *   scan((acc, data) => ({
@@ -153,8 +153,8 @@
  *
  * **Complex Async Operations**
  * ```ts
- * const batchProcessor$ = pipe(
- *   dataStream$,
+ * const batchProcessor = pipe(
+ *   dataStream,
  *   batch(50),                        // Process in batches of 50
  *   mergeMap(batch =>                 // Process up to 3 batches concurrently
  *     pipe(
@@ -176,10 +176,10 @@
  *
  * ```ts
  * // ✅ Works - 9 operators
- * pipe(source$, op1, op2, op3, op4, op5, op6, op7, op8, op9);
+ * pipe(source, op1, op2, op3, op4, op5, op6, op7, op8, op9);
  *
  * // ❌ Too many - compilation error
- * pipe(source$, op1, op2, op3, op4, op5, op6, op7, op8, op9, op10);
+ * pipe(source, op1, op2, op3, op4, op5, op6, op7, op8, op9, op10);
  *
  * // ✅ Solution - use compose() to group operators
  * const processData = compose(
@@ -194,7 +194,7 @@
  *   tap(x => console.log(x))
  * );
  *
- * pipe(source$, processData, formatOutput);
+ * pipe(source, processData, formatOutput);
  * ```
  *
  * ### Custom Operators
@@ -228,8 +228,8 @@
  * }
  *
  * // Usage
- * const smoothed$ = pipe(
- *   noisyData$,
+ * const smoothed = pipe(
+ *   noisyData,
  *   movingAverage(5),
  *   double()
  * );
@@ -349,8 +349,8 @@
  * import { Observable, pipe, map, filter, take, debounce } from './mod.ts';
  *
  * // Process user search input
- * const searchResults$ = pipe(
- *   userInput$,
+ * const searchResults = pipe(
+ *   userInput,
  *   debounce(300),                          // Wait for typing pause
  *   filter(query => query.length > 2),     // Skip short queries  
  *   map(query => query.toLowerCase()),      // Normalize
@@ -361,7 +361,7 @@
  *   take(10)                                // Limit results
  * );
  *
- * searchResults$.subscribe({
+ * searchResults.subscribe({
  *   next: results => updateUI(results),
  *   error: err => showError(err)
  * });
@@ -372,8 +372,8 @@
  * import { Observable, pipe, batch, mergeMap, scan, throttle } from './mod.ts';
  *
  * // Real-time analytics processing
- * const analytics$ = pipe(
- *   rawEvents$,
+ * const analytics = pipe(
+ *   rawEvents,
  *   filter(event => event.type === 'user_action'),
  *   batch(100),                           // Process in batches
  *   mergeMap(batch =>                     // Process up to 3 batches concurrently
@@ -501,7 +501,7 @@
  * });
  *
  * // Quick console probe with operators
- * const debugged$ = pipe(
+ * const debugged = pipe(
  *   obs,
  *   tap(v => console.log("[DEBUG]", v)),
  *   map(v => v * 2),
