@@ -53,14 +53,14 @@ import { toStream } from "./utils.ts";
 export function pipe<T, A>(
   source: SpecObservable<T>,
   op1: Operator<T, A>
-): SpecObservable<A>;
+): Observable<A>;
 
 // Overload 2: Two operators
 export function pipe<T, A, B>(
   source: SpecObservable<T>,
   op1: Operator<T, A>,
   op2: Operator<A, B>
-): SpecObservable<B>;
+): Observable<B>;
 
 // Overload 3: Three operators
 export function pipe<T, A, B, C>(
@@ -68,7 +68,7 @@ export function pipe<T, A, B, C>(
   op1: Operator<T, A>,
   op2: Operator<A, B>,
   op3: Operator<B, C>
-): SpecObservable<C>;
+): Observable<C>;
 
 // Overload 4: Four operators
 export function pipe<T, A, B, C, D>(
@@ -77,7 +77,7 @@ export function pipe<T, A, B, C, D>(
   op2: Operator<A, B>,
   op3: Operator<B, C>,
   op4: Operator<C, D>
-): SpecObservable<D>;
+): Observable<D>;
 
 // Overload 5: Five operators
 export function pipe<T, A, B, C, D, E>(
@@ -87,7 +87,7 @@ export function pipe<T, A, B, C, D, E>(
   op3: Operator<B, C>,
   op4: Operator<C, D>,
   op5: Operator<D, E>
-): SpecObservable<E>;
+): Observable<E>;
 
 // Overload 6: Six operators
 export function pipe<T, A, B, C, D, E, F>(
@@ -98,7 +98,7 @@ export function pipe<T, A, B, C, D, E, F>(
   op4: Operator<C, D>,
   op5: Operator<D, E>,
   op6: Operator<E, F>
-): SpecObservable<F>;
+): Observable<F>;
 
 // Overload 7: Seven operators
 export function pipe<T, A, B, C, D, E, F, G>(
@@ -110,7 +110,7 @@ export function pipe<T, A, B, C, D, E, F, G>(
   op5: Operator<D, E>,
   op6: Operator<E, F>,
   op7: Operator<F, G>
-): SpecObservable<G>;
+): Observable<G>;
 
 // Overload 8: Eight operators
 export function pipe<T, A, B, C, D, E, F, G, H>(
@@ -123,7 +123,7 @@ export function pipe<T, A, B, C, D, E, F, G, H>(
   op6: Operator<E, F>,
   op7: Operator<F, G>,
   op8: Operator<G, H>
-): SpecObservable<H>;
+): Observable<H>;
 
 // Overload 9: Nine operators
 export function pipe<T, A, B, C, D, E, F, G, H, I>(
@@ -137,13 +137,13 @@ export function pipe<T, A, B, C, D, E, F, G, H, I>(
   op7: Operator<F, G>,
   op8: Operator<G, H>,
   op9: Operator<H, I>
-): SpecObservable<I>;
+): Observable<I>;
 
 // Implementation
 export function pipe<T, R>(
   source: SpecObservable<T>,
   ...operators: Array<Operator<unknown, unknown>>
-): SpecObservable<R> {
+): Observable<R> {
   // Error if too many operators
   if (operators.length > 9) {
     throw new Error('pipe: Too many operators (maximum 9). Use compose to group operators.');
@@ -167,12 +167,12 @@ export function pipe<T, R>(
             `pipe:operator[${i}]`
           )
         ])
-      ) as SpecObservable<R>;
+      ) as Observable<R>;
     }
   }
 
   // Convert the resulting ReadableStream back to an Observable
-  return Observable.from(stream) as SpecObservable<R>;
+  return Observable.from(stream) as Observable<R>;
 }
 
 /**

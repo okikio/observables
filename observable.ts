@@ -303,6 +303,12 @@ interface StateMap<T> {
 
   /** Function or object returned by subscriber; used for resource cleanup */
   cleanup: Teardown;
+
+  /** AbortSignal's abort event handler */
+  abortHandler?: (() => void) | null;
+
+  /** AbortSignal */
+  signal?: AbortSignal | null;
 }
 
 /**
@@ -313,13 +319,15 @@ interface StateMap<T> {
  * 2. Let the garbage collector automatically clean up entries when subscriptions are no longer referenced
  * 3. Hide implementation details from users
  */
-const SubscriptionStateMap = new WeakMap<Subscription, StateMap<unknown>>()
+const SubscriptionStateMap = new WeakMap<Subscription, StateMap<unknown>>();
+
 /**
  * Check if a subscription is closed.
  * All code paths that need to verify closed state use this function,
  * ensuring consistent behavior.
  * 
  * @returns True if subscription is closed, unsubscribed, or invalid
+ * @internal
  */
 function isClosed(subscription: Subscription): boolean {
   return SubscriptionStateMap.get(subscription)?.closed ?? true;
@@ -338,8 +346,9 @@ function isClosed(subscription: Subscription): boolean {
  * - Async cleanup contexts (Symbol.asyncDispose)
  * 
  * @throws TypeError if observer methods are present but not functions
+ * @internal
  */
-function createSubscription<T>(observer: Observer<T>): Subscription {
+function createSubscription<T>(observer: Observer<T>, opts?: { signal?: AbortSignal } | null): Subscription {
   // Observer's methods should be functions if they exist
   if (observer.next !== undefined && typeof observer.next !== 'function') {
     throw new TypeError('Observer.next must be a function');
@@ -396,11 +405,17 @@ function createSubscription<T>(observer: Observer<T>): Subscription {
     }
   };
 
+  // Adds support for unsubscribing via AbortSignals
+  const abortHandler = () => subscription.unsubscribe();
+  opts?.signal?.addEventListener?.("abort", abortHandler, { once: true });
+
   // Initialize shared state
   SubscriptionStateMap.set(subscription, {
     closed: false,
     observer,
-    cleanup: null
+    cleanup: null,
+    abortHandler,
+    signal: opts?.signal ?? null,
   });
 
   return subscription;
@@ -431,12 +446,16 @@ function closeSubscription(subscription: Subscription): void {
   // Mark closed first
   state.closed = true;
 
-  // Cache cleanup and observer before clearing
+  // Cache cleanup, abort signal and the abort handler before clearing
   let cleanup = state.cleanup;
+  let signal = state.signal;
+  let abortHandler = state.abortHandler;
 
   // Clear references first
   state.cleanup = null;
   state.observer = null;
+  state.signal = null;
+  state.abortHandler = null;
 
   // This conditional check runs synchronously
   try {
@@ -444,7 +463,13 @@ function closeSubscription(subscription: Subscription): void {
   } finally {
     // Ensure WeakMap entry is deleted even if cleanup throws
     SubscriptionStateMap.delete(subscription);
+    if (abortHandler) {
+      signal?.removeEventListener?.("abort", abortHandler);
+    }
+
     cleanup = null;
+    signal = null;
+    abortHandler = null;
   }
 }
 
@@ -461,6 +486,7 @@ function closeSubscription(subscription: Subscription): void {
  * them from disrupting the unsubscribe flow.
  * 
  * @param cleanup - Function or object to perform cleanup
+ * @internal
  */
 function cleanupSubscription(cleanup: Teardown) {
   let temp = cleanup;
@@ -600,13 +626,20 @@ export class SubscriptionObserver<T> {
    */
   next(value: T) {
     if (this.closed) return;
-    if (!this.#observer || typeof this.#observer?.next !== 'function') return;
+
+    // Fast-path optimization to avoid long request chains
+    const observer = this.#observer;
+    if (!observer) return;
+
+    const nextFn = observer.next;
+    if (typeof nextFn !== 'function') return;
 
     try {
-      this.#observer.next.call(this.#observer, value);
+      nextFn.call(observer, value);
     } catch (err) {
-      if (typeof this.#observer?.error === "function") {
-        try { this.#observer.error.call(this.#observer, err); }
+      const errorFn = observer.error;
+      if (typeof errorFn === "function") {
+        try { errorFn.call(observer, err); }
         catch (err) { queueMicrotask(() => { throw err; }); }
       }
 
@@ -667,19 +700,21 @@ export class SubscriptionObserver<T> {
    * }
    * ```
    * 
-   * @see {@link SubscriptionObserver.next | Review the error propagation policy in `next()` on how errors propagate, the behaviour is not obvious on first glance.}
+   * > Note: {@link SubscriptionObserver.next | Review the error propagation policy in `next()` on how errors propagate, the behaviour is not obvious on first glance.}
    */
   error(err: unknown) {
     if (this.closed) return;
-    if (this.#observer && typeof this.#observer?.error === 'function') {
-      try { this.#observer.error.call(this.#observer, err); }
+
+    const observer = this.#observer;
+    if (observer && typeof observer?.error === 'function') {
+      try { observer.error.call(observer, err); }
       catch (innerErr) { queueMicrotask(() => { throw innerErr; }); }
     }
 
     // No error handler, delegate to host
     else queueMicrotask(() => { throw err; });
 
-    try { 
+    try {
       if (this.#subscription && typeof this.#subscription?.unsubscribe === 'function') {
         const sub = this.#subscription;
         this.#subscription = null; // Clear reference first
@@ -709,16 +744,18 @@ export class SubscriptionObserver<T> {
    * observer.complete();  // Terminates the subscription normally
    * ```
    * 
-   * @see {@link SubscriptionObserver.next | Review the error propagation policy in `next()` on how errors propagate, the behaviour is not obvious on first glance.}
+   * > Note: {@link SubscriptionObserver.next | Review the error propagation policy in `next()` on how errors propagate, the behaviour is not obvious on first glance.}
    */
   complete() {
     if (this.closed) return;
-    if (this.#observer && typeof this.#observer?.complete === "function") {
+
+    const observer = this.#observer;
+    if (observer && typeof observer?.complete === "function") {
       try {
-        this.#observer.complete.call(this.#observer);
+        observer.complete.call(observer);
       } catch (err) {
-        if (typeof this.#observer?.error === "function") {
-          try { this.#observer.error.call(this.#observer, err); }
+        if (typeof observer?.error === "function") {
+          try { observer.error.call(observer, err); }
           catch (innerErr) { queueMicrotask(() => { throw innerErr; }); }
         }
 
@@ -894,6 +931,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * 3. Explicitly calling `unsubscribe()` when no longer needed
    * 
    * @param observer - Object with next/error/complete callbacks
+   * @param opts.signal - Optional AbortSignal to close subscription
    * @returns Subscription object that can be used to cancel the subscription
    * 
    * @example Observer object
@@ -926,7 +964,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * );
    * ```
    */
-  subscribe(observer: Observer<T>): Subscription;
+  subscribe(observer: Observer<T>, opts?: { signal?: AbortSignal }): Subscription;
 
   /**
    * Subscribes to this Observable with callback functions.
@@ -965,6 +1003,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * @param next - Function to handle each emitted value
    * @param error - Optional function to handle errors
    * @param complete - Optional function to handle completion
+   * @param opts.signal - Optional AbortSignal to close subscription
    * @returns Subscription object that can be used to cancel the subscription
    * 
    * @example
@@ -997,7 +1036,8 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
   subscribe(
     next: (value: T) => void,
     error?: (e: unknown) => void,
-    complete?: () => void
+    complete?: () => void,
+    opts?: { signal?: AbortSignal },
   ): Subscription;
 
   /**
@@ -1005,8 +1045,9 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    */
   subscribe(
     observerOrNext: Observer<T> | ((value: T) => void),
-    error?: (e: unknown) => void,
-    complete?: () => void
+    errorOrOpts?: ((e: unknown) => void) | { signal?: AbortSignal },
+    complete?: () => void, 
+    _opts?: { signal?: AbortSignal }
   ): Subscription {
     // Check for invalid this context
     if (this === null || this === undefined) {
@@ -1016,17 +1057,19 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
     /* -------------------------------------------------------------------
      * 1.  Normalise the observer – mirrors spec step 4.
      * ------------------------------------------------------------------- */
-    const observer: Observer<T> | null =
+    const observer: Observer<T> | null = (
       typeof observerOrNext === 'function'
-        ? { next: observerOrNext, error, complete }
-        : observerOrNext && typeof observerOrNext === 'object'
-          ? observerOrNext
-          : {};           // ← spec-compliant fallback for null / primitives
+        ? { next: observerOrNext, error: errorOrOpts as (e: unknown) => void, complete }
+        : observerOrNext 
+    ) ?? {}; // ← spec-compliant fallback for null / primitives           
+    
+    // Additional options to pass along AbortSignal (part of the WCIG Observables Spec., thought to implement it for convinence reasons)
+    const opts = (typeof observerOrNext === 'function' ? _opts : errorOrOpts as typeof _opts) ?? {};
 
     /* -------------------------------------------------------------------
      * 2.  Create the Subscription facade (spec: CreateSubscription()).
      * ------------------------------------------------------------------- */
-    const subscription: Subscription = createSubscription(observer);
+    const subscription: Subscription = createSubscription(observer, opts);
 
     /* -------------------------------------------------------------------
      * 3.  Wrap user observer so we enforce closed-state.
@@ -1713,4 +1756,3 @@ export async function* pull<T>(
     await stream.cancel();
   }
 }
-
