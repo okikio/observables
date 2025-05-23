@@ -147,3 +147,7 @@ deno.lock
 
 # Docs
 docs
+bun.lock
+pnpm.lock
+yarn.lock
+package-lock.json

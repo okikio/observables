@@ -3,7 +3,7 @@
 // Properly written micro-benchmarks following mitata best practices
 //
 
-import { bench, group, summary, run, do_not_optimize } from "npm:mitata";
+import { bench, group, summary, run, do_not_optimize } from "mitata";
 
 // Helper to prevent optimizations
 const blackhole = (x: any) => do_not_optimize(x);
@@ -724,7 +724,8 @@ summary(() => {
 
     bench("class state", function* () {
       class Counter {
-        constructor(public count: number) { }
+        public count!: number;
+        constructor(count: number) { this.count = count; }
         increment() { this.count++; }
         get() { return this.count; }
       }
