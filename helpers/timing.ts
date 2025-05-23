@@ -4,7 +4,7 @@ import { createStatefulOperator } from "./utils.ts";
 /**
  * Delays values emitted by the source stream by a specified timespan.
  * 
- * @remarks
+ * 
  * The `delay` operator shifts all emissions from the source stream by a
  * specified time duration. Each value is emitted after the specified delay,
  * preserving the relative timing between values.
@@ -76,7 +76,7 @@ export function delay<T>(ms: number): Operator<T, T> {
  * Debounces the source stream, emitting only the most recent value after a specified
  * period of silence.
  * 
- * @remarks
+ * 
  * The `debounce` operator filters out values that are followed by newer values within
  * the specified duration. Only when the stream is silent for the specified duration
  * will the most recent value be emitted.
@@ -164,7 +164,7 @@ export function debounce<T>(ms: number): Operator<T, T> {
 /**
  * Throttles the source stream, emitting at most one value per specified duration.
  * 
- * @remarks
+ * 
  * The `throttle` operator limits the rate at which values from the source stream
  * are emitted. It emits the first value, then ignores subsequent values for the
  * specified duration.

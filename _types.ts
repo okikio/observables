@@ -5,7 +5,7 @@ import type { Symbol } from "./symbol.ts";
 /**
  * Enhanced Observer interface for our implementation.
  * 
- * @remarks
+ * 
  * This extends the minimal SpecObserver with additional capabilities and
  * type-safety for our specific Observable implementation. It provides:
  * 
@@ -39,7 +39,7 @@ export interface Observer<T> extends SpecObserver<T> {
   /**
    * Called immediately after subscribing with our enhanced Subscription type.
    * 
-   * @remarks
+   * 
    * This override ensures the subscription passed to start() is our
    * enhanced Subscription type with additional properties and methods,
    * not just the minimal SpecSubscription.
@@ -53,7 +53,7 @@ export interface Observer<T> extends SpecObserver<T> {
 /**
  * Enhanced Subscription interface with additional features.
  * 
- * @remarks
+ * 
  * Extends the minimal SpecSubscription with:
  * 1. A `closed` property to check subscription state
  * 2. Support for `using` blocks via Symbol.dispose
@@ -87,7 +87,7 @@ export interface Subscription extends SpecSubscription, Disposable, AsyncDisposa
   /**
    * Indicates whether this subscription is closed.
    * 
-   * @remarks
+   * 
    * A subscription becomes closed when:
    * - `unsubscribe()` is called explicitly
    * - The Observable calls observer.error()
@@ -110,7 +110,7 @@ export interface Subscription extends SpecSubscription, Disposable, AsyncDisposa
   /**
    * Enables automatic cleanup in `using` blocks.
    * 
-   * @remarks
+   * 
    * This method enables subscriptions to work with TC39's `using` statement,
    * providing automatic resource cleanup at block exit. When a subscription
    * is used with `using`, it will be automatically unsubscribed when the
@@ -129,7 +129,7 @@ export interface Subscription extends SpecSubscription, Disposable, AsyncDisposa
   /**
    * Enables automatic cleanup in `await using` blocks.
    * 
-   * @remarks
+   * 
    * This method enables subscriptions to work with TC39's `await using`
    * statement, providing automatic cleanup for async contexts. When a
    * subscription is used with `await using`, it will be automatically
@@ -150,7 +150,7 @@ export interface Subscription extends SpecSubscription, Disposable, AsyncDisposa
   /**
    * Provides a standard string tag for the object.
    * 
-   * @remarks
+   * 
    * Used by Object.prototype.toString to identify this object type.
    * This ensures that `Object.prototype.toString.call(subscription)`
    * returns "[object Subscription]".

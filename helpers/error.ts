@@ -9,7 +9,7 @@
  * Represents an error that occurred during Observable operations,
  * with the ability to aggregate multiple underlying errors.
  * 
- * @remarks
+ * 
  * This class extends AggregateError to provide additional context about
  * where and how errors occurred in an Observable pipeline. It can collect
  * multiple errors that occur during a chain of operations while preserving

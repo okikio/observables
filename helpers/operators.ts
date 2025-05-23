@@ -5,7 +5,7 @@ import { createOperator, createStatefulOperator } from "./utils.ts";
 /**
  * Transforms each value emitted by the source stream.
  * 
- * @remarks
+ * 
  * The `map` operator applies a projection function to each chunk from the source
  * stream and emits the resulting values. This is similar to Array.prototype.map
  * but operates on streams.
@@ -46,7 +46,7 @@ export function map<T, R>(project: (value: T, index: number) => R): Operator<T, 
 /**
  * Filters values emitted by the source stream based on a predicate function.
  * 
- * @remarks
+ * 
  * The `filter` operator only emits values that pass the specified predicate test.
  * Values that don't pass the test are silently ignored and not emitted.
  * 
@@ -86,7 +86,7 @@ export function filter<T>(predicate: (value: T, index: number) => boolean): Oper
 /**
  * Limits the stream to emit at most `count` values.
  * 
- * @remarks
+ * 
  * The `take` operator returns a stream that emits only the first `count`
  * values emitted by the source stream. Once `count` values are emitted,
  * it completes the stream.
@@ -127,7 +127,7 @@ export function take<T>(count: number): Operator<T, T | ObservableError> {
 /**
  * Skips the first `count` values emitted by the source stream.
  * 
- * @remarks
+ * 
  * The `drop` operator (also known as `skip` in some libraries) returns a
  * stream that skips the first `count` items emitted by the source stream
  * and emits the remaining items.
@@ -165,7 +165,7 @@ export function drop<T>(count: number): Operator<T, T | ObservableError> {
  * Transforms each value from the source stream with an accumulator function,
  * emitting each intermediate result.
  * 
- * @remarks
+ * 
  * The `scan` operator applies an accumulator function to each value from the source
  * and emits each intermediate accumulated value. This is useful for maintaining
  * and emitting state over time.
@@ -224,7 +224,7 @@ export function scan<T, R>(
  * Collects all values from the source stream and emits them as a single array
  * when the source completes.
  * 
- * @remarks
+ * 
  * The `toArray` operator buffers all values emitted by the source stream
  * and emits a single array containing those values when the source completes.
  * 
@@ -261,7 +261,7 @@ export function toArray<T>(): Operator<T, T[]> {
 /**
  * Batches values from the source stream into arrays of the specified size.
  * 
- * @remarks
+ * 
  * The `batch` operator collects values from the source stream into arrays
  * of the specified size before emitting them. If the source completes before
  * a batch is filled, the remaining values are emitted as a smaller batch.
@@ -311,7 +311,7 @@ export function batch<T>(size: number): Operator<T, T[]> {
  * Performs an action for each value emitted by the source stream without
  * modifying the values.
  * 
- * @remarks
+ * 
  * The `tap` operator lets you perform side effects for each emission on the source
  * stream, without modifying the emissions themselves. This is useful for
  * debugging, logging, or triggering side effects.

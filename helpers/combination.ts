@@ -13,7 +13,7 @@ import { pull } from "../observable.ts";
  * Transforms each value from the source Observable into an Observable, then
  * flattens the emissions from these inner Observables into a single Observable.
  * 
- * @remarks
+ * 
  * The `mergeMap` operator maps each value to an Observable, subscribes to them, 
  * and emits their values to the output Observable. It maintains multiple active 
  * inner subscriptions concurrently.
@@ -173,7 +173,7 @@ export function mergeMap<T, R>(
  * Transforms each value from the source Observable to an Observable,
  * then projects values from these inner Observables in sequence.
  * 
- * @remarks
+ * 
  * The `concatMap` operator is similar to mergeMap, but instead of handling
  * multiple inner Observables concurrently, it subscribes to them one at a time,
  * in order. Only when an inner Observable completes will the next one be subscribed.
@@ -212,7 +212,7 @@ export function concatMap<T, R>(
  * flattens the emissions from the most recent inner Observable into a single Observable,
  * cancelling previous inner Observables.
  * 
- * @remarks
+ * 
  * The `switchMap` operator is a key transformation operator that combines mapping and flattening
  * with an important switching behavior: when a new value arrives from the source, any previous
  * inner Observable is cancelled before subscribing to the new one.
@@ -230,8 +230,7 @@ export function concatMap<T, R>(
  * @param project - Function that maps a source value to an Observable
  * @returns An operator function that maps and switches between values
  * 
- * @example
- * Basic search implementation:
+ * @example Basic search
  * ```ts
  * import { pipe, switchMap, debounceTime } from "./helpers/mod.ts";
  * import { Observable } from "./observable.ts";

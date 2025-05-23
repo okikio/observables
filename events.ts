@@ -15,7 +15,7 @@ import { Symbol } from "./symbol.ts";
  *
  * @typeParam T - The type of values emitted by this bus.
  *
- * @remarks
+ * 
  * - Calling {@link emit} delivers the value to all active subscribers.
  * - Calling {@link close} completes all subscribers and prevents further emissions.
  * - Implements both {@link Symbol.dispose} and {@link Symbol.asyncDispose}
@@ -51,7 +51,7 @@ export class EventBus<T> extends Observable<T> {
   /**
    * Construct a new EventBus instance.
    *
-   * @remarks
+   * 
    * The base {@link Observable} constructor is invoked with the subscriber
    * registration logic, adding and removing subscribers to the internal set.
    */
@@ -107,7 +107,7 @@ export class EventBus<T> extends Observable<T> {
   /**
    * Synchronous disposal method (for `using` syntax).
    *
-   * @remarks
+   * 
    * Alias for {@link close}.
    */
   [Symbol.dispose](): void {
@@ -117,7 +117,7 @@ export class EventBus<T> extends Observable<T> {
   /**
    * Asynchronous disposal method.
    *
-   * @remarks
+   * 
    * Alias for {@link close}.
    */
   async [Symbol.asyncDispose](): Promise<void> {
@@ -128,7 +128,7 @@ export class EventBus<T> extends Observable<T> {
 /**
  * A mapping from event names (keys) to their payload types (values).
  *
- * Example:
+ * @example
  * ```ts
  * interface MyEvents {
  *   login: { userId: string };

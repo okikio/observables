@@ -13,7 +13,7 @@ import { toStream } from "./utils.ts";
  * Takes an Observable as input and returns an Observable as output, but uses
  * streams internally for efficiency.
  * 
- * @remarks
+ * 
  * This function takes an Observable as input and applies a series of operators
  * to transform it. Due to TypeScript's recursion limits, it's limited to
  * 9 operators. For more complex pipelines, use the `compose` operator to group
@@ -178,7 +178,7 @@ export function pipe<T, R>(
 /**
  * Composes multiple stream operators into a single stream operator
  * 
- * @remarks
+ * 
  * This function combines multiple stream operators into a single operator,
  * which is useful for grouping operators together when you need more than 9
  * operators in a pipeline.

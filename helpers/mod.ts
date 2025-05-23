@@ -4,7 +4,7 @@
  * 
  * @module
  * 
- * @remarks
+ * 
  * This library provides a collection of operators for working with Observables.
  * It enables functional composition of Observable transformations using the `pipe` and
  * `compose` functions, with each operator implemented using Web Streams for efficiency.
@@ -26,6 +26,7 @@
  * 
  * ## Basic Usage
  * 
+ * @example
  * ```ts
  * import { pipe, map, filter, take } from "./helpers/mod.ts";
  * import { Observable } from "./observable.ts";
@@ -58,6 +59,7 @@
  * 
  * For more complex pipelines, the `compose` function helps you group operators:
  * 
+ * @example
  * ```ts
  * import { pipe, compose, map, filter, take, tap } from "./helpers/mod.ts";
  * 

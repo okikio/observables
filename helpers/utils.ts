@@ -52,7 +52,7 @@ export interface TransformOptions<T, R> {
 /**
  * Creates a stream operator with the specified transformation logic
  * 
- * @remarks
+ * 
  * This is a utility function that simplifies the creation of stream operators.
  * It handles the details of creating and configuring a TransformStream with
  * the provided transformation logic.
@@ -216,7 +216,7 @@ export interface StatefulOperatorOptions<T, R, S> {
 /**
  * Creates a stateful stream operator
  * 
- * @remarks
+ * 
  * This utility simplifies the creation of operators that need to maintain
  * state across chunks, such as `scan`, `reduce`, or `buffer`.
  * 
@@ -347,7 +347,7 @@ export function createStatefulOperator<T, R, S>(
 /**
  * Creates a ReadableStream from an iterable or async iterable
  * 
- * @remarks
+ * 
  * This utility function creates a ReadableStream from any iterable or async iterable,
  * such as arrays, generators, or custom iterables.
  * 

@@ -27,7 +27,7 @@
  *
  * ## Core Observable API
  *
- * ### Creation
+ * @example Creation
  * ```ts
  * // From scratch
  * const timer = new Observable(observer => {
@@ -43,7 +43,7 @@
  * const items = Observable.from([1, 2, 3]);
  * ```
  *
- * ### Consumption
+ * @example Consumption
  * ```ts
  * // Push-based (callbacks)
  * using subscription = timer.subscribe({
@@ -69,7 +69,7 @@
  * The operator library enables powerful functional composition patterns using the `pipe()` function.
  * All operators are **type-safe**, **tree-shakable**, and support **automatic backpressure**.
  *
- * ### Basic Transformation Pipeline
+ * @example Basic Transformation Pipeline
  * ```ts
  * import { pipe, map, filter, take } from './helpers/mod.ts';
  *
@@ -118,7 +118,7 @@
  *
  * ### Advanced Composition Patterns
  *
- * **HTTP Request with Retry Logic**
+ * @example HTTP Request with Retry Logic
  * ```ts
  * import { pipe, switchMap, map, filter, take } from './helpers/mod.ts';
  *
@@ -135,7 +135,7 @@
  * );
  * ```
  *
- * **Real-time Data Processing**
+ * @example Real-time Data Processing
  * ```ts
  * const processedStream = pipe(
  *   webSocketMessages,
@@ -151,7 +151,7 @@
  * );
  * ```
  *
- * **Complex Async Operations**
+ * @example Complex Async Operations
  * ```ts
  * const batchProcessor = pipe(
  *   dataStream,
@@ -170,11 +170,9 @@
  * );
  * ```
  *
- * ### Operator Composition Limits & Solutions
- *
- * Due to TypeScript recursion limits, `pipe()` supports up to 9 operators:
- *
+ * @example Operator Composition Limits & Solutions
  * ```ts
+ * // Due to TypeScript recursion limits, `pipe()` supports up to 9 operators: 
  * // ✅ Works - 9 operators
  * pipe(source, op1, op2, op3, op4, op5, op6, op7, op8, op9);
  *
@@ -197,13 +195,11 @@
  * pipe(source, processData, formatOutput);
  * ```
  *
- * ### Custom Operators
- *
- * Create reusable operators with the utility functions:
- *
+ * @example Custom Operators
  * ```ts
  * import { createOperator, createStatefulOperator } from './helpers/mod.ts';
  *
+ * // Create reusable operators with the utility functions:
  * // Stateless operator
  * function double<T extends number>() {
  *   return createOperator<T, T>({

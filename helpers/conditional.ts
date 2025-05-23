@@ -5,7 +5,7 @@ import { createStatefulOperator } from "./utils.ts";
 /**
  * Tests whether all values emitted by the source stream satisfy a predicate.
  * 
- * @remarks
+ * 
  * The `every` operator creates a stream that emits a single boolean value: 
  * - `true` if all values from the source stream pass the predicate function
  * - `false` as soon as any value fails the predicate
@@ -59,7 +59,7 @@ export function every<T>(predicate: (value: T, index: number) => boolean): Opera
 /**
  * Tests whether any value emitted by the source stream satisfies a predicate.
  * 
- * @remarks
+ * 
  * The `some` operator creates a stream that emits a single boolean value:
  * - `true` as soon as any value from the source stream passes the predicate
  * - `false` if the source completes without any value passing the predicate
@@ -113,7 +113,7 @@ export function some<T>(predicate: (value: T, index: number) => boolean): Operat
 /**
  * Emits the first value from the source stream that satisfies a predicate.
  * 
- * @remarks
+ * 
  * The `find` operator searches for an element in the stream that matches
  * the specified predicate function. It emits the first value that satisfies
  * the predicate, then completes without checking further values.

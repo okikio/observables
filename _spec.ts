@@ -5,7 +5,7 @@ import type { Symbol } from "./symbol.ts";
 /**
  * Defines the minimal contract for subscribable objects in the Observable ecosystem.
  * 
- * @remarks
+ * 
  * ObservableProtocol is the core interface that all Observable-like objects must
  * implement. It represents the object returned by `[Symbol.observable]()` that 
  * consumers actually call `.subscribe()` on.
@@ -41,7 +41,7 @@ export interface ObservableProtocol<T> {
   /**
    * Subscribes to this Observable with an observer object.
    * 
-   * @remarks
+   * 
    * This method is the primary way to consume values from an Observable.
    * It begins the subscription process, connecting the consumer (observer)
    * to the producer, and returns a subscription object that can be used
@@ -57,7 +57,7 @@ export interface ObservableProtocol<T> {
   /**
    * Subscribes to this Observable with individual callback functions.
    * 
-   * @remarks
+   * 
    * This is a convenience overload that allows subscribing with individual
    * functions instead of an observer object. Internally, these callbacks
    * are wrapped into an observer object.
@@ -79,7 +79,7 @@ export interface ObservableProtocol<T> {
 /**
  * Represents a cancellable connection to an Observable.
  * 
- * @remarks
+ * 
  * A SpecSubscription is returned by the `subscribe` method and provides
  * a way to cancel the subscription, stopping the delivery of values and
  * releasing any resources associated with it.
@@ -101,7 +101,7 @@ export interface SpecSubscription {
   /**
    * Cancels the subscription and releases associated resources.
    * 
-   * @remarks
+   * 
    * When called:
    * - Execution of the Observable is stopped
    * - No further notifications are delivered to the observer
@@ -119,7 +119,7 @@ export interface SpecSubscription {
 /**
  * Defines a consumer of Observable notifications.
  * 
- * @remarks
+ * 
  * An Observer is an object with optional callback methods that receive
  * notifications from an Observable:
  * - `next`: Called for each value emitted by the Observable
@@ -157,7 +157,7 @@ export interface SpecObserver<T> {
   /**
    * Called immediately after subscription is established.
    * 
-   * @remarks
+   * 
    * This callback:
    * - Receives the subscription object as a parameter
    * - Runs before any other observer methods
@@ -175,7 +175,7 @@ export interface SpecObserver<T> {
   /**
    * Receives the next value in the sequence.
    * 
-   * @remarks
+   * 
    * This is the main data channel of an Observable. It:
    * - Is called zero or more times, once per emitted value
    * - Receives each value as its only parameter
@@ -192,7 +192,7 @@ export interface SpecObserver<T> {
   /**
    * Handles an error notification.
    * 
-   * @remarks
+   * 
    * This is called when:
    * - The Observable encounters an error during execution
    * - The observer's next or complete methods throw
@@ -212,7 +212,7 @@ export interface SpecObserver<T> {
   /**
    * Handles successful completion of the Observable.
    * 
-   * @remarks
+   * 
    * This is called when:
    * - The Observable has finished emitting values normally
    * - No more values will be emitted
@@ -232,7 +232,7 @@ export interface SpecObserver<T> {
 /**
  * Defines an object that can be converted to an Observable.
  * 
- * @remarks
+ * 
  * This interface represents anything that has a `[Symbol.observable]()` method,
  * making it interoperable with the Observable ecosystem. It's the TypeScript
  * equivalent of the TC39 proposal's "Observable-like" concept.
@@ -270,7 +270,7 @@ export interface SpecObservable<T> {
   /**
    * Returns an object that conforms to the ObservableProtocol.
    * 
-   * @remarks
+   * 
    * This method acts as a conversion point that transforms any object
    * into an Observable-like entity that can be subscribed to.
    * 

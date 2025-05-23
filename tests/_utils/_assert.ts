@@ -7,7 +7,7 @@ import { AssertionError } from "@std/assert/assertion-error";
  * Type parameter can be specified to ensure values under comparison have the same type.
  *
  * @example Usage
- * ```ts ignore
+ * ```ts
  * import { assertNotEquals } from "./_assert.ts";
  *
  * assertNotEquals(1, 2); // Doesn't throw

@@ -249,7 +249,7 @@ import { Symbol } from "./symbol.ts";
  * Teardown function returned by the *subscriber* when it needs to release
  * resources (DOM handlers, sockets…).
  *
- * @remarks
+ * 
  * A *teardown* function or object returned from the subscriber to release
  * resources when a subscription terminates.
  *
@@ -328,7 +328,7 @@ function isClosed(subscription: Subscription): boolean {
 /**
  * Creates a new Subscription object with properly initialized state.
  * 
- * @remarks
+ * 
  * We validate observer methods early, ensuring type errors are caught
  * at subscription time rather than during event emission.
  * 
@@ -360,7 +360,7 @@ function createSubscription<T>(observer: Observer<T>): Subscription {
     /**
      * Returns whether this subscription is closed.
      * 
-     * @remarks
+     * 
      * A subscription becomes closed after:
      * - Explicit call to unsubscribe()
      * - Error notification
@@ -374,7 +374,7 @@ function createSubscription<T>(observer: Observer<T>): Subscription {
     /**
      * Cancels the subscription and releases resources.
      * 
-     * @remarks
+     * 
      * - Safe to call multiple times (idempotent)
      * - Synchronously performs cleanup
      * - Marks subscription as closed
@@ -409,7 +409,7 @@ function createSubscription<T>(observer: Observer<T>): Subscription {
 /**
  * Marks a subscription as closed and schedules necessary cleanup.
  * 
- * @remarks
+ * 
  * This is the centralized implementation for all subscription termination paths:
  * - Manual unsubscribe()
  * - Observer.error()
@@ -451,7 +451,7 @@ function closeSubscription(subscription: Subscription): void {
 /**
  * Handles the actual cleanup process for a subscription.
  * 
- * @remarks
+ * 
  * The spec allows three different types of cleanup values:
  * 1. Function: Called directly
  * 2. Object with unsubscribe method: unsubscribe() is called
@@ -487,7 +487,7 @@ function cleanupSubscription(cleanup: Teardown) {
 /**
  * Wraps an observer with key guarantees required by the Observable specification.
  * 
- * @remarks
+ * 
  * SubscriptionObserver is a critical component that ensures:
  * 
  * 1. The observer contract is honored correctly
@@ -505,7 +505,7 @@ export class SubscriptionObserver<T> {
   /**
    * Returns whether this observer's subscription is closed.
    * 
-   * @remarks
+   * 
    * Uses the single source of truth for closed state from SubscriptionStateMap.
    * This property is used by subscriber functions to check if they should
    * continue delivering events.
@@ -530,7 +530,7 @@ export class SubscriptionObserver<T> {
   /**
    * Retrieves the current observer, if available.
    * 
-   * @remarks
+   * 
    * - Returns null if subscription is closed or unavailable
    * - Accesses state via WeakMap to maintain single source of truth
    * - Used internally by next/error/complete methods
@@ -555,7 +555,7 @@ export class SubscriptionObserver<T> {
   /**
    * Delivers the next value to the observer if the subscription is open.
    * 
-   * @remarks
+   * 
    * This is typically the "hot path" in an Observable implementation,
    * as it's called for every emitted value. Key behaviors:
    * 
@@ -618,7 +618,7 @@ export class SubscriptionObserver<T> {
   /**
    * Delivers an error notification to the observer, then closes the subscription.
    * 
-   * @remarks
+   * 
    * Error is a terminal operation - after calling it:
    * 1. The subscription is immediately marked as closed
    * 2. Resources are released via unsubscribe()
@@ -632,11 +632,14 @@ export class SubscriptionObserver<T> {
    * > Note: Even for "silent" errors (no error handler), we still close
    * the subscription and report the error to the host.
    * 
-   * ## Important Timing Consideration
+   * ## 
    * 
+   * 
+   * @example Important Timing Consideration
    * When this method is called during the subscriber function execution (before it returns),
-   * there's a potential race condition with cleanup functions. Consider:
+   * there's a potential race condition with cleanup functions. 
    * 
+   * Consider:
    * ```ts
    * new Observable(observer => {
    *   observer.error(new Error()); // Triggers unsubscribe here
@@ -688,7 +691,7 @@ export class SubscriptionObserver<T> {
   /**
    * Signals successful completion of the observable sequence.
    * 
-   * @remarks
+   * 
    * Complete is a terminal operation - after calling it:
    * 1. The subscription is immediately marked as closed
    * 2. Resources are released via unsubscribe()
@@ -747,7 +750,7 @@ export class SubscriptionObserver<T> {
  * **What it is**: Like a "smart Promise" that can emit multiple values and provides 
  * unified patterns for resource management, error handling, and subscription lifecycle.
  * 
- * @remarks
+ * 
  * Observable is the central type in this library, representing a push-based
  * source of values that can be subscribed to. It delivers values to observers
  * and provides lifecycle guarantees around subscription and cleanup.
@@ -781,7 +784,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * **Important**: This just stores your function - nothing executes until `subscribe()` is called.
    * Think of it like writing a recipe vs actually cooking.
    * 
-   * @remarks
+   * 
    * The subscriber function is the heart of an Observable. It:
    * 1. Is called once per subscription (not at Observable creation time)
    * 2. Receives a SubscriptionObserver to send values through
@@ -851,7 +854,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
   /**
    * Returns this Observable (required for interoperability).
    * 
-   * @remarks
+   * 
    * This method implements the TC39 Symbol.observable protocol,
    * which allows foreign Observable implementations to recognize
    * and interoperate with this implementation.
@@ -863,7 +866,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
   /**
    * Subscribes to this Observable with an observer object.
    * 
-   * @remarks
+   * 
    * This method creates a subscription that:
    * 1. Executes the subscriber function to begin producing values
    * 2. Delivers those values to the observer's callbacks
@@ -928,7 +931,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
   /**
    * Subscribes to this Observable with callback functions.
    * 
-   * @remarks
+   * 
    * Convenience overload that wraps the callbacks in an Observer object.
    * See the documentation for the observer-based overload for details
    * on subscription behavior.
@@ -1118,7 +1121,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
   /**
    * Enables `for await ... of observable` syntax for direct async iteration.
    * 
-   * @remarks
+   * 
    * This method allows Observables to be used in any context that accepts an AsyncIterable,
    * implementing the "pull" mode of consuming an Observable. 
    * 
@@ -1149,7 +1152,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * **Why use this**: Control buffer size to prevent memory issues when producer is faster than consumer.
    * Uses ReadableStream internally for efficient buffering.
    * 
-   * @remarks
+   * 
    * This method provides more control over async iteration than the default
    * Symbol.asyncIterator implementation, allowing consumers to:
    * 
@@ -1202,7 +1205,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
   /**
    * Converts Promise, an iterable, async iterable, or Observable-like object to an Observable.
    * 
-   * @remarks
+   * 
    * This static method is a key part of the Observable interoperability mechanism,
    * handling multiple input types in a consistent way.
    * 
@@ -1257,7 +1260,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
   /**
    * Creates an Observable that synchronously emits the given values then completes.
    * 
-   * @remarks
+   * 
    * This is a convenience method for creating simple Observables that:
    * 1. Emit a fixed set of values synchronously
    * 2. Complete immediately after emitting all values
@@ -1289,7 +1292,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
   /**
    * Converts a Observable into an AsyncGenerator with backpressure control.
    * 
-   * @remarks
+   * 
    * This method provides more control over async iteration than the default
    * Symbol.asyncIterator implementation, allowing consumers to:
    * 
@@ -1327,7 +1330,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
 /**
  * Creates an Observable that synchronously emits the given values then completes.
  * 
- * @remarks
+ * 
  * This standalone function implements the Observable.of static method while
  * properly supporting subclassing. It's the Observable equivalent of:
  * - `Array.of()` for collections
@@ -1371,7 +1374,7 @@ export function of<T>(this: unknown, ...items: T[]): Observable<T> {
 /**
  * Converts an Observable-like, sync iterable, or async iterable into an Observable.
  * 
- * @remarks
+ * 
  * This is the standalone implementation of Observable.from, supporting:
  * - Objects with Symbol.observable (Observable-like)
  * - Regular iterables (arrays, Maps, Sets, generators)
@@ -1536,7 +1539,7 @@ export function from<T>(
 /**
  * Converts an Observable into an AsyncGenerator with backpressure control.
  * 
- * @remarks
+ * 
  * This function bridges the gap between push-based Observables and
  * pull-based async iteration, allowing consumers to:
  * 1. Process values at their own pace

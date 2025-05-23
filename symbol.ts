@@ -5,7 +5,7 @@
  * Extensions to the global Symbol constructor for interoperability with
  * Observable.
  * 
- * @remarks
+ * 
  * This interface extends the standard Symbol constructor with well-known
  * symbols needed for Observable interoperability and resource cleanup:
  * 
@@ -34,7 +34,7 @@ export interface SymbolConstructor
   /**
    * Well-known symbol for Observable interoperability.
    * 
-   * @remarks
+   * 
    * This symbol allows any object to define how it converts to an Observable.
    * Objects with a `[Symbol.observable]()` method can be passed directly to
    * `Observable.from()` and will be properly converted.
@@ -50,7 +50,7 @@ export interface SymbolConstructor
  * Provides a cross-platform Symbol implementation with Observable 
  * and resource management symbols.
  * 
- * @remarks
+ * 
  * This implementation:
  * 1. Uses the native Symbol if available
  * 2. Falls back to a polyfill if Symbol is not supported
@@ -71,7 +71,7 @@ export const Symbol: SymbolConstructor = (globalThis.Symbol ??
 /**
  * Adds Symbol.dispose if it doesn't exist natively.
  * 
- * @remarks
+ * 
  * This ensures Symbol.dispose is available for resource management,
  * even in environments that don't support it natively.
  */
@@ -91,7 +91,7 @@ if (
 /**
  * Adds Symbol.asyncDispose if it doesn't exist natively.
  * 
- * @remarks
+ * 
  * This ensures Symbol.asyncDispose is available for async resource
  * management, even in environments that don't support it natively.
  */
@@ -111,7 +111,7 @@ if (
 /**
  * Adds Symbol.observable if it doesn't exist natively.
  * 
- * @remarks
+ * 
  * This ensures Symbol.observable is available for Observable
  * interoperability, even in environments that don't support
  * it natively.
