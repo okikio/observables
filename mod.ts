@@ -21,7 +21,7 @@
  *   and it *always* runs once, even if the observable errors synchronously.
  * - **Back‑pressure helper** – `pull()` converts to an `AsyncGenerator` backed
  *   by `ReadableStream` so the producer slows down when the consumer lags.
- * - **Tiny surface** – <1 kB min+gzip of logic; treeshakes cleanly.
+ * - **Tiny surface** – <3 kB min+gzip of logic; treeshakes cleanly.
  * - **Rich operator library** – functional composition via `pipe()` with full
  *   type safety and backpressure support.
  *
