@@ -305,10 +305,7 @@ interface StateMap<T> {
   cleanup: Teardown;
 
   /** AbortSignal's abort event handler */
-  abortHandler?: (() => void) | null;
-
-  /** AbortSignal */
-  signal?: AbortSignal | null;
+  removeAbortHandler?: (() => void) | null;
 }
 
 /**
@@ -320,18 +317,6 @@ interface StateMap<T> {
  * 3. Hide implementation details from users
  */
 const SubscriptionStateMap = new WeakMap<Subscription, StateMap<unknown>>();
-
-/**
- * Check if a subscription is closed.
- * All code paths that need to verify closed state use this function,
- * ensuring consistent behavior.
- * 
- * @returns True if subscription is closed, unsubscribed, or invalid
- * @internal
- */
-function isClosed(subscription: Subscription): boolean {
-  return SubscriptionStateMap.get(subscription)?.closed ?? true;
-}
 
 /**
  * Creates a new Subscription object with properly initialized state.
@@ -360,6 +345,14 @@ function createSubscription<T>(observer: Observer<T>, opts?: { signal?: AbortSig
     throw new TypeError('Observer.complete must be a function');
   }
 
+  // Create a local statemap to speed up access during hot-paths
+  const stateMap: StateMap<T> = {
+    closed: false,
+    observer,
+    cleanup: null,
+    removeAbortHandler: null,
+  }
+
   /* -------------------------------------------------------------------
    * Create the Subscription facade (spec: CreateSubscription()).
    * ------------------------------------------------------------------- */
@@ -378,7 +371,7 @@ function createSubscription<T>(observer: Observer<T>, opts?: { signal?: AbortSig
      * Once closed, no further events will be delivered to the observer,
      * and resources associated with the subscription are released.
      */
-    get closed() { return isClosed(this) },
+    get closed() { return stateMap.closed },
 
     /**
      * Cancels the subscription and releases resources.
@@ -392,7 +385,7 @@ function createSubscription<T>(observer: Observer<T>, opts?: { signal?: AbortSig
      * This is the primary method for consumers to explicitly
      * terminate a subscription when they no longer need it.
      */
-    unsubscribe(): void { closeSubscription(this); },
+    unsubscribe(): void { closeSubscription(this, stateMap); },
 
     // Support `using` disposal for automatic resource management
     [Symbol.dispose]() {
@@ -407,17 +400,12 @@ function createSubscription<T>(observer: Observer<T>, opts?: { signal?: AbortSig
 
   // Adds support for unsubscribing via AbortSignals
   const abortHandler = () => subscription.unsubscribe();
+  const removeAbortHandler = () => opts?.signal?.removeEventListener("abort", abortHandler);
   opts?.signal?.addEventListener?.("abort", abortHandler, { once: true });
+  stateMap.removeAbortHandler = removeAbortHandler;
 
   // Initialize shared state
-  SubscriptionStateMap.set(subscription, {
-    closed: false,
-    observer,
-    cleanup: null,
-    abortHandler,
-    signal: opts?.signal ?? null,
-  });
-
+  SubscriptionStateMap.set(subscription, stateMap);
   return subscription;
 }
 
@@ -439,8 +427,8 @@ function createSubscription<T>(observer: Observer<T>, opts?: { signal?: AbortSig
  * @param subscription - The subscription to close
  * @internal
  */
-function closeSubscription(subscription: Subscription): void {
-  const state = SubscriptionStateMap.get(subscription);
+function closeSubscription(subscription: Subscription, stateMap?: StateMap<unknown> | undefined | null): void {
+  const state = stateMap ?? SubscriptionStateMap.get(subscription);
   if (!state || state.closed) return;
 
   // Mark closed first
@@ -448,14 +436,15 @@ function closeSubscription(subscription: Subscription): void {
 
   // Cache cleanup, abort signal and the abort handler before clearing
   let cleanup = state.cleanup;
-  let signal = state.signal;
-  let abortHandler = state.abortHandler;
+  let removeAbortHandler = state.removeAbortHandler;
 
   // Clear references first
   state.cleanup = null;
   state.observer = null;
-  state.signal = null;
-  state.abortHandler = null;
+  state.removeAbortHandler = null;
+
+  // Remove the abort handler
+  removeAbortHandler?.();
 
   // This conditional check runs synchronously
   try {
@@ -463,13 +452,8 @@ function closeSubscription(subscription: Subscription): void {
   } finally {
     // Ensure WeakMap entry is deleted even if cleanup throws
     SubscriptionStateMap.delete(subscription);
-    if (abortHandler) {
-      signal?.removeEventListener?.("abort", abortHandler);
-    }
-
     cleanup = null;
-    signal = null;
-    abortHandler = null;
+    removeAbortHandler = null;
   }
 }
 
@@ -496,7 +480,8 @@ function cleanupSubscription(cleanup: Teardown) {
   try {
     if (typeof temp === 'function') temp();
     else if (typeof temp === "object") {
-      if (typeof (temp as SpecSubscription).unsubscribe === 'function') (temp as SpecSubscription).unsubscribe();
+      if (typeof (temp as SpecSubscription).unsubscribe === 'function')
+        (temp as SpecSubscription).unsubscribe();
       else if (typeof (temp as AsyncDisposable)[Symbol.asyncDispose] === "function")
         (temp as AsyncDisposable)[Symbol.asyncDispose]();
       else if (typeof (temp as Disposable)[Symbol.dispose] === "function")
@@ -528,46 +513,37 @@ function cleanupSubscription(cleanup: Teardown) {
  * @typeParam T - The type of values delivered by the parent Observable.
  */
 export class SubscriptionObserver<T> {
-  /**
-   * Returns whether this observer's subscription is closed.
-   * 
-   * 
-   * Uses the single source of truth for closed state from SubscriptionStateMap.
-   * This property is used by subscriber functions to check if they should
-   * continue delivering events.
-   * 
-   * @example
-   * ```ts
-   * const timer = new Observable(observer => {
-   *   const id = setInterval(() => {
-   *     if (!observer.closed) {
-   *       observer.next(Date.now());
-   *     }
-   *   }, 1000);
-   *   return () => clearInterval(id);
-   * });
-   * ```
-   */
-  get closed(): boolean {
-    if (!this.#subscription) return true;
-    return isClosed(this.#subscription);
-  }
-
-  /**
-   * Retrieves the current observer, if available.
-   * 
-   * 
-   * - Returns null if subscription is closed or unavailable
-   * - Accesses state via WeakMap to maintain single source of truth
-   * - Used internally by next/error/complete methods
-   */
-  get #observer(): Observer<T> | null {
-    if (!this.#subscription) return null;
-    return SubscriptionStateMap.get(this.#subscription)?.observer ?? null;
-  }
+  /** Cached state map to improve perf. */
+  #state?: StateMap<T> | null;
 
   /** Reference to the subscription that created this observer */
   #subscription?: Subscription | null = null;
+
+  /**
+ * Returns whether this observer's subscription is closed.
+ * 
+ * 
+ * Uses the single source of truth for closed state from SubscriptionStateMap.
+ * This property is used by subscriber functions to check if they should
+ * continue delivering events.
+ * 
+ * @example
+ * ```ts
+ * const timer = new Observable(observer => {
+ *   const id = setInterval(() => {
+ *     if (!observer.closed) {
+ *       observer.next(Date.now());
+ *     }
+ *   }, 1000);
+ *   return () => clearInterval(id);
+ * });
+ * ```
+ */
+  get closed(): boolean {
+    const state = this.#state;
+    if (!state) return true;
+    return state.closed ?? true;
+  }
 
   /**
    * Creates a new SubscriptionObserver attached to the given subscription.
@@ -576,6 +552,10 @@ export class SubscriptionObserver<T> {
    */
   constructor(subscription?: Subscription | null) {
     this.#subscription = subscription;
+
+    if (subscription) {
+      this.#state = SubscriptionStateMap.get(subscription);
+    }
   }
 
   /**
@@ -625,10 +605,11 @@ export class SubscriptionObserver<T> {
    * > intentionally suppress that extra surfacing for the reasons above.
    */
   next(value: T) {
-    if (this.closed) return;
+    const state = this.#state;
+    if (!state || !state.closed) return;
 
     // Fast-path optimization to avoid long request chains
-    const observer = this.#observer;
+    const observer = state.observer;
     if (!observer) return;
 
     const nextFn = observer.next;
@@ -703,9 +684,10 @@ export class SubscriptionObserver<T> {
    * > Note: {@link SubscriptionObserver.next | Review the error propagation policy in `next()` on how errors propagate, the behaviour is not obvious on first glance.}
    */
   error(err: unknown) {
-    if (this.closed) return;
+    const state = this.#state;
+    if (!state || !state.closed) return;
 
-    const observer = this.#observer;
+    const observer = state.observer;
     if (observer && typeof observer?.error === 'function') {
       try { observer.error.call(observer, err); }
       catch (innerErr) { queueMicrotask(() => { throw innerErr; }); }
@@ -715,10 +697,11 @@ export class SubscriptionObserver<T> {
     else queueMicrotask(() => { throw err; });
 
     try {
-      if (this.#subscription && typeof this.#subscription?.unsubscribe === 'function') {
-        const sub = this.#subscription;
+      let subscription = this.#subscription;
+      if (subscription && typeof subscription?.unsubscribe === 'function') {
         this.#subscription = null; // Clear reference first
-        sub.unsubscribe();
+        subscription.unsubscribe();
+        subscription = null;
       }
     } catch (innerErr) { queueMicrotask(() => { throw innerErr; }); }
   }
@@ -747,9 +730,10 @@ export class SubscriptionObserver<T> {
    * > Note: {@link SubscriptionObserver.next | Review the error propagation policy in `next()` on how errors propagate, the behaviour is not obvious on first glance.}
    */
   complete() {
-    if (this.closed) return;
+    const state = this.#state;
+    if (!state || !state.closed) return;
 
-    const observer = this.#observer;
+    const observer = state.observer;
     if (observer && typeof observer?.complete === "function") {
       try {
         observer.complete.call(observer);
@@ -765,10 +749,11 @@ export class SubscriptionObserver<T> {
     }
 
     try {
-      if (this.#subscription && typeof this.#subscription?.unsubscribe === 'function') {
-        const sub = this.#subscription;
+      let subscription = this.#subscription;
+      if (subscription && typeof subscription?.unsubscribe === 'function') {
         this.#subscription = null; // Clear reference first
-        sub.unsubscribe();
+        subscription.unsubscribe();
+        subscription = null;
       }
     } catch (innerErr) { queueMicrotask(() => { throw innerErr; }); }
   }
@@ -779,7 +764,6 @@ export class SubscriptionObserver<T> {
    */
   get [Symbol.toStringTag](): "Subscription Observer" { return "Subscription Observer" as const; }
 }
-
 
 /**
  * Observale - A push-based stream for handling async data over time.
@@ -1046,7 +1030,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
   subscribe(
     observerOrNext: Observer<T> | ((value: T) => void),
     errorOrOpts?: ((e: unknown) => void) | { signal?: AbortSignal },
-    complete?: () => void, 
+    complete?: () => void,
     _opts?: { signal?: AbortSignal }
   ): Subscription {
     // Check for invalid this context
@@ -1060,9 +1044,9 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
     const observer: Observer<T> | null = (
       typeof observerOrNext === 'function'
         ? { next: observerOrNext, error: errorOrOpts as (e: unknown) => void, complete }
-        : observerOrNext 
+        : observerOrNext
     ) ?? {}; // ← spec-compliant fallback for null / primitives           
-    
+
     // Additional options to pass along AbortSignal (part of the WCIG Observables Spec., thought to implement it for convinence reasons)
     const opts = (typeof observerOrNext === 'function' ? _opts : errorOrOpts as typeof _opts) ?? {};
 
@@ -1370,6 +1354,12 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
   get [Symbol.toStringTag](): "Observable" { return "Observable"; }
 }
 
+/** 
+ * Cached empty observable handler 
+ * @internal
+ */
+function EMPTY(obs: SubscriptionObserver<unknown>) { obs.complete(); }
+
 /**
  * Creates an Observable that synchronously emits the given values then completes.
  * 
@@ -1408,10 +1398,67 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
  */
 export function of<T>(this: unknown, ...items: T[]): Observable<T> {
   const Constructor = (typeof this === "function" ? this as typeof Observable<T> : Observable);
-  return new Constructor(obs => {
-    for (const v of items) obs.next(v);
-    obs.complete();
-  });
+  const len = items.length;
+
+  // Pre-defined handlers for common cases to avoid creating new closures
+  switch (len) {
+    case 0:
+      return new Constructor(EMPTY);
+    case 1:
+      return new Constructor(obs => {
+        obs.next(items[0]);
+        obs.complete();
+      });
+    case 2:
+      return new Constructor(obs => {
+        obs.next(items[0]);
+        obs.next(items[1]);
+        obs.complete();
+      });
+    case 3:
+      return new Constructor(obs => {
+        obs.next(items[0]);
+        obs.next(items[1]);
+        obs.next(items[2]);
+        obs.complete();
+      });
+    default:
+      // For larger arrays, use optimized loop
+      return new Constructor(obs => {
+        if (len < 100) {
+          // Small arrays: simple loop with early exit checks
+          for (let i = 0; i < len; i++) {
+            obs.next(items[i]);
+            if (obs.closed) return;
+          }
+        } else {
+          // Large arrays: unroll with less frequent closed checks
+          let i = 0;
+          const limit = len - (len % 8);
+
+          // Check closed once per 8 items (balanced approach)
+          for (; i < limit; i += 8) {
+            obs.next(items[i]);
+            obs.next(items[i + 1]);
+            obs.next(items[i + 2]);
+            obs.next(items[i + 3]);
+            obs.next(items[i + 4]);
+            obs.next(items[i + 5]);
+            obs.next(items[i + 6]);
+            obs.next(items[i + 7]);
+            if (obs.closed) return;
+          }
+
+          // Handle remainder with checks
+          for (; i < len; i++) {
+            obs.next(items[i]);
+            if (obs.closed) return;
+          }
+        }
+
+        obs.complete();
+      });
+  }
 }
 
 /**
@@ -1425,9 +1472,9 @@ export function of<T>(this: unknown, ...items: T[]): Observable<T> {
  * 
  * Conversion follows these rules:
  * 1. For Symbol.observable objects: delegates to their implementation
- * 2. For iterables: synchronously emits all values, then completes
- * 3. For async iterables: emits values as they arrive, then completes
- * 4. For Promises: resolves and emits the promise's value
+ * 2. For Promises: resolves and emits the promise's value
+ * 3. For iterables: synchronously emits all values, then completes
+ * 4. For async iterables: emits values as they arrive, then completes
  * 
  * This function properly supports subclassing, preserving the constructor
  * it was called on.
@@ -1465,36 +1512,123 @@ export function of<T>(this: unknown, ...items: T[]): Observable<T> {
 export function from<T>(
   this: unknown,
   input: SpecObservable<T> |
-    Iterable<T> | AsyncIterable<T> | PromiseLike<T>
+    Iterable<T> | AsyncIterable<T> | PromiseLike<T> | ArrayLike<T>
 ): Observable<T> {
   if (input === null || input === undefined) {
     throw new TypeError('Cannot convert undefined or null to Observable');
   }
 
+  const Constructor = (typeof this === "function" ? this as typeof Observable<T> : Observable);
+
+  // Faster implementation of iteration for array-like values
+  const arr = (input as ArrayLike<T>);
+  if (Array.isArray(input) || typeof arr.length === "number") {
+    const len = arr.length;
+
+    // Optimize for small arrays
+    if (len === 0) return new Constructor(EMPTY);
+    if (len === 1) {
+      return new Constructor(obs => {
+        obs.next(arr[0]);
+        obs.complete();
+      });
+    }
+
+    // Type check to ensure it's actually array-like
+    return new Constructor(obs => {
+      if (len < 100) {
+        // Small arrays: simple loop with early exit checks
+        for (let i = 0; i < len; i++) {
+          obs.next(arr[i]);
+          if (obs.closed) return;
+        }
+      } else {
+        // Large arrays: unroll with less frequent closed checks
+        let i = 0;
+        const limit = len - (len % 8);
+
+        // Check closed once per 8 items (balanced approach)
+        for (; i < limit; i += 8) {
+          obs.next(arr[i]);
+          obs.next(arr[i + 1]);
+          obs.next(arr[i + 2]);
+          obs.next(arr[i + 3]);
+          obs.next(arr[i + 4]);
+          obs.next(arr[i + 5]);
+          obs.next(arr[i + 6]);
+          obs.next(arr[i + 7]);
+          if (obs.closed) return;
+        }
+
+        // Handle remainder with checks
+        for (; i < len; i++) {
+          obs.next(arr[i]);
+          if (obs.closed) return;
+        }
+      }
+      
+      obs.complete();
+    });
+  }
+
   // Case 1 – object with @@observable
-  if (typeof (input as SpecObservable<T>)?.[Symbol.observable] === 'function') {
-    const Constructor = (typeof this === "function" ? this as typeof Observable<T> : Observable);
-    const result = (input as SpecObservable<T>)[Symbol.observable]();
+  const observableFn = (input as SpecObservable<T>)[Symbol.observable];
+  if (typeof observableFn === 'function') {
+    const observable = observableFn.call(input);
 
     // Validate the result has a subscribe method
-    if (!result || typeof result.subscribe !== 'function') {
+    if (!observable || typeof observable.subscribe !== 'function') {
       throw new TypeError('Object returned from [Symbol.observable]() does not implement subscribe method');
     }
 
     // Return directly if it's already an instance of the target constructor
-    if (result instanceof Constructor) return result as Observable<T>;
+    if (observable instanceof Constructor) return observable as Observable<T>;
 
     // Otherwise, wrap it to ensure consistent behavior
     return new Constructor(observer => {
-      const sub = (result as ObservableProtocol<T>).subscribe(observer);
+      const sub = observable.subscribe(observer);
       return () => sub?.unsubscribe?.();
     });
   }
 
-  // Case 2 – synchronous iterable
-  if (typeof (input as Iterable<T>)?.[Symbol.iterator] === 'function') {
-    return new Observable<T>(obs => {
-      const iterator = (input as Iterable<T>)[Symbol.iterator]();
+  // Fast implementation for Set & Maps which are generally optimized 
+  // by the runtime when using `for..of` loops
+  if (input instanceof Set || input instanceof Map) {
+    const collection = (input as Set<T> | Map<unknown, unknown>);
+    const size = collection.size;
+    if (size === 0) return new Constructor(EMPTY);
+
+    return new Constructor(obs => {
+      // For...of is optimized for Sets in V8
+      for (const item of collection as Set<T>) {
+        obs.next(item);
+        if (obs.closed) return;
+      }
+
+      obs.complete();
+    });
+  }
+
+  // Case 2 – promise
+  const promise = (input as PromiseLike<T>);
+  if (typeof promise.then === 'function') {
+    return new Constructor(obs => {
+      promise.then(
+        (value) => {
+          obs.next(value);
+          obs.complete();
+        },
+        // Error during iteration
+        (err) => obs.error(err)
+      );
+    });
+  }
+
+  // Case 3 – synchronous iterable
+  const iteratorFn = (input as Iterable<T>)[Symbol.iterator];
+  if (typeof iteratorFn === 'function') {
+    return new Constructor(obs => {
+      const iterator = iteratorFn.call(input);
 
       try {
         for (let step = iterator.next(); !step.done; step = iterator.next()) {
@@ -1502,11 +1636,7 @@ export function from<T>(
           obs.next(step.value);
 
           // If subscription was closed during iteration, clean up and exit
-          if (obs.closed) {
-            if (typeof iterator?.return === 'function')
-              iterator.return(); // IteratorClose
-            break;
-          }
+          if (obs.closed) break;
         }
 
         obs.complete();
@@ -1515,30 +1645,30 @@ export function from<T>(
       }
 
       return () => {
-        if (typeof iterator?.return === 'function')
-          iterator.return(); // IteratorClose
+        if (typeof iterator?.return === 'function') {
+          try {
+            iterator.return(); // IteratorClose
+          } catch (err) { queueMicrotask(() => { throw err }) }
+        }
       }
     });
   }
 
-  // Case 3 – async iterable
-  if (typeof (input as AsyncIterable<T>)?.[Symbol.asyncIterator] === 'function') {
-    return new Observable<T>(obs => {
-      const iterator = (input as AsyncIterable<T>)[Symbol.asyncIterator]();
+  // Case 4 – async iterable
+  const asyncIteratorFn = (input as AsyncIterable<T>)[Symbol.asyncIterator];
+  if (typeof asyncIteratorFn === 'function') {
+    return new Constructor(obs => {
+      const asyncIterator = asyncIteratorFn.call(input);
 
       // Start consuming the async iterable
       (async () => {
         try {
-          for (let step = await iterator.next(); !step.done; step = await iterator.next()) {
+          for (let step = await asyncIterator.next(); !step.done; step = await asyncIterator.next()) {
             if (step.value instanceof ObservableError) throw step.value;
             obs.next(step.value);
 
             // If subscription was closed during iteration, clean up and exit
-            if (obs.closed) {
-              if (typeof iterator?.return === 'function')
-                await iterator.return(); // IteratorClose
-              break;
-            }
+            if (obs.closed) break;
           }
 
           // Normal completion
@@ -1550,29 +1680,12 @@ export function from<T>(
       })()
 
       return () => {
-        if (typeof iterator?.return === 'function')
-          iterator.return(); // IteratorClose
-      }
-    });
-  }
-
-  // Case 4 – promise
-  if (typeof (input as PromiseLike<T>)?.then === 'function') {
-    return new Observable<T>(obs => {
-      const promise = (input as PromiseLike<T>);
-      // Start consuming the async iterable
-      (async () => {
-        try {
-          const value = await promise;
-          obs.next(value);
-
-          // Normal completion
-          obs.complete();
-        } catch (err) {
-          // Error during iteration
-          obs.error(err);
+        if (typeof asyncIterator?.return === 'function') {
+          try {
+            asyncIterator.return(); // IteratorClose
+          } catch (err) { queueMicrotask(() => { throw err }) }
         }
-      })()
+      }
     });
   }
 
@@ -1704,6 +1817,7 @@ export function from<T>(
  * ```
  */
 export async function* pull<T>(
+  this: unknown,
   observable: SpecObservable<T>,
   { strategy = { highWaterMark: 64 } }: { strategy?: QueuingStrategy<T | ObservableError> } = {},
 ): AsyncGenerator<T> {

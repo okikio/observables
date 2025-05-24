@@ -544,11 +544,11 @@ await run({
   format: {
     mitata: {
       name: "longest" // Better alignment for reading
-    }
-  },
-  json: {
-    debug: true,     // Include debug info
-    samples: false   // Don't include raw samples (too large)
+    },
+    json: {
+      debug: true,     // Include debug info
+      samples: false   // Don't include raw samples (too large)
+    },
   },
   // Uncomment to run specific groups:
   // filter: /vs-primitives|hot-path|memory/

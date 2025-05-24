@@ -3,10 +3,11 @@
 // Properly written micro-benchmarks following mitata best practices
 //
 
+import type { k_state } from "mitata";
 import { bench, group, summary, run, do_not_optimize } from "mitata";
 
 // Helper to prevent optimizations
-const blackhole = (x: any) => do_not_optimize(x);
+const blackhole = (x: unknown) => do_not_optimize(x);
 
 /*====================================================================
   FIXED MICRO-BENCHMARKS
@@ -31,12 +32,13 @@ summary(() => {
       return obj;
     });
 
+    class Sub {
+      closed = false;
+      observer: unknown = null;
+      cleanup: unknown = null;
+    }
+
     bench("class instance", () => {
-      class Sub {
-        closed = false;
-        observer: any = null;
-        cleanup: any = null;
-      }
       const obj = new Sub();
       blackhole(obj.closed);
       return obj;
@@ -82,7 +84,7 @@ summary(() => {
 
     const monoNext = (value: number) => { accumulator += value; };
     const polyNext = (value: any) => { accumulator += value; };
-    let optionalNext: ((value: number) => void) | undefined = monoNext;
+    const optionalNext: ((value: number) => void) | undefined = monoNext;
 
     bench("direct call", function* () {
       yield {
@@ -166,7 +168,7 @@ summary(() => {
     }).baseline(true);
 
     bench("Map.get", function* () {
-      const map = new Map<string, any>([['closed', false], ['value', 42]]);
+      const map = new Map<string, unknown>([['closed', false], ['value', 42]]);
       let sum = 0;
 
       yield {
@@ -244,7 +246,7 @@ summary(() => {
   /*──────────────────────────────── ARRAY ITERATION ──────────────────*/
   group("array-iteration", () => {
     // Use computed parameters to prevent hoisting
-    bench("for loop", function* (state) {
+    bench("for loop", function* (state: k_state) {
       const size = state.get('size');
 
       yield {
@@ -252,7 +254,7 @@ summary(() => {
           return Array.from({ length: size }, (_, i) => i);
         },
 
-        bench(arr) {
+        bench(arr: number[]) {
           let sum = 0;
           for (let i = 0; i < arr.length; i++) {
             sum += arr[i] * 2;
@@ -262,7 +264,7 @@ summary(() => {
       };
     }).args('size', [100]).baseline(true);
 
-    bench("for-of", function* (state) {
+    bench("for-of", function* (state: k_state) {
       const size = state.get('size');
 
       yield {
@@ -270,7 +272,7 @@ summary(() => {
           return Array.from({ length: size }, (_, i) => i);
         },
 
-        bench(arr) {
+        bench(arr: number[]) {
           let sum = 0;
           for (const x of arr) {
             sum += x * 2;
@@ -280,7 +282,7 @@ summary(() => {
       };
     }).args('size', [100]);
 
-    bench("forEach", function* (state) {
+    bench("forEach", function* (state: k_state) {
       const size = state.get('size');
 
       yield {
@@ -288,7 +290,7 @@ summary(() => {
           return Array.from({ length: size }, (_, i) => i);
         },
 
-        bench(arr) {
+        bench(arr: number[]) {
           let sum = 0;
           arr.forEach(x => sum += x * 2);
           blackhole(sum);
@@ -296,7 +298,7 @@ summary(() => {
       };
     }).args('size', [100]);
 
-    bench("unrolled-4", function* (state) {
+    bench("unrolled-4", function* (state: k_state) {
       const size = state.get('size');
 
       yield {
@@ -304,7 +306,7 @@ summary(() => {
           return Array.from({ length: size }, (_, i) => i);
         },
 
-        bench(arr) {
+        bench(arr: number[]) {
           let sum = 0;
           const len = arr.length;
           let i = 0;
@@ -326,7 +328,7 @@ summary(() => {
     }).args('size', [100]);
 
     // Test closed-check frequency with actual work
-    bench("check every item", function* (state) {
+    bench("check every item", function* (state: k_state) {
       const size = state.get('size');
 
       yield {
@@ -338,7 +340,7 @@ summary(() => {
           return { closed: false };
         },
 
-        bench(arr, state) {
+        bench(arr: number[], state: {closed: boolean } ) {
           let sum = 0;
           for (let i = 0; i < arr.length; i++) {
             if (state.closed) break;
@@ -349,7 +351,7 @@ summary(() => {
       };
     }).args('size', [100]);
 
-    bench("check every 10", function* (state) {
+    bench("check every 10", function* (state: k_state) {
       const size = state.get('size');
 
       yield {
@@ -361,7 +363,7 @@ summary(() => {
           return { closed: false };
         },
 
-        bench(arr, state) {
+        bench(arr: number[], state: { closed: boolean }) {
           let sum = 0;
           for (let i = 0; i < arr.length; i++) {
             sum += arr[i] * 2;
@@ -372,7 +374,7 @@ summary(() => {
       };
     }).args('size', [100]);
 
-    bench("check every 100", function* (state) {
+    bench("check every 100", function* (state: k_state) {
       const size = state.get('size');
 
       yield {
@@ -384,7 +386,7 @@ summary(() => {
           return { closed: false };
         },
 
-        bench(arr, state) {
+        bench(arr: number[], state: { closed: boolean }) {
           let sum = 0;
           for (let i = 0; i < arr.length; i++) {
             sum += arr[i] * 2;
@@ -500,6 +502,23 @@ summary(() => {
       };
     });
 
+    // Test actual async operations
+    bench("queueMicrotask error", async function* () {
+      let counter = 0;
+
+      yield async () => {
+        try {
+          await new Promise<void>((_, reject) => {
+            queueMicrotask(() => {
+              counter++;
+              reject();
+            });
+          });
+        } catch (_e) {}
+        blackhole(counter);
+      };
+    });
+
     bench("setTimeout(0)", async function* () {
       let counter = 0;
 
@@ -519,6 +538,28 @@ summary(() => {
 
       yield async () => {
         await Promise.resolve().then(() => counter++);
+        blackhole(counter);
+      };
+    });
+
+    bench("Promise.catch", async function* () {
+      let counter = 0;
+
+      yield async () => {
+        await (
+          new Promise((_, rej) => rej(new Error("Error")))
+            .catch(() => counter++)
+        );
+        blackhole(counter);
+      };
+    });
+
+
+    bench("Promise.reject", async function* () {
+      let counter = 0;
+
+      yield async () => {
+        await Promise.reject().catch(() => counter++);
         blackhole(counter);
       };
     });
@@ -573,7 +614,7 @@ summary(() => {
   /*──────────────────────────────── TYPE CHECKS ──────────────────────*/
   group("type-checks", () => {
     // Test with different types to prevent constant folding
-    bench("typeof function", function* (state) {
+    bench("typeof function", function* (state: k_state) {
       const type = state.get('type');
 
       yield {
@@ -583,7 +624,7 @@ summary(() => {
               type === 'string' ? 'test' : 42;
         },
 
-        bench(value) {
+        bench(value: object | string | number | (() => void)) {
           let count = 0;
           for (let i = 0; i < 1000; i++) {
             if (typeof value === "function") count++;
@@ -593,7 +634,29 @@ summary(() => {
       };
     }).args('type', ['function', 'object', 'string', 'number']).baseline(true);
 
-    bench("instanceof", function* (state) {
+    // Test with different types to prevent constant folding
+    bench("function optional checks", function* (state: k_state) {
+      const type = state.get('type');
+
+      yield {
+        [0]() {
+          return type === 'function' ? (() => { }) :
+            type === 'object' ? {} :
+              type === 'string' ? 'test' : 42;
+        },
+
+        bench(value: (() => void)) {
+          let count = 0;
+          for (let i = 0; i < 1000; i++) {
+              value?.();
+              count++; 
+          }
+          blackhole(count);
+        }
+      };
+    }).args('type', ['function', 'object', 'string', 'number']).baseline(true);
+
+    bench("instanceof", function* (state: k_state) {
       const type = state.get('type');
 
       yield {
@@ -603,7 +666,7 @@ summary(() => {
               type === 'error' ? new Error() : {};
         },
 
-        bench(value) {
+        bench(value: number[] | Date | Error | object) {
           let count = 0;
           for (let i = 0; i < 1000; i++) {
             if (value instanceof Array) count++;
