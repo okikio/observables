@@ -35,6 +35,9 @@ export class ObservableError extends AggregateError {
   /** The value being processed when the error occurred */
   readonly value?: unknown;
 
+  /** Helpful potential fixes for errors */
+  readonly tip?: unknown;
+
   /**
    * Creates a new ObservableError.
    *
@@ -49,6 +52,7 @@ export class ObservableError extends AggregateError {
       operator?: string;
       value?: unknown;
       cause?: unknown;
+      tip?: unknown;
     }
   ) {
     // Normalize errors to an array of Error objects
@@ -61,6 +65,7 @@ export class ObservableError extends AggregateError {
     this.name = 'ObservableError';
     this.operator = options?.operator;
     this.value = options?.value;
+    this.tip = options?.tip;
   }
 
   /**
@@ -87,6 +92,10 @@ export class ObservableError extends AggregateError {
       this.errors.forEach((err, i) => {
         result += `\n    ${i + 1}) ${err}`;
       });
+    }
+
+    if (this.tip) {
+      result += `\n  tip: ${this.tip}`
     }
 
     return result;
