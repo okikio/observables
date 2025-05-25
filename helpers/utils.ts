@@ -6,11 +6,6 @@ import { ObservableError } from "./error.ts";
  */
 export type BaseOperator<T, R> = (stream: ReadableStream<T>) => ReadableStream<R>;
 
-type WithPrevError<In, Out> =
-  In extends ObservableError         // if upstream already contains errors
-  ? Out | ObservableError          // propagate them
-  : Out;                           // else keep the type clean
-
 /**
  * Type representing a stream operator function
  * Transforms a ReadableStream of type T to a ReadableStream of type R
@@ -54,6 +49,16 @@ export interface TransformStreamOptions<T, R> extends BaseTransformOptions {
  * Options for custom transformation logic
  */
 export interface TransformFunctionOptions<T, R> extends BaseTransformOptions {
+  /**
+   * Whether to allow errors to just pass through as a value or not,
+   * - true => when true errors wrapped in ObservableError will be used as values
+   *            and can then be transformed as the operator sees fit
+   * - false => when false errors automatically pass through, meaning ObservableError 
+   *           will not appear as a value,
+   * @default false
+   */
+  expectErrors?: boolean;
+
   /**
    * Function to transform each chunk
    * @param chunk - The input chunk
@@ -103,6 +108,16 @@ export type CreateOperatorOptions<T, R> =
  * Options for stateful transformation logic
  */
 export interface StatefulTransformFunctionOptions<T, R, S> extends BaseTransformOptions {
+  /**
+   * Whether to allow errors to just pass through as a value or not,
+   * - true => when true errors wrapped in ObservableError will be used as values
+   *            and can then be transformed as the operator sees fit
+   * - false => when false errors automatically pass through, meaning ObservableError 
+   *           will not appear as a value,
+   * @default false
+   */
+  expectErrors?: boolean;
+
   /**
    * Function to create the initial state
    * @returns The initial state
@@ -220,6 +235,7 @@ export function isTransformFunctionOptions<T, R>(
 export function createOperator<T, R>(options: CreateOperatorOptions<T, R>): Operator<T, R> {
   // Extract operator name from options or the function name for better error reporting
   const operatorName = `operator:${options.name || 'unknown'}`;
+  const expectErrors = (options as TransformFunctionOptions<T, R>)?.expectErrors ?? false;
 
   return (source) => {
     try {
@@ -228,11 +244,11 @@ export function createOperator<T, R>(options: CreateOperatorOptions<T, R>): Oper
         new TransformStream<T, R | ObservableError>({
             // Transform function to process each chunk
             async transform(chunk, controller) {
-
-            if (chunk instanceof ObservableError) {
-              controller.enqueue(chunk as unknown as R); // pass through untouched
-              return;                              // nothing else to do
-            }
+            if (!expectErrors && chunk instanceof ObservableError) {
+                controller.enqueue(chunk as unknown as R); // pass through untouched
+                return;                              // nothing else to do
+              }
+              
               try {
                 const result = await options.transform(chunk, controller);
 
@@ -363,6 +379,7 @@ export function createStatefulOperator<T, R, S>(
 ): Operator<T, R> {
   // Extract operator name from options or the function name for better error reporting
   const operatorName = `operator:stateful:${options.name || 'unknown'}`;
+  const expectErrors = options?.expectErrors ?? false;
 
   return (source) => {
     try {
@@ -394,6 +411,11 @@ export function createStatefulOperator<T, R, S>(
           },
 
           transform(chunk, controller) {
+            if (!expectErrors && chunk instanceof ObservableError) {
+              controller.enqueue(chunk as unknown as R); // pass through untouched
+              return;                              // nothing else to do
+            }
+
             try {
               // Apply the transform function with the current state
               return options.transform(chunk, state, controller);

@@ -444,6 +444,7 @@ export function tap<T>(fn: (value: T) => void): Operator<T, T> {
 export function ignoreErrors<T>(): Operator<T, Exclude<T, ObservableError>> {
   return createOperator<T, Exclude<T, ObservableError>>({
     name: 'ignoreErrors',
+    expectErrors: true,
     transform(chunk, controller) {
       if (!(chunk instanceof ObservableError)) {
         controller.enqueue(chunk as Exclude<T, ObservableError>);
@@ -587,6 +588,7 @@ export function ignoreErrors<T>(): Operator<T, Exclude<T, ObservableError>> {
 export function catchErrors<T, R>(fallback: R): Operator<T, T | R> {
   return createOperator<T, T | R>({
     name: 'catchErrors',
+    expectErrors: true,
     transform(chunk, controller) {
       if (chunk instanceof ObservableError) {
         controller.enqueue(fallback);
@@ -817,6 +819,7 @@ export function mapErrors<T, E>(
 ): Operator<T, T | E | ObservableError> {
   return createOperator<T, T | E | ObservableError>({
     name: 'mapErrors',
+    expectErrors: true,
     transform(chunk, controller) {
       if (chunk instanceof ObservableError) {
         try {
@@ -886,6 +889,7 @@ export function mapErrors<T, E>(
 export function onlyErrors<T>(): Operator<T, ObservableError> {
   return createOperator<T, ObservableError>({
     name: 'onlyErrors',
+    expectErrors: true,
     transform(chunk, controller) {
       if (chunk instanceof ObservableError) {
         controller.enqueue(chunk);
@@ -948,6 +952,7 @@ export function summarizeErrors<T>(): Operator<T, {
     { successCount: number, errorCount: number }
   >({
     name: 'summarizeErrors',
+    expectErrors: true,
     createState: () => ({ successCount: 0, errorCount: 0 }),
     transform(chunk, state) {
       if (chunk instanceof ObservableError) {
