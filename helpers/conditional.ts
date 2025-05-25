@@ -1,4 +1,3 @@
-import type { ObservableError } from "./error.ts";
 import type { Operator } from "./utils.ts";
 import { createStatefulOperator } from "./utils.ts";
 
@@ -30,8 +29,8 @@ import { createStatefulOperator } from "./utils.ts";
  * // or false as soon as a non-positive number is encountered
  * ```
  */
-export function every<T>(predicate: (value: T, index: number) => boolean): Operator<T, boolean | ObservableError> {
-  return createStatefulOperator<T, boolean | ObservableError, { index: number, finished: boolean }>({
+export function every<T>(predicate: (value: T, index: number) => boolean): Operator<T, boolean> {
+  return createStatefulOperator<T, boolean, { index: number, finished: boolean }>({
     name: 'every',
     createState: () => ({ index: 0, finished: false }),
     transform(chunk, state, controller) {
@@ -84,8 +83,8 @@ export function every<T>(predicate: (value: T, index: number) => boolean): Opera
  * // is encountered, or false if the stream completes with no negative numbers
  * ```
  */
-export function some<T>(predicate: (value: T, index: number) => boolean): Operator<T, boolean | ObservableError> {
-  return createStatefulOperator<T, boolean | ObservableError, { index: number, finished: boolean }>({
+export function some<T>(predicate: (value: T, index: number) => boolean): Operator<T, boolean> {
+  return createStatefulOperator<T, boolean, { index: number, finished: boolean }>({
     name: 'some',
     createState: () => ({ index: 0, finished: false }),
     transform(chunk, state, controller) {
@@ -136,8 +135,8 @@ export function some<T>(predicate: (value: T, index: number) => boolean): Operat
  * // encountered, then completes
  * ```
  */
-export function find<T>(predicate: (value: T, index: number) => boolean): Operator<T, T | ObservableError> {
-  return createStatefulOperator<T, T | ObservableError, { index: number }>({
+export function find<T>(predicate: (value: T, index: number) => boolean): Operator<T, T> {
+  return createStatefulOperator<T, T, { index: number }>({
     name: 'find',
     createState: () => ({ index: 0 }),
     transform(chunk, state, controller) {

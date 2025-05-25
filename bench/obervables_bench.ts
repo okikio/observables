@@ -13,6 +13,8 @@ import {
   type Subscription,
 } from "../mod.ts";
 
+import { Symbol } from "../symbol.ts"
+
 // Import operators for composition benchmarks
 import {
   pipe,
@@ -25,6 +27,7 @@ import {
   debounce,
   toArray
 } from "../helpers/mod.ts";
+import { safeCompose } from "../helpers/pipe.ts";
 
 /* ─────────────────────────────────────────────
    CONFIG - Tuned for primitive-like performance testing
@@ -227,11 +230,13 @@ summary(() => {
 
     bench("chain-5", () => {
       pipe(source,
-        filter(x => x % 2 === 0),
-        map(x => x * 2),
-        scan((acc, x) => acc + x, 0),
-        map(x => x.toString()),
-        take(50)
+        safeCompose(
+          filter(x => x % 2 === 0),
+          map(x => x * 2),
+          scan((acc, x) => acc + x, 0),
+          map(x => x.toString()),
+          take(50)
+        )
       ).subscribe({});
     });
 
@@ -556,8 +561,8 @@ await run({
 
 // Print runtime info
 console.log("\n---");
-console.log("Runtime:", typeof Deno !== 'undefined' ? 'Deno' :
-  typeof Bun !== 'undefined' ? 'Bun' : 'Node.js');
+console.log("Runtime:", typeof (globalThis as any)?.Deno !== 'undefined' ? 'Deno' :
+  typeof (globalThis as any)?.Bun !== 'undefined' ? 'Bun' : 'Node.js');
 console.log("GC exposed:", hasGC);
 console.log("Symbol.dispose:", typeof Symbol.dispose !== 'undefined' ? 'available' : 'not available');
 console.log("---\n");

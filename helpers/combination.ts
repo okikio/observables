@@ -63,8 +63,8 @@ import { pull } from "../observable.ts";
 export function mergeMap<T, R>(
   project: (value: T, index: number) => SpecObservable<R>,
   concurrent: number = Infinity
-): Operator<T, R | ObservableError> {
-  return createStatefulOperator<T, R | ObservableError, {
+): Operator<T, R> {
+  return createStatefulOperator<T, R, {
     // State for tracking active subscriptions and buffer
     activeSubscriptions: Map<number, { unsubscribe: () => void }>;
     buffer: Array<[T, number]>;
@@ -102,7 +102,7 @@ export function mergeMap<T, R>(
           innerObservable = project(value, innerIndex);
         } catch (err) {
           // Forward any errors from the projection function
-          controller.enqueue(ObservableError.from(err, "mergeMap:project", value));
+          controller.enqueue(ObservableError.from(err, "mergeMap:project", value) as R);
           return;
         }
 
@@ -114,7 +114,7 @@ export function mergeMap<T, R>(
             controller.enqueue(innerValue);
           }
         } catch (err) {
-          controller.enqueue(ObservableError.from(err, "operator:stateful:mergeMap:innerObservable", value));
+          controller.enqueue(ObservableError.from(err, "operator:stateful:mergeMap:innerObservable", value) as R);
         } finally {
           // Clean up after inner Observable completes
           state.activeSubscriptions.delete(innerIndex);
@@ -202,7 +202,7 @@ export function mergeMap<T, R>(
  */
 export function concatMap<T, R>(
   project: (value: T, index: number) => SpecObservable<R>
-): Operator<T, R | ObservableError> {
+): Operator<T, R> {
   // concatMap is just mergeMap with concurrency = 1
   return mergeMap(project, 1);
 }
@@ -265,8 +265,8 @@ export function concatMap<T, R>(
  */
 export function switchMap<T, R>(
   project: (value: T, index: number) => SpecObservable<R>
-): Operator<T, R | ObservableError> {
-  return createStatefulOperator<T, R | ObservableError, {
+): Operator<T, R> {
+  return createStatefulOperator<T, R, {
     // State for tracking inner subscription
     currentController: AbortController | null;
     sourceCompleted: boolean;
@@ -296,7 +296,7 @@ export function switchMap<T, R>(
         innerObservable = project(chunk, state.index++);
       } catch (err) {
         // Forward any errors from the projection function
-        controller.enqueue(ObservableError.from(err, "switchMap:project", chunk));
+        controller.enqueue(ObservableError.from(err, "switchMap:project", chunk) as R);
         return;
       }
 
@@ -320,7 +320,7 @@ export function switchMap<T, R>(
           }
         } catch (err) {
           if (!abortController.signal.aborted) {
-            controller.enqueue(ObservableError.from(err, "operator:stateful:switchMap:innerObservable", chunk));
+            controller.enqueue(ObservableError.from(err, "operator:stateful:switchMap:innerObservable", chunk) as R);
           }
         } finally {
           // Only handle completion if this is still the current controller
