@@ -2,12 +2,12 @@
 // Operators that combine Observables or transform to new Observables
 // Reimplemented using createStatefulOperator for better compatibility with streaming pipeline
 
-import type { SpecObservable } from "../_spec.ts";
-import type { Operator } from "./utils.ts";
+import type { SpecObservable } from "../../_spec.ts";
+import type { Operator } from "../_types.ts";
 
-import { createStatefulOperator } from "./utils.ts";
-import { ObservableError } from "./error.ts";
-import { pull } from "../observable.ts";
+import { createStatefulOperator } from "../operators.ts";
+import { ObservableError } from "../../error.ts";
+import { pull } from "../../observable.ts";
 
 /**
  * Transforms each value from the source Observable into an Observable, then
@@ -63,7 +63,7 @@ import { pull } from "../observable.ts";
 export function mergeMap<T, R>(
   project: (value: T, index: number) => SpecObservable<R>,
   concurrent: number = Infinity
-): Operator<T, R> {
+): Operator<T, R | ObservableError> {
   return createStatefulOperator<T, R, {
     // State for tracking active subscriptions and buffer
     activeSubscriptions: Map<number, { unsubscribe: () => void }>;
@@ -202,7 +202,7 @@ export function mergeMap<T, R>(
  */
 export function concatMap<T, R>(
   project: (value: T, index: number) => SpecObservable<R>
-): Operator<T, R> {
+): Operator<T, R | ObservableError> {
   // concatMap is just mergeMap with concurrency = 1
   return mergeMap(project, 1);
 }
@@ -265,7 +265,7 @@ export function concatMap<T, R>(
  */
 export function switchMap<T, R>(
   project: (value: T, index: number) => SpecObservable<R>
-): Operator<T, R> {
+): Operator<T, R | ObservableError> {
   return createStatefulOperator<T, R, {
     // State for tracking inner subscription
     currentController: AbortController | null;

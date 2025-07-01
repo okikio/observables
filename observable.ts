@@ -242,7 +242,7 @@
  */
 import type { SpecObservable, ObservableProtocol, SpecSubscription } from "./_spec.ts";
 import type { Observer, Subscription } from "./_types.ts";
-import { ObservableError } from "./helpers/error.ts";
+import { ObservableError } from "./error.ts";
 import { Symbol } from "./symbol.ts";
 
 /**

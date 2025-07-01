@@ -3,10 +3,19 @@
   "version": "0.1.0",
   "exports": {
     ".": "./mod.ts",
+    "./error": "./error.ts",
     "./types": "./_types.ts",
     "./events": "./events.ts",
     "./observable": "./observable.ts",
-    "./helpers": "./helpers/mod.ts"
+
+    "./operators": "./helpers/mod.ts",
+    "./operations": "./helpers/operations/mod.ts",
+    "./operations/batch": "./helpers/operations/batch.ts",
+    "./operations/combination": "./helpers/operations/combination.ts",
+    "./operations/conditional": "./helpers/operations/conditional.ts",
+    "./operations/core": "./helpers/operations/core.ts",
+    "./operations/error": "./helpers/operations/error.ts",
+    "./operations/timing": "./helpers/operations/timing.ts"
   },
   "tasks": {
     "test": "deno test -RW --allow-run=deno,bun,node,npx --clean --trace-leaks",

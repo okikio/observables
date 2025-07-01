@@ -523,6 +523,7 @@
  * @module
  */
 export * from "./observable.ts";
+export * from "./error.ts";
 export * from "./events.ts";
 export * from "./helpers/mod.ts";
 

@@ -91,10 +91,9 @@
  */
 
 // Re-export all operators from their respective modules
-export * from "./pipe.ts";
-export * from "./timing.ts";
-export * from "./utils.ts";
-export * from "./error.ts";
+export type * from "./_types.ts";
+
+export * from "./operations/mod.ts";
 export * from "./operators.ts";
-export * from "./conditional.ts";
-export * from "./combination.ts";
+export * from "./pipe.ts";
+export * from "./utils.ts";

@@ -1,4 +1,4 @@
-// @filename: helpers/error.ts
+// @filename: error.ts
 /**
  * Error handling utilities for Observable operators
  * 

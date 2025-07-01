@@ -1,5 +1,5 @@
-import type { Operator } from "./utils.ts";
-import { createStatefulOperator } from "./utils.ts";
+import type { Operator } from "../_types.ts";
+import { createStatefulOperator } from "../operators.ts";
 
 /**
  * Delays values emitted by the source stream by a specified timespan.

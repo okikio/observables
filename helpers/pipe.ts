@@ -1,13 +1,15 @@
 // helpers/pipe.ts
 // Composition utility for Observable operators
 
-import type { Operator, SafeOperator } from "./utils.ts";
-import type { ObservableError } from "./error.ts";
+import type { Operator, SafeOperator } from "./_types.ts";
+import type { ObservableError } from "../error.ts";
 import type { SpecObservable } from "../_spec.ts";
 
-import { filter, ignoreErrors, map, scan, take } from "./operators.ts";
+import { filter, map, scan, take } from "./operations/core.ts";
+import { ignoreErrors } from "./operations/error.ts";
+
 import { Observable, of, pull } from "../observable.ts";
-import { injectError, toStream } from "./utils.ts";
+import { applyOperator, injectError, toStream } from "./utils.ts";
 
 /**
  * Pipe function with 9 overloads to handle up to 9 operators with proper typing.
@@ -50,23 +52,28 @@ import { injectError, toStream } from "./utils.ts";
  * ```
  */
 
+// Overload 0: No operator
+export function pipe<T>(
+  source: SpecObservable<T>,
+): Observable<T>;
+
 // Overload 1: Single operator
 export function pipe<T, A>(
   source: SpecObservable<T>,
-  op1: Operator<T, A>
+  op1: Operator<T | ObservableError, A>
 ): Observable<A>;
 
 // Overload 2: Two operators
 export function pipe<T, A, B>(
   source: SpecObservable<T>,
-  op1: Operator<T, A>,
+  op1: Operator<T | ObservableError, A>,
   op2: Operator<A, B>
 ): Observable<B>;
 
 // Overload 3: Three operators
 export function pipe<T, A, B, C>(
   source: SpecObservable<T>,
-  op1: Operator<T, A>,
+  op1: Operator<T | ObservableError, A>,
   op2: Operator<A, B>,
   op3: Operator<B, C>
 ): Observable<C>;
@@ -74,7 +81,7 @@ export function pipe<T, A, B, C>(
 // Overload 4: Four operators
 export function pipe<T, A, B, C, D>(
   source: SpecObservable<T>,
-  op1: Operator<T, A>,
+  op1: Operator<T | ObservableError, A>,
   op2: Operator<A, B>,
   op3: Operator<B, C>,
   op4: Operator<C, D>
@@ -83,7 +90,7 @@ export function pipe<T, A, B, C, D>(
 // Overload 5: Five operators
 export function pipe<T, A, B, C, D, E>(
   source: SpecObservable<T>,
-  op1: Operator<T, A>,
+  op1: Operator<T | ObservableError, A>,
   op2: Operator<A, B>,
   op3: Operator<B, C>,
   op4: Operator<C, D>,
@@ -93,7 +100,7 @@ export function pipe<T, A, B, C, D, E>(
 // Overload 6: Six operators
 export function pipe<T, A, B, C, D, E, F>(
   source: SpecObservable<T>,
-  op1: Operator<T, A>,
+  op1: Operator<T | ObservableError, A>,
   op2: Operator<A, B>,
   op3: Operator<B, C>,
   op4: Operator<C, D>,
@@ -104,7 +111,7 @@ export function pipe<T, A, B, C, D, E, F>(
 // Overload 7: Seven operators
 export function pipe<T, A, B, C, D, E, F, G>(
   source: SpecObservable<T>,
-  op1: Operator<T, A>,
+  op1: Operator<T | ObservableError, A>,
   op2: Operator<A, B>,
   op3: Operator<B, C>,
   op4: Operator<C, D>,
@@ -116,7 +123,7 @@ export function pipe<T, A, B, C, D, E, F, G>(
 // Overload 8: Eight operators
 export function pipe<T, A, B, C, D, E, F, G, H>(
   source: SpecObservable<T>,
-  op1: Operator<T, A>,
+  op1: Operator<T | ObservableError, A>,
   op2: Operator<A, B>,
   op3: Operator<B, C>,
   op4: Operator<C, D>,
@@ -129,7 +136,7 @@ export function pipe<T, A, B, C, D, E, F, G, H>(
 // Overload 9: Nine operators
 export function pipe<T, A, B, C, D, E, F, G, H, I>(
   source: SpecObservable<T>,
-  op1: Operator<T, A>,
+  op1: Operator<T | ObservableError, A>,
   op2: Operator<A, B>,
   op3: Operator<B, C>,
   op4: Operator<C, D>,
@@ -141,33 +148,63 @@ export function pipe<T, A, B, C, D, E, F, G, H, I>(
 ): Observable<I>;
 
 // Implementation
-export function pipe<T, R>(
+export function pipe<T, A, B, C, D, E, F, G, H, I>(
   source: SpecObservable<T>,
-  ...operators: Array<Operator<unknown, unknown>>
-): Observable<R> {
-  // Error if too many operators
-  const len = operators.length;
+  op1?: Operator<T | ObservableError, A>,
+  op2?: Operator<A, B>,
+  op3?: Operator<B, C>,
+  op4?: Operator<C, D>,
+  op5?: Operator<D, E>,
+  op6?: Operator<E, F>,
+  op7?: Operator<F, G>,
+  op8?: Operator<G, H>,
+  op9?: Operator<H, I>
+): Observable<
+  typeof op9 extends Operator<H, I> ? I :
+  typeof op8 extends Operator<G, H> ? H :
+  typeof op7 extends Operator<F, G> ? G :
+  typeof op6 extends Operator<E, F> ? F :
+  typeof op5 extends Operator<D, E> ? E :
+  typeof op4 extends Operator<C, D> ? D :
+  typeof op3 extends Operator<B, C> ? C :
+  typeof op2 extends Operator<A, B> ? B :
+  typeof op1 extends Operator<T | ObservableError, A> ? A :
+  T
+> {
+  // Ignore the source argument
+  const len = arguments.length - 1;
+  if (len === 0) return source as Observable<T>;
   if (len > 9) {
     throw new Error('pipe: Too many operators (maximum 9). Use compose to group operators.');
   }
 
   // Convert the source Observable to a ReadableStream
-  let stream: ReadableStream<unknown> = toStream(
-    pull(source)
-  );
+  let result: ReadableStream<unknown> = toStream(pull(source));
 
-  // Apply each operator in sequence
-  for (let i = 0; i < len; i ++) {
-    try {
-      const operator = operators[i];
-      stream = operator(stream);
-    } catch (err) {
-      stream = stream.pipeThrough(injectError(err, `pipe:operator[${i}]`));
-    }
-  }
+  const errorPrefix = 'pipe:operator';
+  if (op1) result = applyOperator(result, op1, errorPrefix + `[1]`);
+  if (op2) result = applyOperator(result, op2, errorPrefix + `[2]`);
+  if (op3) result = applyOperator(result, op3, errorPrefix + `[3]`);
+  if (op4) result = applyOperator(result, op4, errorPrefix + `[4]`);
+  if (op5) result = applyOperator(result, op5, errorPrefix + `[5]`);
+  if (op6) result = applyOperator(result, op6, errorPrefix + `[6]`);
+  if (op7) result = applyOperator(result, op7, errorPrefix + `[7]`);
+  if (op8) result = applyOperator(result, op8, errorPrefix + `[8]`);
+  if (op9) result = applyOperator(result, op9, errorPrefix + `[9]`);
 
   // Convert the resulting ReadableStream back to an Observable
-  return Observable.from(stream) as Observable<R>;
+  return Observable.from(result) as Observable<
+    typeof op9 extends Operator<H, I> ? I :
+    typeof op8 extends Operator<G, H> ? H :
+    typeof op7 extends Operator<F, G> ? G :
+    typeof op6 extends Operator<E, F> ? F :
+    typeof op5 extends Operator<D, E> ? E :
+    typeof op4 extends Operator<C, D> ? D :
+    typeof op3 extends Operator<B, C> ? C :
+    typeof op2 extends Operator<A, B> ? B :
+    typeof op1 extends Operator<T | ObservableError, A> ? A :
+    T
+  >;
 }
 
 /**
@@ -558,6 +595,7 @@ pipe(source,
 ).subscribe({});
 
 pipe(source,
+  ignoreErrors(),
   filter(x => x % 2 === 0),
   map(x => x * 2),
   scan((acc, x) => acc + x, 0),
