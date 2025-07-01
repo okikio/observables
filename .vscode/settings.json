@@ -1,0 +1,6 @@
+{
+  "deno.path": "/Users/okikio/.local/share/mise/shims/deno",
+  "debug.javascript.defaultRuntimeExecutable": {
+    "pwa-node": "${workspaceFolder}/.vscode/mise-tools/node"
+  }
+}
