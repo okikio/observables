@@ -12,8 +12,8 @@ export type ExcludeError<T> = Exclude<T, ObservableError>;
  * This is what safeCompose returns - guaranteed error-free output.
  */
 export type SafeOperator<T, R> = Operator<
-  Exclude<T, ObservableError>,
-  Exclude<R, ObservableError>
+  T | ObservableError,
+  ExcludeError<R>
 >;
 
 /**

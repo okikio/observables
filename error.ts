@@ -113,7 +113,8 @@ export class ObservableError extends AggregateError {
   static from(
     error: unknown,
     operator?: string,
-    value?: unknown
+    value?: unknown,
+    tip?: unknown
   ): ObservableError {
     if (error instanceof ObservableError) {
       // If it's already an ObservableError, add context if not present
@@ -124,7 +125,8 @@ export class ObservableError extends AggregateError {
           {
             operator,
             value: error.value || value,
-            cause: error.cause
+            cause: error.cause,
+            tip: error.tip
           }
         );
       }
@@ -135,7 +137,7 @@ export class ObservableError extends AggregateError {
     return new ObservableError(
       error,
       error instanceof Error ? error.message : String(error),
-      { operator, value, cause: error }
+      { operator, value, cause: error, tip }
     );
   }
 }

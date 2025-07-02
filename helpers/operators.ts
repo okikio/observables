@@ -1,4 +1,4 @@
-import type { Operator, CreateOperatorOptions, StatefulTransformFunctionOptions, TransformFunctionOptions, TransformStreamOptions } from "./_types.ts";
+import type { Operator, CreateOperatorOptions, StatefulTransformFunctionOptions, TransformFunctionOptions, TransformStreamOptions, SafeOperator } from "./_types.ts";
 
 import { injectError, isTransformStreamOptions } from "./utils.ts";
 import { ObservableError } from "../error.ts";
@@ -56,10 +56,11 @@ import { ObservableError } from "../error.ts";
  * });
  * ```
  */
-export function createOperator<T, R>(options: TransformFunctionOptions<T, R>): Operator<T, R | ObservableError>;
-export function createOperator<T, R>(options: TransformStreamOptions<T, R>): Operator<T, R | ObservableError>;
-export function createOperator<T, R>(options: TransformStreamOptions<T, R> & { ignoreErrors: true }): Operator<T, R>;
-export function createOperator<T, R>(options: CreateOperatorOptions<T, R>): Operator<T, R | ObservableError> {
+export function createOperator<T, R>(options: TransformFunctionOptions<T, R> & { ignoreErrors: true }): SafeOperator<T, R>;
+export function createOperator<T, R>(options: TransformStreamOptions<T, R> & { ignoreErrors: true }): SafeOperator<T, R>;
+export function createOperator<T, R>(options: TransformFunctionOptions<T, R>  & { ignoreErrors?: false | undefined }): Operator<T, R | ObservableError>;
+export function createOperator<T, R>(options: TransformStreamOptions<T, R> & { ignoreErrors?: false | undefined }): Operator<T, R | ObservableError>;
+export function createOperator<T, R>(options: CreateOperatorOptions<T, R>): Operator<T, unknown> {
   // Extract operator name from options or the function name for better error reporting
   const operatorName = `operator:${options.name || 'unknown'}`;
   const ignoreErrors = (options as TransformFunctionOptions<T, R>)?.ignoreErrors ?? false;
@@ -68,7 +69,7 @@ export function createOperator<T, R>(options: CreateOperatorOptions<T, R>): Oper
     try {
       // Create a transform stream with the provided options
       const transformStream = isTransformStreamOptions(options) ? options.stream :
-        new TransformStream<T, typeof ignoreErrors extends true ? R : R | ObservableError>({
+        new TransformStream<T, R | ObservableError>({
           // Transform function to process each chunk
           async transform(chunk, controller) {
             if (ignoreErrors && chunk instanceof ObservableError) return;
@@ -183,22 +184,24 @@ export function createOperator<T, R>(options: CreateOperatorOptions<T, R>): Oper
  *   transform(chunk, state, controller) {
  *     state.count++;
  *     controller.enqueue({ item: chunk, count: state.count });
- *   }x
+ *   }
  * });
  * ```
  */
 export function createStatefulOperator<T, R, S>(
   options: StatefulTransformFunctionOptions<T, R, S> & { ignoreErrors: true }
 ): Operator<T, R>;
-
+export function createStatefulOperator<T, R, S>(
+  options: StatefulTransformFunctionOptions<T, R, S> & { ignoreErrors?: false | undefined }
+): Operator<T, R | ObservableError>;
 export function createStatefulOperator<T, R, S>(
   options: StatefulTransformFunctionOptions<T, R, S>
-): Operator<T, R | ObservableError> {
+): Operator<T, unknown> {
   // Extract operator name from options or the function name for better error reporting
   const operatorName = `operator:stateful:${options.name || 'unknown'}`;
   const ignoreErrors = options?.ignoreErrors ?? false;
 
-  return ((source) => {
+  return (source) => {
     try {
       // Create state only when the stream is used
       let state: S;
@@ -240,7 +243,7 @@ export function createStatefulOperator<T, R, S>(
             if (ignoreErrors) return;
 
             // If an error occurs during transformation, wrap it with context
-            controller.enqueue(ObservableError.from(err, operatorName, { chunk, state }));
+            controller.enqueue(ObservableError.from(err, `${operatorName}:transform`, { chunk, state }));
           }
         },
 
@@ -265,8 +268,10 @@ export function createStatefulOperator<T, R, S>(
       // Pipe the source through the transform
       return source.pipeThrough(transformStream);
     } catch (err) {
+      if (ignoreErrors) return source;
+      
       // If setup fails, return a stream that errors immediately
       return source.pipeThrough(injectError(err, `${operatorName}:setup`, options));
     }
-  }); 
+  }; 
 }

@@ -1,5 +1,6 @@
 import type { CreateOperatorOptions, TransformStreamOptions, TransformFunctionOptions, Operator } from "./_types.ts";
 import { ObservableError } from "../error.ts";
+import { ignoreErrors } from "@okikio/observables/operators";
 
 /**
  * Type guard to check if options is a TransformStreamOptions
@@ -50,11 +51,18 @@ export function isTransformFunctionOptions<T, R>(
 export function applyOperator(
   input: ReadableStream<unknown>,
   operator: Operator<any, any>,
-  message = `pipe:operator`
+  { error = true, message = `pipe:operator` } = { }
 ) {
   try {
-    return operator(input);
+    let result = operator(input);
+    if (!error) result = ignoreErrors()(result);
+    return result;
   } catch (err) {
+    if (!error) {
+      console.error(`Operator application error in ${message}:`, err);
+      return input;
+    }
+
     return input.pipeThrough(injectError(err, message));
   }
 }

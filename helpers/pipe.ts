@@ -1,15 +1,16 @@
 // helpers/pipe.ts
 // Composition utility for Observable operators
 
-import type { Operator, SafeOperator } from "./_types.ts";
+import type { ExcludeError, Operator, SafeOperator } from "./_types.ts";
 import type { ObservableError } from "../error.ts";
 import type { SpecObservable } from "../_spec.ts";
 
 import { filter, map, scan, take } from "./operations/core.ts";
-import { ignoreErrors } from "./operations/error.ts";
+import { catchErrors, ignoreErrors, mapErrors } from "./operations/errors.ts";
 
 import { Observable, of, pull } from "../observable.ts";
-import { applyOperator, injectError, toStream } from "./utils.ts";
+import { applyOperator, toStream } from "./utils.ts";
+import { Symbol } from "../symbol.ts";
 
 /**
  * Pipe function with 9 overloads to handle up to 9 operators with proper typing.
@@ -45,6 +46,19 @@ import { applyOperator, injectError, toStream } from "./utils.ts";
  *     filter(x => x > 10)
  *   ),
  *   compose(
+ *     take(5),
+ *     map(x => x.toString())
+ *   )
+ * );
+ * 
+ * // For ignoring errors in operators use safeCompose (not for production use):
+ * const result = pipe(
+ *   sourceObservable,
+ *   safeCompose(
+ *     map(x => x * 2),
+ *     filter(x => x > 10)
+ *   ),
+ *   safeCompose(
  *     take(5),
  *     map(x => x.toString())
  *   )
@@ -178,19 +192,23 @@ export function pipe<T, A, B, C, D, E, F, G, H, I>(
     throw new Error('pipe: Too many operators (maximum 9). Use compose to group operators.');
   }
 
+  if (typeof source[Symbol.observable] !== "function") {
+    throw new TypeError('pipe: source must be an Observable');
+  }
+
   // Convert the source Observable to a ReadableStream
   let result: ReadableStream<unknown> = toStream(pull(source));
 
   const errorPrefix = 'pipe:operator';
-  if (op1) result = applyOperator(result, op1, errorPrefix + `[1]`);
-  if (op2) result = applyOperator(result, op2, errorPrefix + `[2]`);
-  if (op3) result = applyOperator(result, op3, errorPrefix + `[3]`);
-  if (op4) result = applyOperator(result, op4, errorPrefix + `[4]`);
-  if (op5) result = applyOperator(result, op5, errorPrefix + `[5]`);
-  if (op6) result = applyOperator(result, op6, errorPrefix + `[6]`);
-  if (op7) result = applyOperator(result, op7, errorPrefix + `[7]`);
-  if (op8) result = applyOperator(result, op8, errorPrefix + `[8]`);
-  if (op9) result = applyOperator(result, op9, errorPrefix + `[9]`);
+  if (op1) result = applyOperator(result, op1, { message: errorPrefix + `[1]` });
+  if (op2) result = applyOperator(result, op2, { message: errorPrefix + `[2]` });
+  if (op3) result = applyOperator(result, op3, { message: errorPrefix + `[3]` });
+  if (op4) result = applyOperator(result, op4, { message: errorPrefix + `[4]` });
+  if (op5) result = applyOperator(result, op5, { message: errorPrefix + `[5]` });
+  if (op6) result = applyOperator(result, op6, { message: errorPrefix + `[6]` });
+  if (op7) result = applyOperator(result, op7, { message: errorPrefix + `[7]` });
+  if (op8) result = applyOperator(result, op8, { message: errorPrefix + `[8]` });
+  if (op9) result = applyOperator(result, op9, { message: errorPrefix + `[9]` });
 
   // Convert the resulting ReadableStream back to an Observable
   return Observable.from(result) as Observable<
@@ -238,23 +256,26 @@ export function pipe<T, A, B, C, D, E, F, G, H, I>(
  * ```
  */
 
+// Overload 0: No operator
+export function compose<T>(): Operator<T, T>;
+
 // Overload 1: Single operator
 export function compose<T, A>(
   op1: Operator<T, A>
-): Operator<T, A>;
+): Operator<T, A | ObservableError>;
 
 // Overload 2: Two operators
 export function compose<T, A, B>(
   op1: Operator<T, A>,
   op2: Operator<A, B>
-): Operator<T, B>;
+): Operator<T, B | ObservableError>;
 
 // Overload 3: Three operators
 export function compose<T, A, B, C>(
   op1: Operator<T, A>,
   op2: Operator<A, B>,
   op3: Operator<B, C>
-): Operator<T, C>;
+): Operator<T, C | ObservableError>;
 
 // Overload 4: Four operators
 export function compose<T, A, B, C, D>(
@@ -262,7 +283,7 @@ export function compose<T, A, B, C, D>(
   op2: Operator<A, B>,
   op3: Operator<B, C>,
   op4: Operator<C, D>
-): Operator<T, D>;
+): Operator<T, D | ObservableError>;
 
 // Overload 5: Five operators
 export function compose<T, A, B, C, D, E>(
@@ -271,7 +292,7 @@ export function compose<T, A, B, C, D, E>(
   op3: Operator<B, C>,
   op4: Operator<C, D>,
   op5: Operator<D, E>
-): Operator<T, E>;
+): Operator<T, E | ObservableError>;
 
 // Overload 6: Six operators
 export function compose<T, A, B, C, D, E, F>(
@@ -281,7 +302,7 @@ export function compose<T, A, B, C, D, E, F>(
   op4: Operator<C, D>,
   op5: Operator<D, E>,
   op6: Operator<E, F>
-): Operator<T, F>;
+): Operator<T, F | ObservableError>;
 
 // Overload 7: Seven operators
 export function compose<T, A, B, C, D, E, F, G>(
@@ -292,7 +313,7 @@ export function compose<T, A, B, C, D, E, F, G>(
   op5: Operator<D, E>,
   op6: Operator<E, F>,
   op7: Operator<F, G>
-): Operator<T, G>;
+): Operator<T, G | ObservableError>;
 
 // Overload 8: Eight operators
 export function compose<T, A, B, C, D, E, F, G, H>(
@@ -304,7 +325,7 @@ export function compose<T, A, B, C, D, E, F, G, H>(
   op6: Operator<E, F>,
   op7: Operator<F, G>,
   op8: Operator<G, H>
-): Operator<T, H>;
+): Operator<T, H | ObservableError>;
 
 // Overload 9: Nine operators
 export function compose<T, A, B, C, D, E, F, G, H, I>(
@@ -317,36 +338,64 @@ export function compose<T, A, B, C, D, E, F, G, H, I>(
   op7: Operator<F, G>,
   op8: Operator<G, H>,
   op9: Operator<H, I>
-): Operator<T, I>;
+): Operator<T, I | ObservableError>;
 
 // Implementation
-export function compose<T, R>(
-  ...operators: Array<Operator<unknown, unknown>>
-): Operator<T, R> {
+export function compose<T, A, B, C, D, E, F, G, H, I>(
+  op1?: Operator<T, A>,
+  op2?: Operator<A, B>,
+  op3?: Operator<B, C>,
+  op4?: Operator<C, D>,
+  op5?: Operator<D, E>,
+  op6?: Operator<E, F>,
+  op7?: Operator<F, G>,
+  op8?: Operator<G, H>,
+  op9?: Operator<H, I>
+): 
+  typeof op9 extends Operator<H, I> ? Operator<H, I> :
+  typeof op8 extends Operator<G, H> ? Operator<G, H> :
+  typeof op7 extends Operator<F, G> ? Operator<F, G> :
+  typeof op6 extends Operator<E, F> ? Operator<E, F> :
+  typeof op5 extends Operator<D, E> ? Operator<D, E> :
+  typeof op4 extends Operator<C, D> ? Operator<C, D> :
+  typeof op3 extends Operator<B, C> ? Operator<B, C> :
+  typeof op2 extends Operator<A, B> ? Operator<A, B> :
+  typeof op1 extends Operator<T, A> ? Operator<T, A> :
+  Operator<T, T | ObservableError> {
   // Error if too many operators
-  const len = operators.length;
+  const len = arguments.length;
+  if (len === 0) return (source) => source;
   if (len > 9) {
-    throw new Error('compose: Too many operators (maximum 9). Use nested compose calls.');
+    throw new Error('safeCompose: Too many operators (maximum 9). Use nested safeCompose calls.');
   }
 
   // Return a new operator function that applies all the operators
-  return (source: ReadableStream<T | ObservableError>) => {
-    let stream: ReadableStream<unknown> = source;
+  return ((source) => {
+    let result = source;
 
-    // Apply each operator in sequence
-    for (let i = 0; i < len; i++) {
-      try {
-        const operator = operators[i];
-        stream = operator(stream);
-      } catch (err) {
-        return stream.pipeThrough(
-          injectError(err, `compose:operator[${i}]`)
-        ) as ReadableStream<R | ObservableError>;
-      }
-    }
+    const errorPrefix = 'compose:operator';
+    if (op1) result = applyOperator(result, op1, { message: errorPrefix + `[1]` });
+    if (op2) result = applyOperator(result, op2, { message: errorPrefix + `[2]` });
+    if (op3) result = applyOperator(result, op3, { message: errorPrefix + `[3]` });
+    if (op4) result = applyOperator(result, op4, { message: errorPrefix + `[4]` });
+    if (op5) result = applyOperator(result, op5, { message: errorPrefix + `[5]` });
+    if (op6) result = applyOperator(result, op6, { message: errorPrefix + `[6]` });
+    if (op7) result = applyOperator(result, op7, { message: errorPrefix + `[7]` });
+    if (op8) result = applyOperator(result, op8, { message: errorPrefix + `[8]` });
+    if (op9) result = applyOperator(result, op9, { message: errorPrefix + `[9]` });
 
-    return stream as ReadableStream<R | ObservableError>;
-  };
+    return result;
+  }) as
+    typeof op9 extends Operator<H, I> ? Operator<H, I> :
+    typeof op8 extends Operator<G, H> ? Operator<G, H> :
+    typeof op7 extends Operator<F, G> ? Operator<F, G> :
+    typeof op6 extends Operator<E, F> ? Operator<E, F> :
+    typeof op5 extends Operator<D, E> ? Operator<D, E> :
+    typeof op4 extends Operator<C, D> ? Operator<C, D> :
+    typeof op3 extends Operator<B, C> ? Operator<B, C> :
+    typeof op2 extends Operator<A, B> ? Operator<A, B> :
+    typeof op1 extends Operator<T  | ObservableError, A> ? Operator<T | ObservableError, A> :
+    Operator<T, T | ObservableError>;
 }
 
 // ========================================
@@ -471,135 +520,144 @@ export function compose<T, R>(
  * ```
  */
 
+// Overload 0: Single operator
+export function safeCompose<T>(): SafeOperator<T, T>;
+
 // Overload 1: Single operator
 export function safeCompose<T, A>(
-  op1: Operator<T, A>
+  op1: Operator<ExcludeError<T>, A>
 ): SafeOperator<T, A>;
 
 // Overload 2: Two operators
 export function safeCompose<T, A, B>(
-  op1: Operator<T, A>,
-  op2: Operator<A, B>
+  op1: Operator<ExcludeError<T>, A>,
+  op2: Operator<ExcludeError<A>, B>
 ): SafeOperator<T, B>;
 
 // Overload 3: Three operators
 export function safeCompose<T, A, B, C>(
-  op1: Operator<T, A>,
-  op2: Operator<A, B>,
-  op3: Operator<B, C>
+  op1: Operator<ExcludeError<T>, A>,
+  op2: Operator<ExcludeError<A>, B>,
+  op3: Operator<ExcludeError<B>, C>
 ): SafeOperator<T, C>;
 
 // Overload 4: Four operators
 export function safeCompose<T, A, B, C, D>(
-  op1: Operator<T, A>,
-  op2: Operator<A, B>,
-  op3: Operator<B, C>,
-  op4: Operator<C, D>
+  op1: Operator<ExcludeError<T>, A>,
+  op2: Operator<ExcludeError<A>, B>,
+  op3: Operator<ExcludeError<B>, C>,
+  op4: Operator<ExcludeError<C>, D>
 ): SafeOperator<T, D>;
 
 // Overload 5: Five operators
 export function safeCompose<T, A, B, C, D, E>(
-  op1: Operator<T, A>,
-  op2: Operator<A, B>,
-  op3: Operator<B, C>,
-  op4: Operator<C, D>,
-  op5: Operator<D, E>
+  op1: Operator<ExcludeError<T>, A>,
+  op2: Operator<ExcludeError<A>, B>,
+  op3: Operator<ExcludeError<B>, C>,
+  op4: Operator<ExcludeError<C>, D>,
+  op5: Operator<ExcludeError<D>, E>
 ): SafeOperator<T, E>;
 
 // Overload 6: Six operators
 export function safeCompose<T, A, B, C, D, E, F>(
-  op1: Operator<T, A>,
-  op2: Operator<A, B>,
-  op3: Operator<B, C>,
-  op4: Operator<C, D>,
-  op5: Operator<D, E>,
-  op6: Operator<E, F>
+  op1: Operator<ExcludeError<T>, A>,
+  op2: Operator<ExcludeError<A>, B>,
+  op3: Operator<ExcludeError<B>, C>,
+  op4: Operator<ExcludeError<C>, D>,
+  op5: Operator<ExcludeError<D>, E>,
+  op6: Operator<ExcludeError<E>, F>
 ): SafeOperator<T, F>;
 
 // Overload 7: Seven operators
 export function safeCompose<T, A, B, C, D, E, F, G>(
-  op1: Operator<T, A>,
-  op2: Operator<A, B>,
-  op3: Operator<B, C>,
-  op4: Operator<C, D>,
-  op5: Operator<D, E>,
-  op6: Operator<E, F>,
-  op7: Operator<F, G>
+  op1: Operator<ExcludeError<T>, A>,
+  op2: Operator<ExcludeError<A>, B>,
+  op3: Operator<ExcludeError<B>, C>,
+  op4: Operator<ExcludeError<C>, D>,
+  op5: Operator<ExcludeError<D>, E>,
+  op6: Operator<ExcludeError<E>, F>,
+  op7: Operator<ExcludeError<F>, G>
 ): SafeOperator<T, G>;
 
 // Overload 8: Eight operators
 export function safeCompose<T, A, B, C, D, E, F, G, H>(
-  op1: Operator<T, A>,
-  op2: Operator<A, B>,
-  op3: Operator<B, C>,
-  op4: Operator<C, D>,
-  op5: Operator<D, E>,
-  op6: Operator<E, F>,
-  op7: Operator<F, G>,
-  op8: Operator<G, H>
+  op1: Operator<ExcludeError<T>, A>,
+  op2: Operator<ExcludeError<A>, B>,
+  op3: Operator<ExcludeError<B>, C>,
+  op4: Operator<ExcludeError<C>, D>,
+  op5: Operator<ExcludeError<D>, E>,
+  op6: Operator<ExcludeError<E>, F>,
+  op7: Operator<ExcludeError<F>, G>,
+  op8: Operator<ExcludeError<G>, H>
 ): SafeOperator<T, H>;
 
 // Overload 9: Nine operators
 export function safeCompose<T, A, B, C, D, E, F, G, H, I>(
-  op1: Operator<T, A>,
-  op2: Operator<A, B>,
-  op3: Operator<B, C>,
-  op4: Operator<C, D>,
-  op5: Operator<D, E>,
-  op6: Operator<E, F>,
-  op7: Operator<F, G>,
-  op8: Operator<G, H>,
-  op9: Operator<H, I>
+  op1: Operator<ExcludeError<T>, A>,
+  op2: Operator<ExcludeError<A>, B>,
+  op3: Operator<ExcludeError<B>, C>,
+  op4: Operator<ExcludeError<C>, D>,
+  op5: Operator<ExcludeError<D>, E>,
+  op6: Operator<ExcludeError<E>, F>,
+  op7: Operator<ExcludeError<F>, G>,
+  op8: Operator<ExcludeError<G>, H>,
+  op9: Operator<ExcludeError<H>, I>
 ): SafeOperator<T, I>;
 
 // Implementation
-export function safeCompose<T, R>(
-  ...operators: Array<Operator<unknown, unknown>>
-): SafeOperator<T, R> {
+export function safeCompose<T, A, B, C, D, E, F, G, H, I>(
+  op1?: Operator<ExcludeError<T>, A>,
+  op2?: Operator<ExcludeError<A>, B>,
+  op3?: Operator<ExcludeError<B>, C>,
+  op4?: Operator<ExcludeError<C>, D>,
+  op5?: Operator<ExcludeError<D>, E>,
+  op6?: Operator<ExcludeError<E>, F>,
+  op7?: Operator<ExcludeError<F>, G>,
+  op8?: Operator<ExcludeError<G>, H>,
+  op9?: Operator<ExcludeError<H>, I>
+): 
+  typeof op9 extends Operator<ExcludeError<H>, I> ? SafeOperator<H, I> :
+  typeof op8 extends Operator<ExcludeError<G>, H> ? SafeOperator<G, H> :
+  typeof op7 extends Operator<ExcludeError<F>, G> ? SafeOperator<F, G> :
+  typeof op6 extends Operator<ExcludeError<E>, F> ? SafeOperator<E, F> :
+  typeof op5 extends Operator<ExcludeError<D>, E> ? SafeOperator<D, E> :
+  typeof op4 extends Operator<ExcludeError<C>, D> ? SafeOperator<C, D> :
+  typeof op3 extends Operator<ExcludeError<B>, C> ? SafeOperator<B, C> :
+  typeof op2 extends Operator<ExcludeError<A>, B> ? SafeOperator<A, B> :
+  typeof op1 extends Operator<ExcludeError<T>, A> ? SafeOperator<T, A> :
+  SafeOperator<T, T> {
   // Error if too many operators
-  const len = operators.length;
+  const len = arguments.length;
+  if (len === 0) return ignoreErrors<T>();
   if (len > 9) {
     throw new Error('safeCompose: Too many operators (maximum 9). Use nested safeCompose calls.');
   }
 
   // Return a new operator function that applies all the operators
-  return (source) => {
-    let stream: ReadableStream<unknown> = ignoreErrors<T>()(source);
+  return ((source) => {
+    let result = ignoreErrors<T>()(source as ReadableStream<T>);
 
-    // Apply each operator in sequence
-    for (let i = 0; i < len; i++) {
-      try {
-        const operator = operators[i];
-        const operatorResult = operator(stream);
-        stream = ignoreErrors<unknown>()(operatorResult);
-      } catch (err) { 
-        console.warn(`Setup error in safeCompose operator[${i}]:`, err);
-        // Continue with remaining operators
-      }
-    }
+    const errorPrefix = 'safeCompose:operator';
+    if (op1) result = applyOperator(result, op1, { error: false, message: errorPrefix + `[1]` });
+    if (op2) result = applyOperator(result, op2, { error: false, message: errorPrefix + `[2]` });
+    if (op3) result = applyOperator(result, op3, { error: false, message: errorPrefix + `[3]` });
+    if (op4) result = applyOperator(result, op4, { error: false, message: errorPrefix + `[4]` });
+    if (op5) result = applyOperator(result, op5, { error: false, message: errorPrefix + `[5]` });
+    if (op6) result = applyOperator(result, op6, { error: false, message: errorPrefix + `[6]` });
+    if (op7) result = applyOperator(result, op7, { error: false, message: errorPrefix + `[7]` });
+    if (op8) result = applyOperator(result, op8, { error: false, message: errorPrefix + `[8]` });
+    if (op9) result = applyOperator(result, op9, { error: false, message: errorPrefix + `[9]` });
 
-    return stream as ReadableStream<Exclude<R, ObservableError>>;
-  };
+    return result;
+  }) as
+    typeof op9 extends Operator<ExcludeError<H>, I> ? SafeOperator<H, I> :
+    typeof op8 extends Operator<ExcludeError<G>, H> ? SafeOperator<G, H> :
+    typeof op7 extends Operator<ExcludeError<F>, G> ? SafeOperator<F, G> :
+    typeof op6 extends Operator<ExcludeError<E>, F> ? SafeOperator<E, F> :
+    typeof op5 extends Operator<ExcludeError<D>, E> ? SafeOperator<D, E> :
+    typeof op4 extends Operator<ExcludeError<C>, D> ? SafeOperator<C, D> :
+    typeof op3 extends Operator<ExcludeError<B>, C> ? SafeOperator<B, C> :
+    typeof op2 extends Operator<ExcludeError<A>, B> ? SafeOperator<A, B> :
+    typeof op1 extends Operator<ExcludeError<T>, A> ? SafeOperator<T, A> :
+    SafeOperator<T, T>;
 }
-
-const source = of(1, 2, 4, 5)
-pipe(source,
-  safeCompose(
-    filter(x => x % 2 === 0),
-    map(x => x * 2),
-    scan((acc, x) => acc + x, 0),
-    map(x => x.toString()),
-    map(x => x),
-    take(50)
-  )
-).subscribe({});
-
-pipe(source,
-  ignoreErrors(),
-  filter(x => x % 2 === 0),
-  map(x => x * 2),
-  scan((acc, x) => acc + x, 0),
-  map(x => x.toString()),
-  map(x => x),
-  take(50)
-).subscribe({})

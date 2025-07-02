@@ -1,4 +1,4 @@
-import type { Operator } from "../_types.ts";
+import type { ExcludeError, Operator, SafeOperator } from "../_types.ts";
 import { ObservableError } from "../../error.ts";
 import { createOperator, createStatefulOperator } from "../operators.ts";
 
@@ -91,13 +91,13 @@ import { createOperator, createStatefulOperator } from "../operators.ts";
  * // Perfect for demos - only shows working features
  * ```
  */
-export function ignoreErrors<T>(): Operator<T, T> {
+export function ignoreErrors<T>(): SafeOperator<T, T> {
   return createOperator<T, T>({
     name: 'ignoreErrors',
     ignoreErrors: true,
     transform(chunk, controller) {
       if (!(chunk instanceof ObservableError)) {
-        controller.enqueue(chunk as Exclude<T, ObservableError>);
+        controller.enqueue(chunk);
       }
       // Errors are silently dropped - like they never happened
     }
@@ -235,10 +235,10 @@ export function ignoreErrors<T>(): Operator<T, T> {
  * // Calculations continue even with invalid inputs
  * ```
  */
-export function catchErrors<T, R>(fallback: R): Operator<T, T | R> {
+export function catchErrors<T, R>(fallback: R): Operator<T, ExcludeError<T> | R> {
   return createOperator<T, T | R>({
     name: 'catchErrors',
-    ignoreErrors: true,
+    ignoreErrors: false,
     transform(chunk, controller) {
       if (chunk instanceof ObservableError) {
         controller.enqueue(fallback);
@@ -246,7 +246,7 @@ export function catchErrors<T, R>(fallback: R): Operator<T, T | R> {
         controller.enqueue(chunk);
       }
     }
-  });
+  }) as Operator<T, ExcludeError<T> | R>;
 }
 
 /**
@@ -466,8 +466,8 @@ export function catchErrors<T, R>(fallback: R): Operator<T, T | R> {
  */
 export function mapErrors<T, E>(
   errorMapper: (error: ObservableError) => E
-): Operator<T, T | E | ObservableError> {
-  return createOperator<T, T | E | ObservableError>({
+): Operator<T, ExcludeError<T> | E> {
+  return createOperator<T, T | E>({
     name: 'mapErrors',
     ignoreErrors: true,
     transform(chunk, controller) {
@@ -478,17 +478,15 @@ export function mapErrors<T, E>(
         } catch (mapperError) {
           // If your error mapper itself breaks, we create a new error
           // This prevents infinite error loops
-          controller.enqueue(
-            new ObservableError(
-              [mapperError, chunk],
-              `Your error mapper function threw an error: ${mapperError}`,
-              {
-                operator: 'mapErrors:mapper',
-                value: mapperError,
-                cause: chunk,
-                tip: 'Some logic within the mappErrors operator seems to have thrown an error. Check your mapErrors function for bugs'
-              }
-            ) as E
+          throw new ObservableError(
+            [mapperError, chunk],
+            `Your error mapper function threw an error: ${mapperError}`,
+            {
+              operator: 'mapErrors:mapper',
+              value: mapperError,
+              cause: chunk,
+              tip: 'Some logic within the mappErrors operator seems to have thrown an error. Check your mapErrors function for bugs'
+            }
           );
         }
       } else {
