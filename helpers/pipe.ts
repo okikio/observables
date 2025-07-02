@@ -196,7 +196,7 @@ export function pipe<T, A, B, C, D, E, F, G, H, I>(
   }
 
   // Convert the source Observable to a ReadableStream
-  let result: ReadableStream<unknown> = toStream(pull(source));
+  let result: ReadableStream<unknown> = toStream(pull(source, { throwError: false }));
 
   const errorPrefix = 'pipe:operator';
   if (op1) result = applyOperator(result, op1, { message: errorPrefix + `[1]` });

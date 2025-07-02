@@ -1225,8 +1225,10 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * }
    * ```
    */
-  pull({ strategy = { highWaterMark: 64 } }: { strategy?: QueuingStrategy<T | ObservableError> } = {}): AsyncGenerator<T> {
-    return pull(this, { strategy })
+  pull(opts: Parameters<typeof pull>[1] & { ignoreError?: true }): AsyncGenerator<T>;
+  pull(opts: Parameters<typeof pull>[1] & { ignoreError: false }): AsyncGenerator<T | ObservableError>;
+  pull(opts: Parameters<typeof pull>[1]): AsyncGenerator<T | ObservableError> {
+    return pull(this, opts)
   }
 
   /**
@@ -1815,11 +1817,21 @@ export function from<T>(
  * }
  * ```
  */
+export function pull<T>(
+   this: unknown,
+   observable: SpecObservable<T>,
+   opts?: { strategy?: QueuingStrategy<T | ObservableError>, throwError?: true },
+ ): AsyncGenerator<T>;
+export function pull<T>(
+   this: unknown,
+   observable: SpecObservable<T>,
+   opts: { strategy?: QueuingStrategy<T | ObservableError>, throwError: false },
+ ): AsyncGenerator<T | ObservableError>;
 export async function* pull<T>(
   this: unknown,
   observable: SpecObservable<T>,
-  { strategy = { highWaterMark: 64 } }: { strategy?: QueuingStrategy<T | ObservableError> } = {},
-): AsyncGenerator<T> {
+  { strategy = { highWaterMark: 64 }, throwError = true }: { strategy?: QueuingStrategy<T | ObservableError>, throwError?: boolean } = {},
+): AsyncGenerator<T | ObservableError> {
   const obs = observable?.[Symbol.observable]?.();
   let sub: SpecSubscription | null = null;
 
@@ -1854,7 +1866,7 @@ export async function* pull<T>(
       const { value, done } = await reader.read();
 
       // If we received a wrapped error, unwrap and throw it
-      if (value instanceof ObservableError) throw value;
+      if (throwError && value instanceof ObservableError) throw value;
 
       // If the stream is done (Observable completed), exit the loop
       if (done) break;

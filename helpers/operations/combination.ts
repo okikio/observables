@@ -64,7 +64,7 @@ export function mergeMap<T, R>(
   project: (value: T, index: number) => SpecObservable<R>,
   concurrent: number = Infinity
 ): Operator<T, R | ObservableError> {
-  return createStatefulOperator<T, R, {
+  return createStatefulOperator<T, R | ObservableError, {
     // State for tracking active subscriptions and buffer
     activeSubscriptions: Map<number, { unsubscribe: () => void }>;
     buffer: Array<[T, number]>;
@@ -110,7 +110,7 @@ export function mergeMap<T, R>(
 
         // Use pull to iterate asynchronously
         try {
-          for await (const innerValue of pull(innerObservable)) {
+          for await (const innerValue of pull(innerObservable, { throwError: false })) {
             controller.enqueue(innerValue);
           }
         } catch (err) {
@@ -266,7 +266,7 @@ export function concatMap<T, R>(
 export function switchMap<T, R>(
   project: (value: T, index: number) => SpecObservable<R>
 ): Operator<T, R | ObservableError> {
-  return createStatefulOperator<T, R, {
+  return createStatefulOperator<T, R | ObservableError, {
     // State for tracking inner subscription
     currentController: AbortController | null;
     sourceCompleted: boolean;
@@ -307,7 +307,7 @@ export function switchMap<T, R>(
       // Subscribe to the new inner Observable
       (async () => {
         try {
-          const iterator = pull(innerObservable)[Symbol.asyncIterator]();
+          const iterator = pull(innerObservable, { throwError: false })[Symbol.asyncIterator]();
 
           while (!abortController.signal.aborted) {
             const { value, done } = await iterator.next();
