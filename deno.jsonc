@@ -7,7 +7,7 @@
     "./types": "./_types.ts",
     "./events": "./events.ts",
     "./observable": "./observable.ts",
-
+    "./asserts": "./asserts.ts",
     "./operators": "./helpers/mod.ts",
     "./operations": "./helpers/operations/mod.ts",
     "./operations/batch": "./helpers/operations/batch.ts",
@@ -15,7 +15,8 @@
     "./operations/conditional": "./helpers/operations/conditional.ts",
     "./operations/core": "./helpers/operations/core.ts",
     "./operations/error": "./helpers/operations/error.ts",
-    "./operations/timing": "./helpers/operations/timing.ts"
+    "./operations/timing": "./helpers/operations/timing.ts",
+    "./operations/values": "./helpers/operations/values.ts"
   },
   "tasks": {
     "test": "deno test -RW --allow-run=deno,bun,node,npx --clean --trace-leaks",
@@ -24,7 +25,8 @@
   "license": "MIT",
   "imports": {
     "@libs/testing": "jsr:@libs/testing@^4.0.1",
-    "@std/assert": "jsr:@std/assert@1"
+    "@std/assert": "jsr:@std/assert@1",
+    "mitata": "npm:mitata@^1.0.34"
   },
   "test:permissions": {
     "run": [

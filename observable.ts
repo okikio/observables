@@ -242,6 +242,7 @@
  */
 import type { SpecObservable, ObservableProtocol, SpecSubscription } from "./_spec.ts";
 import type { Observer, Subscription } from "./_types.ts";
+import { assertObservableError } from "./asserts.ts";
 import { ObservableError } from "./error.ts";
 import { Symbol } from "./symbol.ts";
 
@@ -1512,7 +1513,8 @@ export function of<T>(this: unknown, ...items: T[]): Observable<T> {
 export function from<T>(
   this: unknown,
   input: SpecObservable<T> |
-    Iterable<T> | AsyncIterable<T> | PromiseLike<T> | ArrayLike<T>
+    Iterable<T> | AsyncIterable<T> | PromiseLike<T> | ArrayLike<T>,
+  { throwError = true } = {}
 ): Observable<T> {
   if (input === null || input === undefined) {
     throw new TypeError('Cannot convert undefined or null to Observable');
@@ -1529,6 +1531,7 @@ export function from<T>(
     if (len === 0) return new Constructor(EMPTY);
     if (len === 1) {
       return new Constructor(obs => {
+        if (throwError) assertObservableError(arr[0], obs);
         obs.next(arr[0]);
         obs.complete();
       });
@@ -1536,36 +1539,54 @@ export function from<T>(
 
     // Type check to ensure it's actually array-like
     return new Constructor(obs => {
-      // Typed arrays: no bounds checking needed, direct iteration
-      // Small arrays: simple loop with early exit checks
-      if (len < 100 || ArrayBuffer.isView(arr)) {
-        for (let i = 0; i < len; i++) {
-          obs.next(arr[i]);
-          if (obs.closed) return;
-        }
-      } else {
-        // Large arrays: unroll with less frequent closed checks
-        let i = 0;
-        const limit = len - (len % 8);
+      try {
+        // Typed arrays: no bounds checking needed, direct iteration
+        // Small arrays: simple loop with early exit checks
+        if (len < 100 || ArrayBuffer.isView(arr)) {
+          for (let i = 0; i < len; i++) {
+            if (throwError) assertObservableError(arr[i]);
 
-        // Check closed once per 8 items (balanced approach)
-        for (; i < limit; i += 8) {
-          obs.next(arr[i]);
-          obs.next(arr[i + 1]);
-          obs.next(arr[i + 2]);
-          obs.next(arr[i + 3]);
-          obs.next(arr[i + 4]);
-          obs.next(arr[i + 5]);
-          obs.next(arr[i + 6]);
-          obs.next(arr[i + 7]);
-          if (obs.closed) return;
-        }
+            obs.next(arr[i]);
+            if (obs.closed) return;
+          }
+        } else {
+          // Large arrays: unroll with less frequent closed checks
+          let i = 0;
+          const limit = len - (len % 8);
 
-        // Handle remainder with checks
-        for (; i < len; i++) {
-          obs.next(arr[i]);
-          if (obs.closed) return;
+          // Check closed once per 8 items (balanced approach)
+          for (; i < limit; i += 8) {
+            if (throwError) {
+              assertObservableError(arr[i]);
+              assertObservableError(arr[i + 1]);
+              assertObservableError(arr[i + 2]);
+              assertObservableError(arr[i + 3]);
+              assertObservableError(arr[i + 4]);
+              assertObservableError(arr[i + 5]);
+              assertObservableError(arr[i + 6]);
+              assertObservableError(arr[i + 7]);
+            }
+
+            obs.next(arr[i]);
+            obs.next(arr[i + 1]);
+            obs.next(arr[i + 2]);
+            obs.next(arr[i + 3]);
+            obs.next(arr[i + 4]);
+            obs.next(arr[i + 5]);
+            obs.next(arr[i + 6]);
+            obs.next(arr[i + 7]);
+            if (obs.closed) return;
+          }
+
+          // Handle remainder with checks
+          for (; i < len; i++) {
+            if (throwError) assertObservableError(arr[i]);
+            obs.next(arr[i]);
+            if (obs.closed) return;
+          }
         }
+      } catch (err) { 
+        obs.error(err);
       }
       
       obs.complete();
@@ -1602,6 +1623,11 @@ export function from<T>(
     return new Constructor(obs => {
       // For...of is optimized for Sets in V8
       for (const item of collection as Set<T>) {
+        if (throwError) {
+          const err = assertObservableError(item, obs);
+          if (err) return;
+        }
+
         obs.next(item);
         if (obs.closed) return;
       }
@@ -1616,6 +1642,7 @@ export function from<T>(
     return new Constructor(obs => {
       promise.then(
         (value) => {
+          if (throwError) assertObservableError(value, obs);
           obs.next(value);
           obs.complete();
         },
@@ -1633,7 +1660,7 @@ export function from<T>(
 
       try {
         for (let step = iterator.next(); !step.done; step = iterator.next()) {
-          if (step.value instanceof ObservableError) throw step.value;
+          if (throwError) assertObservableError(step.value);
           obs.next(step.value);
 
           // If subscription was closed during iteration, clean up and exit
@@ -1665,7 +1692,7 @@ export function from<T>(
       (async () => {
         try {
           for (let step = await asyncIterator.next(); !step.done; step = await asyncIterator.next()) {
-            if (step.value instanceof ObservableError) throw step.value;
+            if (throwError) assertObservableError(step.value);
             obs.next(step.value);
 
             // If subscription was closed during iteration, clean up and exit
