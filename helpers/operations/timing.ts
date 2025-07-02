@@ -1,3 +1,4 @@
+import type { ObservableError } from "@okikio/observables/error";
 import type { Operator } from "../_types.ts";
 import { createStatefulOperator } from "../operators.ts";
 
@@ -24,7 +25,7 @@ import { createStatefulOperator } from "../operators.ts";
  * );
  * ```
  */
-export function delay<T>(ms: number): Operator<T, T> {
+export function delay<T>(ms: number): Operator<T, T | ObservableError> {
   return createStatefulOperator<T, T, {
     pendingTimeouts: Set<ReturnType<typeof setTimeout>>,
     completed: boolean
@@ -99,7 +100,7 @@ export function delay<T>(ms: number): Operator<T, T> {
  * );
  * ```
  */
-export function debounce<T>(ms: number): Operator<T, T> {
+export function debounce<T>(ms: number): Operator<T, T | ObservableError> {
   return createStatefulOperator<T, T, {
     timeout: ReturnType<typeof setTimeout> | null,
     lastValue: T | null,
@@ -187,7 +188,7 @@ export function debounce<T>(ms: number): Operator<T, T> {
  * );
  * ```
  */
-export function throttle<T>(ms: number): Operator<T, T> {
+export function throttle<T>(ms: number): Operator<T, T | ObservableError> {
   return createStatefulOperator<T, T, {
     lastEmitTime: number,
     nextValue: T | null,

@@ -5,10 +5,9 @@ import type { ExcludeError, Operator, SafeOperator } from "./_types.ts";
 import type { ObservableError } from "../error.ts";
 import type { SpecObservable } from "../_spec.ts";
 
-import { filter, map, scan, take } from "./operations/core.ts";
-import { catchErrors, ignoreErrors, mapErrors } from "./operations/errors.ts";
+import { ignoreErrors } from "./operations/errors.ts";
 
-import { Observable, of, pull } from "../observable.ts";
+import { Observable, pull } from "../observable.ts";
 import { applyOperator, toStream } from "./utils.ts";
 import { Symbol } from "../symbol.ts";
 

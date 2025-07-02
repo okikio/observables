@@ -1,4 +1,4 @@
-import type { Operator } from "../_types.ts";
+import type { ExcludeError, Operator } from "../_types.ts";
 import { createOperator, createStatefulOperator } from "../operators.ts";
 import { ObservableError } from "../../error.ts";
 
@@ -38,6 +38,194 @@ export function map<T, R>(project: (value: T, index: number) => R): Operator<T, 
     createState: () => ({ index: 0 }),
     transform(chunk, state, controller) {
       const result = project(chunk, state.index++);
+      controller.enqueue(result);
+    }
+  });
+}
+
+/**
+ * Transforms each non-error value emitted by the source stream, while passing errors through unchanged.
+ * 
+ * ## Intent and Purpose
+ * 
+ * The `mapValue` operator is designed to transform only the actual data values in a stream,
+ * while letting any `ObservableError` instances pass through untouched. This is different
+ * from the regular `map` operator which tries to transform everything, including errors.
+ * 
+ * Think of it as a "smart map" that knows the difference between real data and error objects,
+ * and only applies your transformation function to the real data.
+ * 
+ * ## When to Use This
+ * 
+ * Use `mapValue` when:
+ * - You want to transform data but preserve error information exactly as-is
+ * - You're working in a pipeline that might contain both values and `ObservableError` objects
+ * - You need type-safe transformations that won't accidentally modify error objects
+ * - You want cleaner error handling without wrapping every transformation in try-catch
+ * 
+ * ## How It Works
+ * 
+ * 1. **Error Detection**: Each chunk is checked to see if it's an `ObservableError`
+ * 2. **Error Passthrough**: If it's an error, it gets passed downstream unchanged
+ * 3. **Value Transformation**: If it's a real value, your transformation function is applied
+ * 4. **Result Emission**: The transformed value (or unchanged error) is emitted
+ * 
+ * ## Behavior and Logic
+ * 
+ * - **Values**: Your `project` function receives only non-error values with the correct type
+ * - **Errors**: `ObservableError` instances bypass your function entirely
+ * - **Type Safety**: The input type excludes errors, so you don't need to handle them
+ * - **Performance**: No try-catch overhead since errors are detected, not caught
+ * 
+ * ## Edge Cases and Gotchas
+ * 
+ * **Type Complexity**: The return type is `R | ObservableError` because the stream can
+ * emit either your transformed values OR error objects. This can make downstream type
+ * handling more complex.
+ * 
+ * **Error Object Detection**: Only `ObservableError` instances are treated as errors.
+ * Regular JavaScript `Error` objects or other falsy values will be passed to your
+ * transformation function.
+ * 
+ * **Transformation Errors**: If your `project` function throws an error, it will
+ * crash the stream. Unlike `map`, this operator doesn't automatically wrap
+ * transformation errors in `ObservableError`.
+ * 
+ * ## Unconventional Behavior
+ * 
+ * Unlike most operators that treat all input uniformly, `mapValue` has built-in
+ * awareness of the error type system. This makes it behave differently from
+ * standard functional programming map operations.
+ * 
+ * The operator essentially creates a "branching" behavior where the same input
+ * stream can produce two different types of output depending on the input type.
+ * 
+ * @typeParam T - Type of values from the source stream (includes error union)
+ * @typeParam R - Type of values after transformation
+ * @param project - Function that transforms non-error values. Only receives actual data values, never errors.
+ * @returns A stream operator that transforms values while preserving errors
+ * 
+ * @example
+ * **Basic Value Transformation**
+ * ```ts
+ * import { pipe, mapValue, of } from "./mod.ts";
+ * 
+ * // Transform only the actual numbers, errors pass through
+ * const result = pipe(
+ *   of(1, 2, 3),
+ *   mapValue(x => x * 2)  // x is guaranteed to be a number
+ * );
+ * // Output: 2, 4, 6
+ * ```
+ * 
+ * @example
+ * **Mixed Values and Errors**
+ * ```ts
+ * import { pipe, mapValue } from "./mod.ts";
+ * import { ObservableError } from "../../error.ts";
+ * 
+ * // Create a stream with both values and errors
+ * const mixedStream = new Observable(observer => {
+ *   observer.next(10);
+ *   observer.next(new ObservableError("Something went wrong", "Test error"));
+ *   observer.next(20);
+ *   observer.complete();
+ * });
+ * 
+ * const result = pipe(
+ *   mixedStream,
+ *   mapValue(x => `Value: ${x}`)  // Only transforms the numbers
+ * );
+ * // Output: "Value: 10", ObservableError(...), "Value: 20"
+ * ```
+ * 
+ * @example
+ * **Type Safety in Action**
+ * ```ts
+ * // Your transformation function gets the clean type
+ * const processUser = pipe(
+ *   userStream,  // Observable<User | ObservableError>
+ *   mapValue(user => {
+ *     // 'user' is guaranteed to be User, never ObservableError
+ *     return {
+ *       id: user.id,
+ *       name: user.name.toUpperCase(),  // Safe to call string methods
+ *       email: user.email.toLowerCase()
+ *     };
+ *   })
+ * );
+ * ```
+ * 
+ * @example
+ * **Chaining with Error-Aware Operators**
+ * ```ts
+ * import { pipe, mapValue, filter, take } from "./mod.ts";
+ * 
+ * const pipeline = pipe(
+ *   dataStream,
+ *   mapValue(x => x.value),           // Extract value field
+ *   filter(x => x > 0),               // Keep positive values
+ *   mapValue(x => Math.sqrt(x)),      // Safe math operation
+ *   take(10)
+ * );
+ * // Errors flow through the entire pipeline unchanged
+ * ```
+ * 
+ * @example
+ * **Comparison with Regular Map**
+ * ```ts
+ * // Regular map - you handle errors yourself
+ * const withMap = pipe(
+ *   stream,
+ *   map(x => {
+ *     if (x instanceof ObservableError) return x;  // Manual error handling
+ *     return x * 2;  // Transform actual values
+ *   })
+ * );
+ * 
+ * // mapValue - errors handled automatically
+ * const withMapValue = pipe(
+ *   stream,
+ *   mapValue(x => x * 2)  // x is never an error, much cleaner
+ * );
+ * ```
+ * 
+ * ## Common Pitfalls
+ * 
+ * **Don't use for error transformation**: If you need to modify error objects,
+ * use specialized error operators like `mapErrors` or `catchErrors`.
+ * 
+ * **Transformation function errors**: Make sure your transformation function
+ * doesn't throw, or wrap it in appropriate error handling:
+ * 
+ * ```ts
+ * // Risky - could crash the stream
+ * mapValue(x => JSON.parse(x.data))
+ * 
+ * // Safer - handle potential errors
+ * mapValue(x => {
+ *   try {
+ *     return JSON.parse(x.data);
+ *   } catch (err) {
+ *     return { error: "Invalid JSON", original: x.data };
+ *   }
+ * })
+ * ```
+ * 
+ * **Type handling downstream**: Remember that the output type includes both
+ * your transformed values AND error objects, so downstream operators need
+ * to handle this union type appropriately.
+ */
+export function mapValue<T, R>(project: (value: ExcludeError<T>) => R): Operator<T, R | ObservableError> {
+  return createOperator<T, R | ObservableError>({
+    name: 'mapValue',
+    transform(chunk, controller) {
+      if (chunk instanceof ObservableError) {
+        controller.enqueue(chunk);
+        return;
+      }
+
+      const result = project(chunk as ExcludeError<T>);
       controller.enqueue(result);
     }
   });
