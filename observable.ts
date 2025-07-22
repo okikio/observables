@@ -400,7 +400,7 @@ function createSubscription<T>(observer: Observer<T>, opts?: { signal?: AbortSig
   };
 
   // Adds support for unsubscribing via AbortSignals
-  const abortHandler = () => subscription.unsubscribe();
+  const abortHandler = () => subscription?.unsubscribe();
   const removeAbortHandler = () => opts?.signal?.removeEventListener("abort", abortHandler);
   opts?.signal?.addEventListener?.("abort", abortHandler, { once: true });
   stateMap.removeAbortHandler = removeAbortHandler;
@@ -428,11 +428,18 @@ function createSubscription<T>(observer: Observer<T>, opts?: { signal?: AbortSig
  * @param subscription - The subscription to close
  * @internal
  */
-function closeSubscription(subscription: Subscription, stateMap?: StateMap<unknown> | undefined | null): void {
+function closeSubscription(
+  subscription: Subscription,
+  stateMap?: StateMap<unknown> | undefined | null,
+  returnObserver = false
+): Observer<unknown> | null | void {
   const state = stateMap ?? SubscriptionStateMap.get(subscription);
   if (!state || state.closed) return;
 
-  // Mark closed first
+  // Capture observer BEFORE marking closed (for spec compliance)
+  const observer = state.observer;
+
+  // Mark closed first (TC39 spec step 6)
   state.closed = true;
 
   // Cache cleanup, abort signal and the abort handler before clearing
@@ -447,7 +454,7 @@ function closeSubscription(subscription: Subscription, stateMap?: StateMap<unkno
   // Remove the abort handler
   removeAbortHandler?.();
 
-  // This conditional check runs synchronously
+  // Run teardown (existing logic preserved)
   try {
     cleanupSubscription(cleanup);
   } finally {
@@ -456,6 +463,9 @@ function closeSubscription(subscription: Subscription, stateMap?: StateMap<unkno
     cleanup = null;
     removeAbortHandler = null;
   }
+
+  // Return observer if requested (enables spec-compliant error/complete)
+  return returnObserver ? observer : undefined;
 }
 
 /**
@@ -556,6 +566,7 @@ export class SubscriptionObserver<T> {
 
     if (subscription) {
       this.#state = SubscriptionStateMap.get(subscription);
+      if (!this.#state) throw new Error('Subscription state not found');
     }
   }
 
@@ -607,7 +618,7 @@ export class SubscriptionObserver<T> {
    */
   next(value: T) {
     const state = this.#state;
-    if (!state || !state.closed) return;
+    if (!state || state.closed) return;
 
     // Fast-path optimization to avoid long request chains
     const observer = state.observer;
@@ -686,25 +697,21 @@ export class SubscriptionObserver<T> {
    */
   error(err: unknown) {
     const state = this.#state;
-    if (!state || !state.closed) return;
+    if (!state || state.closed) return;
 
-    const observer = state.observer;
-    if (observer && typeof observer?.error === 'function') {
-      try { observer.error.call(observer, err); }
+    // Mark closed and get observer in one call
+    const observer = closeSubscription(this.#subscription!, state, true) as Observer<T>;
+    const errorFn = observer?.error;
+    if (typeof errorFn === "function") {
+      try { errorFn.call(observer, err); }
       catch (innerErr) { queueMicrotask(() => { throw innerErr; }); }
     }
 
     // No error handler, delegate to host
     else queueMicrotask(() => { throw err; });
 
-    try {
-      let subscription = this.#subscription;
-      if (subscription && typeof subscription?.unsubscribe === 'function') {
-        this.#subscription = null; // Clear reference first
-        subscription.unsubscribe();
-        subscription = null;
-      }
-    } catch (innerErr) { queueMicrotask(() => { throw innerErr; }); }
+    // Clear reference
+    this.#subscription = null;
   }
 
   /**
@@ -732,15 +739,17 @@ export class SubscriptionObserver<T> {
    */
   complete() {
     const state = this.#state;
-    if (!state || !state.closed) return;
+    if (!state || state.closed) return;
 
-    const observer = state.observer;
-    if (observer && typeof observer?.complete === "function") {
-      try {
-        observer.complete.call(observer);
-      } catch (err) {
-        if (typeof observer?.error === "function") {
-          try { observer.error.call(observer, err); }
+    // Mark closed and get observer in one call
+    const observer = closeSubscription(this.#subscription!, state, true) as Observer<T>;
+    const completeFn = observer?.complete;
+    if (typeof completeFn === "function") {
+      try { completeFn.call(observer); }
+      catch (err) {
+        const errorFn = observer?.error;
+        if (typeof errorFn === "function") {
+          try { errorFn.call(observer, err); }
           catch (innerErr) { queueMicrotask(() => { throw innerErr; }); }
         }
 
@@ -749,14 +758,7 @@ export class SubscriptionObserver<T> {
       }
     }
 
-    try {
-      let subscription = this.#subscription;
-      if (subscription && typeof subscription?.unsubscribe === 'function') {
-        this.#subscription = null; // Clear reference first
-        subscription.unsubscribe();
-        subscription = null;
-      }
-    } catch (innerErr) { queueMicrotask(() => { throw innerErr; }); }
+    this.#subscription = null;
   }
 
   /**
@@ -1226,9 +1228,9 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
    * }
    * ```
    */
-  pull(opts: Parameters<typeof pull>[1] & { ignoreError?: true }): AsyncGenerator<T>;
-  pull(opts: Parameters<typeof pull>[1] & { ignoreError: false }): AsyncGenerator<T | ObservableError>;
-  pull(opts: Parameters<typeof pull>[1]): AsyncGenerator<T | ObservableError> {
+  pull(opts?: Parameters<typeof pull>[1] & { ignoreError?: true }): AsyncGenerator<T>;
+  pull(opts?: Parameters<typeof pull>[1] & { ignoreError?: false }): AsyncGenerator<T | ObservableError>;
+  pull(opts?: Parameters<typeof pull>[1] & { ignoreError?: boolean }): AsyncGenerator<T | ObservableError> {
     return pull(this, opts)
   }
 
@@ -1852,7 +1854,7 @@ export function pull<T>(
 export function pull<T>(
    this: unknown,
    observable: SpecObservable<T>,
-   opts: { strategy?: QueuingStrategy<T | ObservableError>, throwError: false },
+   opts?: { strategy?: QueuingStrategy<T | ObservableError>, throwError?: false },
  ): AsyncGenerator<T | ObservableError>;
 export async function* pull<T>(
   this: unknown,
