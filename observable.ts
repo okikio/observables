@@ -411,8 +411,58 @@ function createSubscription<T>(observer: Observer<T>, opts?: { signal?: AbortSig
 }
 
 /**
+ * Mark subscription as closed and return observer reference.
+ * Does NOT perform cleanup - that happens later.
+ */
+function markSubscriptionClosed<T>(state: StateMap<T> | undefined | null, returnObserver: true): Observer<T> | null;
+function markSubscriptionClosed<T>(state: StateMap<T> | undefined | null, returnObserver: false): undefined | null;
+function markSubscriptionClosed<T>(state: StateMap<T> | undefined | null, returnObserver?: boolean): Observer<T> | undefined | null;
+function markSubscriptionClosed<T>(state: StateMap<T> | undefined | null, returnObserver = false): Observer<T> | null | undefined {
+  if (!state || state.closed) return null;
+  
+  // Capture observer BEFORE marking closed (for spec compliance)
+  const observer = state.observer;
+  
+  // Mark as closed (this is what SubscriptionClosed checks)
+  state.closed = true;
+  state.observer = null;
+  
+  // Return observer if requested (enables spec-compliant error/complete)
+  if (returnObserver) return observer;
+}
+
+/**
+ * Perform cleanup if available. Safe to call multiple times.
+ */
+function performSubscriptionCleanup(subscription: Subscription, state?: StateMap<unknown> | null): void {
+  if (!state) return;
+  
+  // Cache cleanup, abort signal and the abort handler before clearing
+  let cleanup = state.cleanup;
+  let removeAbortHandler = state.removeAbortHandler;
+  
+  // Only clean if we have something to clean
+  if (!cleanup && !removeAbortHandler) return;
+  
+  // Clear references first
+  state.cleanup = null;
+  state.removeAbortHandler = null;
+  
+  // Remove the abort handler
+  removeAbortHandler?.();
+  
+  // Run teardown (existing logic preserved)
+  try {
+    cleanupSubscription(cleanup);
+  } finally {
+    SubscriptionStateMap.delete(subscription);
+    cleanup = null;
+    removeAbortHandler = null;
+  }
+}
+
+/**
  * Marks a subscription as closed and schedules necessary cleanup.
- * 
  * 
  * This is the centralized implementation for all subscription termination paths:
  * - Manual unsubscribe()
@@ -431,41 +481,13 @@ function createSubscription<T>(observer: Observer<T>, opts?: { signal?: AbortSig
 function closeSubscription(
   subscription: Subscription,
   stateMap?: StateMap<unknown> | undefined | null,
-  returnObserver = false
 ): Observer<unknown> | null | void {
   const state = stateMap ?? SubscriptionStateMap.get(subscription);
-  if (!state || state.closed) return;
+  const closed = markSubscriptionClosed(state!);
+  if (closed === null) return;
 
-  // Capture observer BEFORE marking closed (for spec compliance)
-  const observer = state.observer;
-
-  // Mark closed first (TC39 spec step 6)
-  state.closed = true;
-
-  // Cache cleanup, abort signal and the abort handler before clearing
-  let cleanup = state.cleanup;
-  let removeAbortHandler = state.removeAbortHandler;
-
-  // Clear references first
-  state.cleanup = null;
-  state.observer = null;
-  state.removeAbortHandler = null;
-
-  // Remove the abort handler
-  removeAbortHandler?.();
-
-  // Run teardown (existing logic preserved)
-  try {
-    cleanupSubscription(cleanup);
-  } finally {
-    // Ensure WeakMap entry is deleted even if cleanup throws
-    SubscriptionStateMap.delete(subscription);
-    cleanup = null;
-    removeAbortHandler = null;
-  }
-
-  // Return observer if requested (enables spec-compliant error/complete)
-  return returnObserver ? observer : undefined;
+  // If we have an observer, perform cleanup
+  performSubscriptionCleanup(subscription, state!);
 }
 
 /**
@@ -627,9 +649,8 @@ export class SubscriptionObserver<T> {
     const nextFn = observer.next;
     if (typeof nextFn !== 'function') return;
 
-    try {
-      nextFn.call(observer, value);
-    } catch (err) {
+    try { nextFn.call(observer, value); }
+    catch (err) {
       const errorFn = observer.error;
       if (typeof errorFn === "function") {
         try { errorFn.call(observer, err); }
@@ -697,10 +718,11 @@ export class SubscriptionObserver<T> {
    */
   error(err: unknown) {
     const state = this.#state;
-    if (!state || state.closed) return;
 
     // Mark closed and get observer in one call
-    const observer = closeSubscription(this.#subscription!, state, true) as Observer<T>;
+    const observer = markSubscriptionClosed(state, true);
+    if (observer === null) return;
+
     const errorFn = observer?.error;
     if (typeof errorFn === "function") {
       try { errorFn.call(observer, err); }
@@ -709,6 +731,9 @@ export class SubscriptionObserver<T> {
 
     // No error handler, delegate to host
     else queueMicrotask(() => { throw err; });
+
+    // Perform cleanup after marking closed
+    performSubscriptionCleanup(this.#subscription!, state);
 
     // Clear reference
     this.#subscription = null;
@@ -742,7 +767,9 @@ export class SubscriptionObserver<T> {
     if (!state || state.closed) return;
 
     // Mark closed and get observer in one call
-    const observer = closeSubscription(this.#subscription!, state, true) as Observer<T>;
+    const observer = markSubscriptionClosed(state, true);
+    if (observer === null) return;
+
     const completeFn = observer?.complete;
     if (typeof completeFn === "function") {
       try { completeFn.call(observer); }
@@ -758,6 +785,10 @@ export class SubscriptionObserver<T> {
       }
     }
 
+    // Perform cleanup after marking closed
+    performSubscriptionCleanup(this.#subscription!, state);
+
+    // Clear reference
     this.#subscription = null;
   }
 
@@ -1106,7 +1137,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
 
       // Store the cleanup function in the subscription state
       const state = SubscriptionStateMap.get(subscription);
-      if (state && cleanup) (state.cleanup = cleanup as Teardown);
+      if (state && cleanup) (state.cleanup = cleanup);
 
       /**
        * Handle the case where complete/error was called synchronously during the subscribe function.
@@ -1135,7 +1166,7 @@ export class Observable<T> implements AsyncIterable<T>, SpecObservable<T>, Obser
        * by manually running the teardown function
        */
       if (subscription.closed && cleanup) {
-        cleanupSubscription(cleanup as Teardown);
+        cleanupSubscription(cleanup);
       }
 
       cleanup = null;
