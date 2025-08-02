@@ -36,10 +36,12 @@
  * and validate that actual operator behavior matches expected results.
  */
 
+// // @ts-nocheck
+import type { ObservableError } from "../../error.ts";
 import { test, expect } from "@libs/testing";
 
 import { Observable } from "../../observable.ts";
-import { compose, pipe, safeCompose } from "../../helpers/pipe.ts";
+import { pipe } from "../../helpers/pipe.ts";
 import {
   filter,
   map,
@@ -48,7 +50,6 @@ import {
   tap
 } from "../../helpers/operations/core.ts";
 import { ignoreErrors } from "../../helpers/operations/errors.ts";
-import { ObservableError } from "@okikio/observables/error";
 
 // -----------------------------------------------------------------------------
 // pipe() Function Tests
@@ -128,6 +129,7 @@ test("pipe preserves errors", () => {
   pipe(
     source,
     ignoreErrors(),
+    map(x => x * 2),
     map(x => x * 2),
     ignoreErrors(),
   ).subscribe({
@@ -233,8 +235,7 @@ test("compose can be nested", () => {
   const results: number[] = [];
 
   const source = Observable.of(1, 2, 3, 4, 5, 6);
-  const innerCompose = compose(
-    ignoreErrors(),
+  const innerCompose = compose<number | ObservableError, number | ObservableError, number | ObservableError>(
     filter(x => x % 2 === 0),
     map(x => x * 2)
   );
@@ -244,7 +245,7 @@ test("compose can be nested", () => {
   );
 
   pipe(source, outerCompose).subscribe({
-    next: (v) => results.push(v),
+    next: (v) => { if (typeof v === "number") results.push(v) },
   });
 
   expect(results).toEqual([]);
@@ -258,8 +259,7 @@ test("compose preserves error handling", () => {
     observer.error("test error");
   });
 
-  const composedOperator = compose(
-    ignoreErrors(),
+  const composedOperator = compose<number | ObservableError, number | ObservableError, number | ObservableError>(
     map(x => x * 2),
     filter(x => x > 0)
   );
@@ -279,7 +279,7 @@ test("safeCompose with single operator", () => {
   const results: number[] = [];
 
   const source = Observable.of(1, 2, 3, 4, 5);
-  const safeOperator = safeCompose(filter(x => x % 2 === 0));
+  const safeOperator = safeCompose<number | ObservableError, number | ObservableError>(filter(x => x % 2 === 0));
 
   pipe(source, safeOperator).subscribe({
     next: (v) => results.push(v),
@@ -292,7 +292,7 @@ test("safeCompose with multiple operators", () => {
   const results: string[] = [];
 
   const source = Observable.of(1, 2, 3, 4, 5);
-  const safeOperator = safeCompose(
+  const safeOperator = safeCompose<number | ObservableError, number | ObservableError, number | ObservableError, string | ObservableError>(
     filter(x => x % 2 === 0),
     map(x => x * 2),
     map(x => `safe: ${x}`)
@@ -305,11 +305,12 @@ test("safeCompose with multiple operators", () => {
   expect(results).toEqual([]);
 });
 
+
 test("safeCompose catches and handles operator errors", () => {
   const results: number[] = [];
 
   const source = Observable.of(1, 2, 3, 4, 5);
-  const safeOperator = safeCompose(
+  const safeOperator = safeCompose<number | ObservableError, number | ObservableError, number | ObservableError>(
     map(x => {
       if (x === 3) throw new Error("Error at 3");
       return x * 2;
@@ -322,7 +323,8 @@ test("safeCompose catches and handles operator errors", () => {
   });
 
   // Should continue processing other values despite the error
-  expect(results).toEqual([]);
+  // 1->2, 2->4, 3->error (skipped), 4->8, 5->10; all pass x > 0
+  expect(results).toEqual([2, 4, 8, 10]);
 });
 
 test("safeCompose with no operators creates safe identity", () => {
@@ -332,17 +334,20 @@ test("safeCompose with no operators creates safe identity", () => {
   const safeIdentity = safeCompose();
 
   pipe(source, safeIdentity).subscribe({
-    next: (v) => results.push(v),
+    next: (v) => {
+      if (typeof v === "number") results.push(v);
+    } 
   });
 
-  expect(results).toEqual([]);
+  // Identity operator passes all values unchanged
+  expect(results).toEqual([1, 2, 3]);
 });
 
 test("safeCompose handles errors in early operators", () => {
   const source = Observable.of(1, 2, 3, 4, 5);
   const results: number[] = [];
 
-  const safeOperator = safeCompose(
+  const safeOperator = safeCompose<number | ObservableError, number | ObservableError, number | ObservableError, number | ObservableError>(
     map(x => {
       if (x === 2) throw new Error("Early error");
       return x;
@@ -355,14 +360,15 @@ test("safeCompose handles errors in early operators", () => {
     next: (v) => results.push(v),
   });
 
-  expect(results).toEqual([]); // 1*10, 3*10, 5*10 (2 caused error, 4 filtered out)
+  // 1->1->odd->10, 2->error (skipped), 3->3->odd->30, 4->4->even (filtered), 5->5->odd->50
+  expect(results).toEqual([10, 30, 50]);
 });
 
 test("safeCompose handles errors in later operators", () => {
   const results: number[] = [];
 
   const source = Observable.of(1, 2, 3, 4, 5);
-  const safeOperator = safeCompose(
+  const safeOperator = safeCompose<number | ObservableError, number | ObservableError, number | ObservableError, number | ObservableError>(
     filter(x => x % 2 === 0),
     map(x => x * 2),
     map(x => {
@@ -375,7 +381,8 @@ test("safeCompose handles errors in later operators", () => {
     next: (v) => results.push(v),
   });
 
-  expect(results).toEqual([]); // Only 2*2=4 succeeds, 4*2=8 throws error
+  // 1->odd (filtered), 2->even->4->4, 3->odd (filtered), 4->even->8->error (skipped), 5->odd (filtered)
+  expect(results).toEqual([4]);
 });
 
 // -----------------------------------------------------------------------------
@@ -403,10 +410,13 @@ test("pipe with compose and safeCompose together", () => {
     ),
     take(2)
   ).subscribe({
-    next: (v) => results.push(v),
+    next: (v) => { if (typeof v === "function") results.push(v); },
   });
 
-  expect(results).toEqual([]); // 3*2=6, 6*2=12 (4*2=8 throws error)
+  // compose: 1,2->filtered, 3->6, 4->8, 5->10, 6->12
+  // safeCompose: 6->6-><10, 8->error (skipped), 10->10->>=10 (filtered), 12->12->>=10 (filtered)
+  // take 2: [6] (only one value before take limit due to skips)
+  expect(results).toEqual([6]);
 });
 
 test("nested compose and safeCompose", () => {
@@ -414,25 +424,25 @@ test("nested compose and safeCompose", () => {
 
   const source = Observable.of(1, 2, 3, 4, 5);
 
-  const innerSafe = safeCompose(
+  const innerSafe = safeCompose<number | ObservableError, number | ObservableError>(
     map(x => {
       if (x === 3) throw new Error("Inner error");
       return x * 2;
     })
   );
 
-  const outerCompose = compose(
-    ignoreErrors(),
+  const outerCompose = compose<number | ObservableError, number | ObservableError, number | ObservableError, number | ObservableError>(
     filter(x => x > 1),
     innerSafe,
     filter(x => x > 5)
   );
 
   pipe(source, outerCompose).subscribe({
-    next: (v) => results.push(v),
+    next: (v) => { if (typeof v === "number") results.push(v); }
   });
 
-  expect(results).toEqual([]); // 2*2=4 (filtered), 4*2=8, 5*2=10
+  // 1->filtered, 2->4-><=5 (filtered), 3->error (skipped), 4->8->>5, 5->10->>5
+  expect(results).toEqual([8, 10]);
 });
 
 test("empty observable through pipe chain", () => {
@@ -450,14 +460,15 @@ test("empty observable through pipe chain", () => {
       map(x => x * 2),
       filter(x => x > 0)
     ),
-    safeCompose(map(x => x + 1))
+    safeCompose<number | ObservableError, number | ObservableError>(map(x => x + 1))
   ).subscribe({
     next: (v) => results.push(v),
     complete: () => { completed = true; }
   });
 
+  // Empty observable emits no values, completes immediately
   expect(results).toEqual([]);
-  expect(completed).toBe(false);
+  expect(completed).toBe(true);
 });
 
 test("error propagation through regular compose", () => {
@@ -479,6 +490,7 @@ test("error propagation through regular compose", () => {
     error: (e) => errors.push(e),
   });
 
+  // ignoreErrors() suppresses the source error after processing 1->2->>0
   expect(errors).toEqual([]);
 });
 
@@ -495,10 +507,11 @@ test("type safety and operator ordering", () => {
     map((s: string) => s + "!"),          // string -> string
     take(1)                               // string -> string
   ).subscribe({
-    next: (v) => results.push(v),
+    next: (v) => { if (typeof v === "string") results.push(v); }
   });
 
-  expect(results).toEqual([]);
+  // 1->"1"->!=2->"1!" (taken), 2->"2"->=2 (filtered), 3->"3"->!=2->"3!" (not taken)
+  expect(results).toEqual(["1!"]);
 });
 
 test("maximum operator count in pipe (9 operators)", () => {
@@ -518,10 +531,13 @@ test("maximum operator count in pipe (9 operators)", () => {
     map(x => x.toString()),    // 8
     filter((x: string) => x.length > 0)  // 9
   ).subscribe({
-    next: (v) => results.push(v),
+    next: (v) => { if (typeof v === "number") results.push(v); }
   });
 
-  expect(results).toEqual([]);
+  // 1->2->>0->2->2->2->taken->"2"->>0
+  // 2->4->>0->4->6->6->taken->"6"->>0
+  // 3->6->>0->6->12->not taken
+  expect(results).toEqual(["2", "6"]);
 });
 
 test("maximum operator count in compose (9 operators)", () => {
@@ -545,7 +561,8 @@ test("maximum operator count in compose (9 operators)", () => {
     next: (v) => results.push(v),
   });
 
-  expect(results).toEqual([]);
+  // Same as pipe: 1->2->"2", 2->6->"6"
+  expect(results).toEqual(["2", "6"]);
 });
 
 test("maximum operator count in safeCompose (9 operators)", () => {
@@ -553,7 +570,7 @@ test("maximum operator count in safeCompose (9 operators)", () => {
 
   const source = Observable.of(1, 2, 3);
 
-  const safeOperator = safeCompose(
+  const safeOperator = safeCompose<number, string>(
     map(x => x * 2),           // 1
     filter(x => x > 0),        // 2
     tap(() => { }),                       // 3
@@ -569,5 +586,8 @@ test("maximum operator count in safeCompose (9 operators)", () => {
     next: (v) => results.push(v),
   });
 
-  expect(results).toEqual([]);
+  // 1->2->>0->2->2->2->"2"->>0->"[2]"
+  // 2->4->>0->4->6->"6"->>0->"[6]"
+  // 3->6->>0->6->12->not taken
+  expect(results).toEqual(["[2]", "[6]"]);
 });

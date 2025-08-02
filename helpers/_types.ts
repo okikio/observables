@@ -1,4 +1,5 @@
 import type { ObservableError } from "../error.ts";
+import type { Observable } from "../observable.ts";
 
 /**
  * Type representing a stream operator function
@@ -7,14 +8,49 @@ import type { ObservableError } from "../error.ts";
 export type Operator<In, Out> = (stream: ReadableStream<In>) => ReadableStream<Out>;
 export type ExcludeError<T> = Exclude<T, ObservableError>;
 
-/**
- * Represents an operator that only produces clean results (no ObservableError).
- * This is what safeCompose returns - guaranteed error-free output.
- */
-export type SafeOperator<T, R> = Operator<
-  T | ObservableError,
-  ExcludeError<R>
->;
+// Combines Operator and SafeOperator.
+// Why: Supports mixed operators. Solves pipeline flexibility.
+export type OperatorItem<T, R> = Operator<T, R> | Operator<T, ExcludeError<R>>;
+
+// Inference Types
+// Figures out the source type (Observable or Operator).
+// Why: Ensures correct input type. Solves type safety in pipelines.
+export type InferSourceType<TSource extends unknown> = 
+  TSource extends Observable<unknown> ? InferObservableType<TSource> : 
+  TSource extends OperatorItem<unknown, unknown> ? InferOperatorItemOutputType<TSource> : 
+  TSource;
+
+// Gets the output type of an OperatorItem.
+// Why: Tracks operator output. Solves pipeline type resolution.
+export type InferOperatorItemOutputType<TSource extends OperatorItem<any, any>> = 
+  ReturnType<TSource> extends ReadableStream<infer T> ? T : never;
+
+// Gets the data type an Observable emits.
+// Why: Extracts Observable data type. Solves type-safe data access.
+export type InferObservableType<TSource extends Observable<unknown>> = 
+  TSource extends Observable<infer R> ? R : any;
+
+// Utility Types
+// Gets the first item of a tuple.
+// Why: Accesses pipeline start. Solves type extraction.
+export type FirstTupleItem<TTuple extends readonly [unknown, ...unknown[]]> = TTuple[0];
+
+// Gets the last item of a tuple.
+// Why: Finds final operator. Solves pipeline output typing.
+export type GenericLastTupleItem<T extends readonly any[]> = 
+  T extends [...infer _, infer L] ? L : never;
+
+// Ensures last tuple item is an OperatorItem.
+// Why: Validates pipeline end. Solves output type safety.
+export type LastTupleItem<T extends readonly unknown[]> =
+  GenericLastTupleItem<T> extends OperatorItem<any, any> ? GenericLastTupleItem<T> : never;
+
+// Pipeline final type
+// Defines Observable output based on last operator.
+// Why: Sets pipeline result type. Solves type-safe output.
+export type ObservableWithPipe<
+  TPipe extends readonly [Observable<unknown>, ...OperatorItem<any, unknown>[]],
+> = Observable<InferOperatorItemOutputType<LastTupleItem<TPipe>>>;
 
 /**
  * Base interface with properties shared across all transform options

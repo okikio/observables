@@ -30,7 +30,7 @@ import { createStatefulOperator } from "../operators.ts";
  * // or false as soon as a non-positive number is encountered
  * ```
  */
-export function every<T>(predicate: (value: T, index: number) => boolean): Operator<T, boolean | ObservableError> {
+export function every<T>(predicate: (value: T, index: number) => boolean) {
   return createStatefulOperator<T, boolean, { index: number, finished: boolean }>({
     name: 'every',
     createState: () => ({ index: 0, finished: false }),

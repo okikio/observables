@@ -1,4 +1,4 @@
-import type { ExcludeError, Operator, SafeOperator } from "../_types.ts";
+import type { ExcludeError, Operator } from "../_types.ts";
 import { ObservableError } from "../../error.ts";
 import { createOperator, createStatefulOperator } from "../operators.ts";
 
@@ -91,13 +91,13 @@ import { createOperator, createStatefulOperator } from "../operators.ts";
  * // Perfect for demos - only shows working features
  * ```
  */
-export function ignoreErrors<T>(): SafeOperator<T, T> {
+export function ignoreErrors<T>(): Operator<T, ExcludeError<T>> {
   return createOperator<T, T>({
     name: 'ignoreErrors',
     ignoreErrors: true,
     transform(chunk, controller) {
       if (!(chunk instanceof ObservableError)) {
-        controller.enqueue(chunk);
+        controller.enqueue(chunk as ExcludeError<T>);
       }
       // Errors are silently dropped - like they never happened
     }
@@ -236,14 +236,14 @@ export function ignoreErrors<T>(): SafeOperator<T, T> {
  * ```
  */
 export function catchErrors<T, R>(fallback: R): Operator<T, ExcludeError<T> | R> {
-  return createOperator<T, T | R>({
+  return createOperator<T, ExcludeError<T> | R>({
     name: 'catchErrors',
     ignoreErrors: false,
     transform(chunk, controller) {
       if (chunk instanceof ObservableError) {
         controller.enqueue(fallback);
       } else {
-        controller.enqueue(chunk);
+        controller.enqueue(chunk as ExcludeError<T>);
       }
     }
   }) as Operator<T, ExcludeError<T> | R>;
@@ -466,10 +466,10 @@ export function catchErrors<T, R>(fallback: R): Operator<T, ExcludeError<T> | R>
  */
 export function mapErrors<T, E>(
   errorMapper: (error: ObservableError) => E
-): Operator<T, ExcludeError<T> | E> {
-  return createOperator<T, T | E>({
+) {
+  return createOperator<T, ExcludeError<T> | E>({
     name: 'mapErrors',
-    ignoreErrors: true,
+    ignoreErrors: false,
     transform(chunk, controller) {
       if (chunk instanceof ObservableError) {
         try {
@@ -490,10 +490,10 @@ export function mapErrors<T, E>(
           );
         }
       } else {
-        controller.enqueue(chunk);
+        controller.enqueue(chunk as ExcludeError<T>);
       }
     }
-  });
+  }) as Operator<T, ExcludeError<T> | E>;
 }
 
 /**
@@ -533,7 +533,7 @@ export function mapErrors<T, E>(
 export function onlyErrors<T>(): Operator<T, ObservableError> {
   return createOperator<T, ObservableError>({
     name: 'onlyErrors',
-    ignoreErrors: true,
+    ignoreErrors: false,
     transform(chunk, controller) {
       if (chunk instanceof ObservableError) {
         controller.enqueue(chunk);

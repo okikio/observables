@@ -106,7 +106,7 @@ test("some provides index parameter", async () => {
 
 test("find returns first matching value", async () => {
   const source = Observable.of(1, 3, 4, 6, 8);
-  const result = pipe(source, ignoreErrors(), find((x: number) => x % 2 === 0));
+  const result = pipe(source, ignoreErrors(), find((x) => x % 2 === 0));
 
   const values = await collectValues(result);
 

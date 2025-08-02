@@ -1,7 +1,7 @@
 import { test, expect } from "@libs/testing";
 
 import { Observable } from "../../../observable.ts";
-import { map, filter, take, drop, tap } from "../../../helpers/operations/core.ts";
+import { map, filter, take, drop, tap, scan } from "../../../helpers/operations/core.ts";
 import { ignoreErrors } from "../../../helpers/operations/errors.ts";
 import { pipe } from "../../../helpers/pipe.ts";
 
@@ -29,7 +29,7 @@ test("map transforms each value", async () => {
 
 test("map provides index parameter", async () => {
   const source = Observable.of('a', 'b', 'c');
-  const result = pipe(source, ignoreErrors(), map((x: string, i: number) => `${x}${i}`));
+  const result = pipe(source, map((x, i) => `${x}${i}`));
 
   const values = await collectValues(result);
   expect(values).toEqual(['a0', 'b1', 'c2']);
@@ -126,4 +126,81 @@ test("tap executes side effect without changing values", async () => {
 
   expect(values).toEqual([1, 2, 3]);
   expect(sideEffects).toEqual([10, 20, 30]);
+});
+
+// -----------------------------------------------------------------------------
+// mapValue() operator tests
+// -----------------------------------------------------------------------------
+
+test("mapValue transforms only non-error values", async () => {
+  const source = Observable.of(1, 2, 3);
+  const result = pipe(source, map(x => x * 2));
+
+  const values = await collectValues(result);
+  expect(values).toEqual([2, 4, 6]);
+});
+
+// -----------------------------------------------------------------------------
+// filterValue() operator tests
+// -----------------------------------------------------------------------------
+
+test("filterValue filters only non-error values", async () => {
+  const source = Observable.of(1, 2, 3, 4, 5);
+  const result = pipe(source, filter((x) => x % 2 === 0));
+
+  const values = await collectValues(result);
+  expect(values).toEqual([2, 4]);
+});
+
+// -----------------------------------------------------------------------------
+// takeValue() operator tests
+// -----------------------------------------------------------------------------
+
+test("takeValue limits only non-error values", async () => {
+  const source = Observable.of(1, 2, 3, 4, 5);
+  const result = pipe(source, take(3));
+
+  const values = await collectValues(result);
+  expect(values).toEqual([1, 2, 3]);
+});
+
+// -----------------------------------------------------------------------------
+// dropValue() operator tests
+// -----------------------------------------------------------------------------
+
+test("dropValue skips only non-error values", async () => {
+  const source = Observable.of(1, 2, 3, 4, 5);
+  const result = pipe(source, ignoreErrors(), drop(2));
+
+  const values = await collectValues(result);
+  expect(values).toEqual([3, 4, 5]);
+});
+
+// -----------------------------------------------------------------------------
+// tapValue() operator tests
+// -----------------------------------------------------------------------------
+
+test("tapValue executes side effects only on non-error values", async () => {
+  const sideEffects: number[] = [];
+  const source = Observable.of(1, 2, 3);
+  const result = pipe(source, tap(x => {
+    sideEffects.push(x * 10);
+  }));
+
+  const values = await collectValues(result);
+
+  expect(values).toEqual([1, 2, 3]);
+  expect(sideEffects).toEqual([10, 20, 30]);
+});
+
+// -----------------------------------------------------------------------------
+// scanValue() operator tests
+// -----------------------------------------------------------------------------
+
+test("scanValue accumulates only non-error values", async () => {
+  const source = Observable.of(1, 2, 3, 4);
+  const result = pipe(source, scan((acc: number, value) => acc + value, 0));
+
+  const values = await collectValues(result);
+  expect(values).toEqual([0, 1, 3, 6, 10]); // seed + running sum
 });

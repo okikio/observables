@@ -63,8 +63,8 @@ import { pull } from "../../observable.ts";
 export function mergeMap<T, R>(
   project: (value: T, index: number) => SpecObservable<R>,
   concurrent: number = Infinity
-): Operator<T, R | ObservableError> {
-  return createStatefulOperator<T, R | ObservableError, {
+) {
+  return createStatefulOperator<T, R, {
     // State for tracking active subscriptions and buffer
     activeSubscriptions: Map<number, { unsubscribe: () => void }>;
     buffer: Array<[T, number]>;
@@ -111,7 +111,7 @@ export function mergeMap<T, R>(
         // Use pull to iterate asynchronously
         try {
           for await (const innerValue of pull(innerObservable, { throwError: false })) {
-            controller.enqueue(innerValue);
+            controller.enqueue(innerValue as R | ObservableError);
           }
         } catch (err) {
           controller.enqueue(ObservableError.from(err, "operator:stateful:mergeMap:innerObservable", value) as R);

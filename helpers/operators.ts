@@ -1,4 +1,4 @@
-import type { Operator, CreateOperatorOptions, StatefulTransformFunctionOptions, TransformFunctionOptions, TransformStreamOptions, SafeOperator } from "./_types.ts";
+import type { Operator, CreateOperatorOptions, StatefulTransformFunctionOptions, TransformFunctionOptions, TransformStreamOptions, ExcludeError } from "./_types.ts";
 
 import { injectError, isTransformStreamOptions } from "./utils.ts";
 import { ObservableError } from "../error.ts";
@@ -56,31 +56,31 @@ import { ObservableError } from "../error.ts";
  * });
  * ```
  */
-export function createOperator<T, R>(options: TransformFunctionOptions<T, R> & { ignoreErrors: true }): SafeOperator<T, R>;
-export function createOperator<T, R>(options: TransformStreamOptions<T, R> & { ignoreErrors: true }): SafeOperator<T, R>;
-export function createOperator<T, R>(options: TransformFunctionOptions<T, R>  & { ignoreErrors?: false | undefined }): Operator<T, R | ObservableError>;
-export function createOperator<T, R>(options: TransformStreamOptions<T, R> & { ignoreErrors?: false | undefined }): Operator<T, R | ObservableError>;
-export function createOperator<T, R>(options: CreateOperatorOptions<T, R>): Operator<T, unknown> {
+export function createOperator<T, R, O extends ExcludeError<R> = ExcludeError<R>>(options: TransformFunctionOptions<T, O> & { ignoreErrors: true }): Operator<T, O>;
+export function createOperator<T, R, O extends ExcludeError<R> = ExcludeError<R>>(options: TransformStreamOptions<T, O> & { ignoreErrors: true }): Operator<T, O>;
+export function createOperator<T, R, O extends R | ObservableError = R | ObservableError>(options: TransformFunctionOptions<T, O>  & { ignoreErrors?: false }): Operator<T, O>;
+export function createOperator<T, R, O extends R | ObservableError = R | ObservableError>(options: TransformStreamOptions<T, O> & { ignoreErrors?: false }): Operator<T, O>;
+export function createOperator<T, R, O extends R | ExcludeError<R> | ObservableError = R | ExcludeError<R> | ObservableError>(options: CreateOperatorOptions<T, O>): Operator<T, unknown> {
   // Extract operator name from options or the function name for better error reporting
   const operatorName = `operator:${options.name || 'unknown'}`;
-  const ignoreErrors = (options as TransformFunctionOptions<T, R>)?.ignoreErrors ?? false;
+  const ignoreErrors = (options as TransformFunctionOptions<T, O>)?.ignoreErrors ?? false;
 
   return (source) => {
     try {
       // Create a transform stream with the provided options
       const transformStream = isTransformStreamOptions(options) ? options.stream :
-        new TransformStream<T, R | ObservableError>({
+        new TransformStream<T, O>({
           // Transform function to process each chunk
           async transform(chunk, controller) {
             if (ignoreErrors && chunk instanceof ObservableError) return;
 
             try {
               const result = await options.transform(chunk, controller);
-              controller.enqueue(result as R);
+              controller.enqueue(result as O);
             } catch (err) {
               // If an error occurs during transformation, wrap it with context
               if (ignoreErrors) return;
-              controller.enqueue(ObservableError.from(err, operatorName, chunk));
+              controller.enqueue(ObservableError.from(err, operatorName, chunk) as O);
             }
           },
 
@@ -92,7 +92,7 @@ export function createOperator<T, R>(options: CreateOperatorOptions<T, R>): Oper
               return await options.start(controller);
             } catch (err) {
               if (!ignoreErrors)
-                controller.enqueue(ObservableError.from(err, `${operatorName}:start`));
+                controller.enqueue(ObservableError.from(err, `${operatorName}:start`) as O);
               controller.terminate();
             }
           },
@@ -105,7 +105,7 @@ export function createOperator<T, R>(options: CreateOperatorOptions<T, R>): Oper
               await options.flush(controller);
             } catch (err) {
               if (!ignoreErrors)
-                controller.enqueue(ObservableError.from(err, `${operatorName}:flush`));
+                controller.enqueue(ObservableError.from(err, `${operatorName}:flush`) as O);
               controller.terminate();
             }
           },
@@ -188,14 +188,14 @@ export function createOperator<T, R>(options: CreateOperatorOptions<T, R>): Oper
  * });
  * ```
  */
-export function createStatefulOperator<T, R, S>(
-  options: StatefulTransformFunctionOptions<T, R, S> & { ignoreErrors: true }
-): Operator<T, R>;
-export function createStatefulOperator<T, R, S>(
-  options: StatefulTransformFunctionOptions<T, R, S> & { ignoreErrors?: false | undefined }
-): Operator<T, R | ObservableError>;
-export function createStatefulOperator<T, R, S>(
-  options: StatefulTransformFunctionOptions<T, R, S>
+export function createStatefulOperator<T, R, S, O extends ExcludeError<R> = ExcludeError<R>>(
+  options: StatefulTransformFunctionOptions<T, O, S> & { ignoreErrors: true }
+): Operator<T, O>;
+export function createStatefulOperator<T, R, S, O extends R | ObservableError = R | ObservableError>(
+  options: StatefulTransformFunctionOptions<T, O, S> & { ignoreErrors?: false }
+): Operator<T, O>;
+export function createStatefulOperator<T, R, S, O extends R | ExcludeError<R> | ObservableError = R | ExcludeError<R> | ObservableError>(
+  options: StatefulTransformFunctionOptions<T, O, S>
 ): Operator<T, unknown> {
   // Extract operator name from options or the function name for better error reporting
   const operatorName = `operator:stateful:${options.name || 'unknown'}`;
@@ -219,48 +219,49 @@ export function createStatefulOperator<T, R, S>(
       }
 
       // Create a transform stream with the provided options
-      const transformStream = new TransformStream<T, R | ObservableError>({
-        start(controller) {
-          if (!options.start) return;
+      const transformStream = new TransformStream<T, O>(
+        {
+          start(controller) {
+            if (!options.start) return;
 
-          try {
-            return options.start(state, controller);
-          } catch (err) {
-            // If an error occurs during transformation, wrap it with context
-            if (!ignoreErrors)
-              controller.enqueue(ObservableError.from(err, `${operatorName}:start`, { state }));
-            controller.terminate();
-          }
+            try {
+              return options.start(state, controller);
+            } catch (err) {
+              // If an error occurs during transformation, wrap it with context
+              if (!ignoreErrors)
+                controller.enqueue(ObservableError.from(err, `${operatorName}:start`, { state }) as O);
+              controller.terminate();
+            }
+          },
+
+          transform(chunk, controller) {
+            if (ignoreErrors && chunk instanceof ObservableError) return; 
+
+            try {
+              // Apply the transform function with the current state
+              return options.transform(chunk, state, controller);
+            } catch (err) {
+              if (ignoreErrors) return;
+
+              // If an error occurs during transformation, wrap it with context
+              controller.enqueue(ObservableError.from(err, `${operatorName}:transform`, { chunk, state }) as O);
+            }
+          },
+
+          flush(controller) {
+            if (!options.flush) return;
+            
+            try {
+              // Call the flush function if provided
+              return options.flush(state, controller);
+            } catch (err) {
+              // If an error occurs during transformation, wrap it with context
+              if (!ignoreErrors)
+                controller.enqueue(ObservableError.from(err, `${operatorName}:flush`, { state }) as O);
+              controller.terminate();
+            }
+          },
         },
-
-        transform(chunk, controller) {
-          if (ignoreErrors && chunk instanceof ObservableError) return; 
-
-          try {
-            // Apply the transform function with the current state
-            return options.transform(chunk, state, controller);
-          } catch (err) {
-            if (ignoreErrors) return;
-
-            // If an error occurs during transformation, wrap it with context
-            controller.enqueue(ObservableError.from(err, `${operatorName}:transform`, { chunk, state }));
-          }
-        },
-
-        flush(controller) {
-          if (!options.flush) return;
-          
-          try {
-            // Call the flush function if provided
-            return options.flush(state, controller);
-          } catch (err) {
-            // If an error occurs during transformation, wrap it with context
-            if (!ignoreErrors)
-              controller.enqueue(ObservableError.from(err, `${operatorName}:flush`, { state }));
-            controller.terminate();
-          }
-        },
-      },
         { highWaterMark: 1 },
         { highWaterMark: 0 }
       );
