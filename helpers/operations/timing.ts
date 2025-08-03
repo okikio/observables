@@ -1,29 +1,38 @@
-import type { ObservableError } from "@okikio/observables/error";
 import type { Operator } from "../_types.ts";
-import { createStatefulOperator } from "../operators.ts";
+import { createOperator, createStatefulOperator } from "../operators.ts";
+import { ObservableError } from "../../error.ts";
 
 /**
- * Delays values emitted by the source stream by a specified timespan.
- * 
- * 
- * The `delay` operator shifts all emissions from the source stream by a
- * specified time duration. Each value is emitted after the specified delay,
- * preserving the relative timing between values.
- * 
+ * Delays each item in the stream by a specified number of milliseconds.
+ *
+ * This operator shifts the entire stream of events forward in time, preserving
+ * the relative time between them.
+ *
+ * @example
+ * ```ts
+ * import { pipe, delay, from } from "./helpers/mod.ts";
+ *
+ * // No direct Array equivalent, as it's about timing.
+ *
+ * // Stream behavior
+ * const sourceStream = from([1, 2, 3]);
+ * const delayedStream = pipe(sourceStream, delay(1000));
+ * // Emits 1 (after 1s), then 2 (immediately after), then 3 (immediately after).
+ * ```
+ *
+ * ## Practical Use Case
+ *
+ * Use `delay` to simulate network latency in tests, or to introduce a small
+ * pause in a UI animation sequence to make it feel more natural.
+ *
+ * ## Key Insight
+ *
+ * `delay` is about shifting the timeline of events, not about pausing between
+ * them. It's a simple way to control when a stream begins to emit its values.
+ *
  * @typeParam T - Type of values from the source stream
  * @param ms - The delay duration in milliseconds
  * @returns A stream operator that delays each value
- * 
- * @example
- * ```ts
- * import { pipe, delay } from "./helpers/mod.ts";
- * 
- * // Delay each value by 1 second
- * const delayed = pipe(
- *   sourceStream,
- *   delay(1000)
- * );
- * ```
  */
 export function delay<T>(ms: number): Operator<T, T | ObservableError> {
   return createStatefulOperator<T, T, {
@@ -74,31 +83,37 @@ export function delay<T>(ms: number): Operator<T, T | ObservableError> {
 }
 
 /**
- * Debounces the source stream, emitting only the most recent value after a specified
- * period of silence.
- * 
- * 
- * The `debounce` operator filters out values that are followed by newer values within
- * the specified duration. Only when the stream is silent for the specified duration
- * will the most recent value be emitted.
- * 
- * This is useful for rate-limiting events that may fire rapidly, such as user input,
- * resize events, or search as-you-type functionality.
- * 
+ * Emits only the latest item after a specified period of inactivity.
+ *
+ * This is the "search bar" operator. It waits for the user to stop typing
+ * before firing off a search query.
+ *
+ * @example
+ * ```ts
+ * import { pipe, debounce, from } from "./helpers/mod.ts";
+ *
+ * // No direct Array equivalent.
+ *
+ * // Stream behavior
+ * const inputStream = from(["a", "ab", "abc"]); // User typing quickly
+ * const debouncedStream = pipe(inputStream, debounce(300));
+ * // After 300ms of no new input, it will emit "abc".
+ * ```
+ *
+ * ## Practical Use Case
+ *
+ * Use `debounce` for any event that fires rapidly, but you only care about the
+ * final value, such as search inputs, window resize events, or auto-saving
+ * form fields.
+ *
+ * ## Key Insight
+ *
+ * `debounce` filters out noise from rapid-fire events, ensuring that expensive
+ * operations (like API calls) are only triggered when necessary.
+ *
  * @typeParam T - Type of values from the source stream
  * @param ms - The debounce duration in milliseconds
  * @returns A stream operator that debounces values
- * 
- * @example
- * ```ts
- * import { pipe, debounce } from "./helpers/mod.ts";
- * 
- * // Only process search input after user stops typing for 300ms
- * const debouncedSearch = pipe(
- *   inputStream,
- *   debounce(300)
- * );
- * ```
  */
 export function debounce<T>(ms: number): Operator<T, T | ObservableError> {
   return createStatefulOperator<T, T, {
@@ -163,30 +178,38 @@ export function debounce<T>(ms: number): Operator<T, T | ObservableError> {
 }
 
 /**
- * Throttles the source stream, emitting at most one value per specified duration.
- * 
- * 
- * The `throttle` operator limits the rate at which values from the source stream
- * are emitted. It emits the first value, then ignores subsequent values for the
- * specified duration.
- * 
- * Unlike debounce which waits for a period of inactivity, throttle guarantees
- * that values are emitted at a consistent rate.
- * 
+ * Limits the stream to emit at most one item per specified time interval.
+ *
+ * This is the "scroll event" operator. It ensures that even if an event fires
+ * hundreds of times per second, you only handle it at a manageable rate.
+ *
+ * @example
+ * ```ts
+ * import { pipe, throttle, from } from "./helpers/mod.ts";
+ *
+ * // No direct Array equivalent.
+ *
+ * // Stream behavior
+ * const scrollStream = from([10, 20, 50, 100, 150]); // Scroll events
+ * const throttledStream = pipe(scrollStream, throttle(100));
+ * // Emits 10 immediately, then waits 100ms before being able to emit again.
+ * // If 150 is the last value, it will be emitted after the throttle window.
+ * ```
+ *
+ * ## Practical Use Case
+ *
+ * Use `throttle` for high-frequency events where you need to guarantee a
+ * regular sampling of the data, such as scroll position tracking, mouse
+ * movement, or real-time data visualization.
+ *
+ * ## Key Insight
+ *
+ * `throttle` guarantees a steady flow of data, unlike `debounce` which waits
+ * for silence. It's about rate-limiting, not just handling the final value.
+ *
  * @typeParam T - Type of values from the source stream
  * @param ms - The throttle duration in milliseconds
  * @returns A stream operator that throttles values
- * 
- * @example
- * ```ts
- * import { pipe, throttle } from "./helpers/mod.ts";
- * 
- * // Process scroll events at most once every 100ms
- * const throttledScroll = pipe(
- *   scrollStream,
- *   throttle(100)
- * );
- * ```
  */
 export function throttle<T>(ms: number): Operator<T, T | ObservableError> {
   return createStatefulOperator<T, T, {
@@ -257,6 +280,60 @@ export function throttle<T>(ms: number): Operator<T, T | ObservableError> {
       }
       state.nextValue = null;
       state.hasNextValue = false;
+    }
+  });
+}
+
+/**
+ * Errors if an item takes too long to be processed.
+ *
+ * This operator wraps each item in a race against a timer. If the item isn't
+ * passed through to the next stage before the timer finishes, it emits an error.
+ *
+ * @example
+ * ```ts
+ * import { pipe, timeout, from } from "./helpers/mod.ts";
+ *
+ * // Stream behavior
+ * const sourceStream = from([
+ *   new Promise(res => setTimeout(() => res(1), 100)),
+ *   new Promise(res => setTimeout(() => res(2), 2000))
+ * ]);
+ *
+ * const timedStream = pipe(sourceStream, timeout(1000));
+ * // Emits 1, then emits an error because the second promise took too long.
+ * ```
+ *
+ * ## Practical Use Case
+ *
+ * Use `timeout` to enforce Service Level Agreements (SLAs) on asynchronous
+ * operations, such as API calls. If a request takes too long, you can gracefully
+ * handle the timeout instead of letting your application hang.
+ *
+ * ## Key Insight
+ *
+ * `timeout` is a crucial tool for building resilient systems that can handle
+ * slow or unresponsive dependencies. It turns an indefinite wait into a
+ * predictable failure.
+ *
+ * @typeParam T The type of data in the stream.
+ * @param ms The timeout duration in milliseconds.
+ * @returns An operator that enforces a timeout on each item.
+ */
+export function timeout<T>(ms: number): Operator<T, T | ObservableError> {
+  return createOperator<T, T | ObservableError>({
+    name: 'timeout',
+    transform(chunk, controller) {
+      const timeoutId = setTimeout(() => {
+        controller.enqueue(ObservableError.from(
+          new Error(`Operation timed out after ${ms}ms`),
+          'timeout',
+          { timeoutMs: ms, chunk }
+        ));
+      }, ms);
+
+      Promise.resolve().then(() => clearTimeout(timeoutId));
+      controller.enqueue(chunk);
     }
   });
 }

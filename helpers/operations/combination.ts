@@ -10,55 +10,49 @@ import { ObservableError } from "../../error.ts";
 import { pull } from "../../observable.ts";
 
 /**
- * Transforms each value from the source Observable into an Observable, then
- * flattens the emissions from these inner Observables into a single Observable.
- * 
- * 
- * The `mergeMap` operator maps each value to an Observable, subscribes to them, 
- * and emits their values to the output Observable. It maintains multiple active 
- * inner subscriptions concurrently.
- * 
+ * Transforms each item into a new stream and merges their outputs, running
+ * them in parallel.
+ *
+ * Like `Promise.all(items.map(project))` but for streams, with control over
+ * concurrency. It's designed for high-throughput parallel processing.
+ *
+ * @example
+ * ```ts
+ * import { pipe, mergeMap, from } from "./helpers/mod.ts";
+ * import { of } from "../../observable.ts";
+ *
+ * // Promise.all behavior
+ * const ids = [1, 2, 3];
+ * const promises = ids.map(id => Promise.resolve(`User ${id}`));
+ * const users = await Promise.all(promises); // ["User 1", "User 2", "User 3"]
+ *
+ * // Stream behavior
+ * const idStream = from(ids);
+ * const userStream = pipe(
+ *   idStream,
+ *   mergeMap(id => of(`User ${id}`), 2) // Process 2 at a time
+ * );
+ *
+ * // Results may arrive in any order, e.g., "User 2", "User 1", "User 3"
+ * ```
+ *
+ * ## Practical Use Case
+ *
+ * Use `mergeMap` to fetch data for multiple items concurrently. For example,
+ * given a stream of user IDs, you can fetch each user's profile in parallel.
+ * This is much faster than fetching them one by one.
+ *
+ * ## Key Insight
+ *
+ * `mergeMap` is for parallel, high-throughput operations where the order of
+ * results doesn't matter. It's the go-to for maximizing concurrency.
+ *
  * @typeParam T - Type of values from the source Observable
  * @typeParam R - Type of values in the result Observable
  * @param project - Function that maps a source value to an Observable
  * @param concurrent - Maximum number of inner Observables being subscribed
- *                    to concurrently. Default is Infinity.
+ * to concurrently. Default is Infinity.
  * @returns An operator function that maps and flattens values
- * 
- * @example
- * ```ts
- * import { pipe, mergeMap } from "./helpers/mod.ts";
- * import { Observable } from "./observable.ts";
- * 
- * // Simulate an HTTP request
- * function fetchData(id: number): Observable<string> {
- *   return new Observable<string>(observer => {
- *     console.log(`Fetching data for ID ${id}...`);
- *     
- *     // Simulate async response
- *     const timeout = setTimeout(() => {
- *       observer.next(`Data for ID ${id}`);
- *       observer.complete();
- *     }, 1000 + Math.random() * 1000); // Random delay
- *     
- *     return () => clearTimeout(timeout);
- *   });
- * }
- * 
- * // Source of IDs to fetch
- * const ids = Observable.from([1, 2, 3, 4, 5]);
- * 
- * // Map each ID to a data request, with at most 2 concurrent requests
- * const data = pipe(
- *   ids,
- *   mergeMap(id => fetchData(id), 2)
- * );
- * 
- * data.subscribe({
- *   next: data => console.log('Received:', data),
- *   complete: () => console.log('All data fetched!')
- * });
- * ```
  */
 export function mergeMap<T, R>(
   project: (value: T, index: number) => SpecObservable<R>,
@@ -170,35 +164,53 @@ export function mergeMap<T, R>(
 }
 
 /**
- * Transforms each value from the source Observable to an Observable,
- * then projects values from these inner Observables in sequence.
- * 
- * 
- * The `concatMap` operator is similar to mergeMap, but instead of handling
- * multiple inner Observables concurrently, it subscribes to them one at a time,
- * in order. Only when an inner Observable completes will the next one be subscribed.
- * 
+ * Transforms each item into a new stream and runs them one after another, in
+ * strict order.
+ *
+ * Like a series of `await` calls in a `for...of` loop, this ensures that each
+ * new stream completes before the next one begins.
+ *
+ * @example
+ * ```ts
+ * import { pipe, concatMap, from } from "./helpers/mod.ts";
+ * import { of } from "../../observable.ts";
+ *
+ * // Sequential awaits in a loop
+ * async function processSequentially() {
+ *   const results = [];
+ *   for (const id of [1, 2, 3]) {
+ *     const result = await Promise.resolve(`Step ${id}`);
+ *     results.push(result);
+ *   }
+ *   return results; // ["Step 1", "Step 2", "Step 3"]
+ * }
+ *
+ * // Stream behavior
+ * const idStream = from([1, 2, 3]);
+ * const processStream = pipe(
+ *   idStream,
+ *   concatMap(id => of(`Step ${id}`))
+ * );
+ *
+ * // Results are guaranteed to be in order: "Step 1", "Step 2", "Step 3"
+ * ```
+ *
+ * ## Practical Use Case
+ *
+ * Use `concatMap` for sequential operations where order matters, such as a
+ * multi-step process where each step depends on the previous one (e.g., create
+ * user, then create their profile, then send a welcome email).
+ *
+ * ## Key Insight
+ *
+ * `concatMap` guarantees order by waiting for each inner stream to complete
+ * before starting the next. It's perfect for sequential tasks but is slower
+ * than `mergeMap` because it doesn't run in parallel.
+ *
  * @typeParam T - Type of values from the source Observable
  * @typeParam R - Type of values in the result Observable
  * @param project - Function that maps a source value to an Observable
  * @returns An operator function that maps and concatenates values
- * 
- * @example
- * ```ts
- * import { pipe, concatMap } from "./helpers/mod.ts";
- * import { Observable } from "./observable.ts";
- * 
- * // Process requests sequentially
- * const responses = pipe(
- *   ids,
- *   concatMap(id => simulateRequest(id))
- * );
- * 
- * responses.subscribe({
- *   next: response => console.log('Received:', response),
- *   complete: () => console.log('All requests completed!')
- * });
- * ```
  */
 export function concatMap<T, R>(
   project: (value: T, index: number) => SpecObservable<R>
@@ -208,60 +220,48 @@ export function concatMap<T, R>(
 }
 
 /**
- * Transforms each value from the source Observable into an Observable, then
- * flattens the emissions from the most recent inner Observable into a single Observable,
- * cancelling previous inner Observables.
- * 
- * 
- * The `switchMap` operator is a key transformation operator that combines mapping and flattening
- * with an important switching behavior: when a new value arrives from the source, any previous
- * inner Observable is cancelled before subscribing to the new one.
- * 
- * ## Core Behavior
- * 
- * For each value from the source Observable:
- * 1. The projection function creates a new inner Observable
- * 2. Any previous inner Observable subscription is cancelled
- * 3. The new inner Observable is subscribed to
- * 4. Values from the new inner Observable are forwarded to the output
- * 
+ * Transforms items into new streams, but cancels the previous stream when a new
+ * item arrives.
+ *
+ * Like an auto-cancelling search input, it only cares about the latest value
+ * and discards any pending work from previous values.
+ *
+ * @example
+ * ```ts
+ * import { pipe, switchMap, from } from "./helpers/mod.ts";
+ * import { of } from "../../observable.ts";
+ *
+ * // No direct Array equivalent, as it's about handling events over time.
+ *
+ * // Stream behavior for a search input
+ * const queryStream = from(["cat", "cats", "cats rul"]);
+ *
+ * const searchResultStream = pipe(
+ *   queryStream,
+ *   switchMap(query => of(`Results for "${query}"`))
+ * );
+ *
+ * // Assuming each query arrives before the last one "completes":
+ * // The first two searches for "cat" and "cats" would be cancelled.
+ * // The final output would only be: 'Results for "cats rul"'
+ * ```
+ *
+ * ## Practical Use Case
+ *
+ * `switchMap` is essential for live search bars or any UI element that
+ * triggers frequent events. It ensures that only the results for the most
+ * recent event are processed, preventing outdated or out-of-order results.
+ *
+ * ## Key Insight
+ *
+ * `switchMap` is the operator of choice for handling rapid-fire events where
+ * only the latest matters. It prevents race conditions and keeps your UI
+ * responsive by cancelling stale, in-flight operations.
+ *
  * @typeParam T - Type of values from the source Observable
  * @typeParam R - Type of values in the result Observable
  * @param project - Function that maps a source value to an Observable
  * @returns An operator function that maps and switches between values
- * 
- * @example Basic search
- * ```ts
- * import { pipe, switchMap, debounceTime } from "./helpers/mod.ts";
- * import { Observable } from "./observable.ts";
- * 
- * // Simulate a search API request
- * function searchApi(query: string): Observable<string[]> {
- *   return new Observable<string[]>(observer => {
- *     console.log(`Searching for "${query}"...`);
- *     
- *     // Simulate network request
- *     const timeout = setTimeout(() => {
- *       const results = [`${query} result 1`, `${query} result 2`];
- *       observer.next(results);
- *       observer.complete();
- *     }, 500 + Math.random() * 1000); // Random delay
- *     
- *     // Cleanup function called when cancelled
- *     return () => {
- *       console.log(`Search for "${query}" cancelled`);
- *       clearTimeout(timeout);
- *     };
- *   });
- * }
- * 
- * // For each input, wait for typing to pause, then switch to a new search request
- * const searchResults = pipe(
- *   searchInput,
- *   debounceTime(300), // Wait for typing to pause
- *   switchMap(query => searchApi(query))
- * );
- * ```
  */
 export function switchMap<T, R>(
   project: (value: T, index: number) => SpecObservable<R>
