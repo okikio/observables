@@ -1,3 +1,4 @@
+import type { SubscriptionObserver } from "../../observable.ts";
 import { test, expect } from "@libs/testing";
 
 import { Observable } from "../../observable.ts";
@@ -193,7 +194,7 @@ test("Teardown timing: multiple unsubscribe calls are idempotent", () => {
 });
 
 test("Teardown timing: observer methods become no-ops after close", () => {
-  let observerRef: any;
+  let observerRef: SubscriptionObserver<number> | null = null;
   
   const obs = new Observable<number>(observer => {
     observerRef = observer;
@@ -206,12 +207,12 @@ test("Teardown timing: observer methods become no-ops after close", () => {
     next: v => values.push(v),
     complete: () => {
       // After complete, observer should be closed
-      expect(observerRef.closed).toBe(true);
+      expect(observerRef?.closed).toBe(true);
       
       // These calls should be ignored
-      observerRef.next(999);
-      observerRef.error(new Error("ignored"));
-      observerRef.complete(); // Second complete
+      observerRef?.next(999);
+      observerRef?.error(new Error("ignored"));
+      observerRef?.complete(); // Second complete
       
       // Values should not have changed
       expect(values).toEqual([]);

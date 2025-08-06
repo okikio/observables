@@ -1,3 +1,4 @@
+import type { Subscription } from "../../_types.ts";
 import { test, expect } from "@libs/testing";
 import { Observable } from "../../observable.ts";
 import { Symbol } from "../../symbol.ts";
@@ -83,7 +84,7 @@ test("1. Basic emission sequence - values then completion", () => {
 });
 
 test("2. Subscription lifecycle - closed state transitions", () => {
-  let subscription: any;
+  let subscription: Subscription | null = null;
   
   const obs = new Observable<number>(observer => {
     // Check initial state
@@ -94,7 +95,7 @@ test("2. Subscription lifecycle - closed state transitions", () => {
     
     // Should be closed immediately after complete
     expect(observer.closed).toBe(true);
-    expect(subscription.closed).toBe(true);
+    expect(subscription?.closed).toBe(true);
   });
   
   subscription = obs.subscribe(() => {});

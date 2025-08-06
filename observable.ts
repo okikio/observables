@@ -295,7 +295,7 @@ export type Teardown = (() => void) | SpecSubscription | AsyncDisposable | Dispo
  * 2. No circular references that might leak memory
  * 3. Clean separation between public interface and internal state
  */
-interface StateMap<T> {
+export interface StateMap<T> {
   /** True once subscription is closed via unsubscribe, error, or complete */
   closed: boolean;
 
@@ -317,7 +317,7 @@ interface StateMap<T> {
  * 2. Let the garbage collector automatically clean up entries when subscriptions are no longer referenced
  * 3. Hide implementation details from users
  */
-const SubscriptionStateMap = new WeakMap<Subscription, StateMap<unknown>>();
+export const SubscriptionStateMap = new WeakMap<Subscription, StateMap<unknown>>();
 
 /**
  * Creates a new Subscription object with properly initialized state.
@@ -334,7 +334,7 @@ const SubscriptionStateMap = new WeakMap<Subscription, StateMap<unknown>>();
  * @throws TypeError if observer methods are present but not functions
  * @internal
  */
-function createSubscription<T>(observer: Observer<T>, opts?: { signal?: AbortSignal } | null): Subscription {
+export function createSubscription<T>(observer: Observer<T>, opts?: { signal?: AbortSignal } | null): Subscription {
   // Observer's methods should be functions if they exist
   if (observer.next !== undefined && typeof observer.next !== 'function') {
     throw new TypeError('Observer.next must be a function');
@@ -414,10 +414,10 @@ function createSubscription<T>(observer: Observer<T>, opts?: { signal?: AbortSig
  * Mark subscription as closed and return observer reference.
  * Does NOT perform cleanup - that happens later.
  */
-function markSubscriptionClosed<T>(state: StateMap<T> | undefined | null, returnObserver: true): Observer<T> | null;
-function markSubscriptionClosed<T>(state: StateMap<T> | undefined | null, returnObserver: false): undefined | null;
-function markSubscriptionClosed<T>(state: StateMap<T> | undefined | null, returnObserver?: boolean): Observer<T> | undefined | null;
-function markSubscriptionClosed<T>(state: StateMap<T> | undefined | null, returnObserver = false): Observer<T> | null | undefined {
+export function markSubscriptionClosed<T>(state: StateMap<T> | undefined | null, returnObserver: true): Observer<T> | null;
+export function markSubscriptionClosed<T>(state: StateMap<T> | undefined | null, returnObserver: false): undefined | null;
+export function markSubscriptionClosed<T>(state: StateMap<T> | undefined | null, returnObserver?: boolean): Observer<T> | undefined | null;
+export function markSubscriptionClosed<T>(state: StateMap<T> | undefined | null, returnObserver = false): Observer<T> | null | undefined {
   if (!state || state.closed) return null;
   
   // Capture observer BEFORE marking closed (for spec compliance)
@@ -434,7 +434,7 @@ function markSubscriptionClosed<T>(state: StateMap<T> | undefined | null, return
 /**
  * Perform cleanup if available. Safe to call multiple times.
  */
-function performSubscriptionCleanup(subscription: Subscription, state?: StateMap<unknown> | null): void {
+export function performSubscriptionCleanup(subscription: Subscription, state?: StateMap<unknown> | null): void {
   if (!state) return;
   
   // Cache cleanup, abort signal and the abort handler before clearing
@@ -478,7 +478,7 @@ function performSubscriptionCleanup(subscription: Subscription, state?: StateMap
  * @param subscription - The subscription to close
  * @internal
  */
-function closeSubscription(
+export function closeSubscription(
   subscription: Subscription,
   stateMap?: StateMap<unknown> | undefined | null,
 ): Observer<unknown> | null | void {
