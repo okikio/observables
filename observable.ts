@@ -1655,13 +1655,10 @@ export function from<T>(
 
     return new Constructor(obs => {
       // For...of is optimized for Sets in V8
-      for (const item of collection as Set<T>) {
-        if (throwError) {
-          const err = assertObservableError(item, obs);
-          if (err) return;
-        }
+      for (const item of collection) {
+        if (throwError) assertObservableError(item, obs);
 
-        obs.next(item);
+        obs.next(item as T);
         if (obs.closed) return;
       }
 
