@@ -1,6 +1,8 @@
 import type { ExcludeError, Operator } from "../_types.ts";
+import type { ObservableError } from "../../error.ts";
+
 import { createOperator, createStatefulOperator } from "../operators.ts";
-import { ObservableError } from "../../error.ts";
+import { isObservableError } from "../../error.ts";
 
 /**
  * @module operations/core
@@ -69,12 +71,12 @@ import { ObservableError } from "../../error.ts";
  */
 export function map<T, R>(
   project: (value: ExcludeError<T>, index: number) => R
-): Operator<T, R | ObservableError> {
-  return createStatefulOperator<T, R | ObservableError, { index: number }>({
+): Operator<T | ObservableError, R | ObservableError> {
+  return createStatefulOperator<T | ObservableError, R | ObservableError, { index: number }>({
     name: "map",
     createState: () => ({ index: 0 }),
     transform(chunk, state, controller) {
-      if (chunk instanceof ObservableError) {
+      if (isObservableError(chunk)) {
         controller.enqueue(chunk);
         return;
       }
@@ -113,12 +115,12 @@ export function map<T, R>(
  */
 export function filter<T>(
   predicate: (value: ExcludeError<T>, index: number) => boolean,
-): Operator<T, ExcludeError<T> | ObservableError> {
-  return createStatefulOperator<T, ExcludeError<T> | ObservableError, { index: number }>({
+): Operator<T | ObservableError, ExcludeError<T> | ObservableError> {
+  return createStatefulOperator<T | ObservableError, ExcludeError<T> | ObservableError, { index: number }>({
     name: "filter",
     createState: () => ({ index: 0 }),
     transform(chunk, state, controller) {
-      if (chunk instanceof ObservableError) {
+      if (isObservableError(chunk)) {
         controller.enqueue(chunk);
         return;
       }
@@ -161,16 +163,16 @@ export function filter<T>(
  */
 export function take<T>(
   count: number,
-): Operator<T, ExcludeError<T> | ObservableError> {
+): Operator<T | ObservableError, ExcludeError<T> | ObservableError> {
   return createStatefulOperator<
-    T,
+    T | ObservableError,
     ExcludeError<T> | ObservableError,
     { taken: number }
   >({
     name: "take",
     createState: () => ({ taken: 0 }),
     transform(chunk, state, controller) {
-      if (chunk instanceof ObservableError) {
+      if (isObservableError(chunk)) {
         controller.enqueue(chunk);
         return;
       }
@@ -218,16 +220,16 @@ export function take<T>(
  */
 export function drop<T>(
   count: number,
-): Operator<T, ExcludeError<T> | ObservableError> {
+): Operator<T | ObservableError, ExcludeError<T> | ObservableError> {
   return createStatefulOperator<
-    T,
+    T | ObservableError,
     ExcludeError<T> | ObservableError,
     { dropped: number }
   >({
     name: "drop",
     createState: () => ({ dropped: 0 }),
     transform(chunk, state, controller) {
-      if (chunk instanceof ObservableError) {
+      if (isObservableError(chunk)) {
         controller.enqueue(chunk);
         return;
       }
@@ -277,11 +279,11 @@ export function drop<T>(
  */
 export function tap<T>(
   fn: (value: ExcludeError<T>) => void,
-): Operator<T, T | ObservableError> {
-  return createOperator<T, T | ObservableError>({
+): Operator<T | ObservableError, T | ObservableError> {
+  return createOperator<T | ObservableError, T | ObservableError>({
     name: "tap",
     transform(chunk, controller) {
-      if (chunk instanceof ObservableError) {
+      if (isObservableError(chunk)) {
         controller.enqueue(chunk);
         return;
       }
@@ -324,9 +326,9 @@ export function tap<T>(
 export function scan<T, R>(
   accumulator: (acc: R, value: ExcludeError<T>, index: number) => R,
   seed: R,
-): Operator<T, R | ObservableError> {
+): Operator<T | ObservableError, R | ObservableError> {
   return createStatefulOperator<
-    T,
+    T | ObservableError,
     R | ObservableError,
     { acc: R; index: number }
   >({
@@ -337,7 +339,7 @@ export function scan<T, R>(
       controller.enqueue(state.acc);
     },
     transform(chunk, state, controller) {
-      if (chunk instanceof ObservableError) {
+      if (isObservableError(chunk)) {
         controller.enqueue(chunk);
         return;
       }

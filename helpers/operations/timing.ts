@@ -1,6 +1,6 @@
-import type { Operator } from "../_types.ts";
+import type { ExcludeError, Operator } from "../_types.ts";
 import { createOperator, createStatefulOperator } from "../operators.ts";
-import { ObservableError } from "../../error.ts";
+import { ObservableError, isObservableError } from "../../error.ts";
 
 /**
  * Delays each item in the stream by a specified number of milliseconds.
@@ -34,8 +34,8 @@ import { ObservableError } from "../../error.ts";
  * @param ms - The delay duration in milliseconds
  * @returns A stream operator that delays each value
  */
-export function delay<T>(ms: number): Operator<T, T | ObservableError> {
-  return createStatefulOperator<T, T, {
+export function delay<T>(ms: number): Operator<T | ObservableError, T | ObservableError> {
+  return createStatefulOperator<T | ObservableError, T, {
     pendingTimeouts: Set<ReturnType<typeof setTimeout>>,
     completed: boolean
   }>({
@@ -115,10 +115,10 @@ export function delay<T>(ms: number): Operator<T, T | ObservableError> {
  * @param ms - The debounce duration in milliseconds
  * @returns A stream operator that debounces values
  */
-export function debounce<T>(ms: number): Operator<T, T | ObservableError> {
-  return createStatefulOperator<T, T, {
+export function debounce<T>(ms: number): Operator<T | ObservableError, T | ObservableError> {
+  return createStatefulOperator<T | ObservableError, T, {
     timeout: ReturnType<typeof setTimeout> | null,
-    lastValue: T | null,
+    lastValue: ExcludeError<T> | null,
     hasValue: boolean
   }>({
     name: 'debounce',
@@ -129,6 +129,12 @@ export function debounce<T>(ms: number): Operator<T, T | ObservableError> {
     }),
 
     transform(chunk, state, controller) {
+      if (isObservableError(chunk)) {
+        // If the chunk is an error, we can immediately emit it
+        controller.enqueue(chunk);
+        return;
+      }
+
       // Cancel any pending timeout
       if (state.timeout !== null) {
         clearTimeout(state.timeout);
@@ -136,7 +142,7 @@ export function debounce<T>(ms: number): Operator<T, T | ObservableError> {
       }
 
       // Store the latest value
-      state.lastValue = chunk;
+      state.lastValue = chunk as ExcludeError<T>;
       state.hasValue = true;
 
       // Set up a new timeout to emit the latest value
@@ -211,10 +217,10 @@ export function debounce<T>(ms: number): Operator<T, T | ObservableError> {
  * @param ms - The throttle duration in milliseconds
  * @returns A stream operator that throttles values
  */
-export function throttle<T>(ms: number): Operator<T, T | ObservableError> {
-  return createStatefulOperator<T, T, {
+export function throttle<T>(ms: number): Operator<T | ObservableError, T | ObservableError> {
+  return createStatefulOperator<T | ObservableError, T, {
     lastEmitTime: number,
-    nextValue: T | null,
+    nextValue: ExcludeError<T> | null,
     hasNextValue: boolean,
     timeoutId: ReturnType<typeof setTimeout> | null
   }>({
@@ -227,6 +233,12 @@ export function throttle<T>(ms: number): Operator<T, T | ObservableError> {
     }),
 
     transform(chunk, state, controller) {
+      if (isObservableError(chunk)) {
+        // If the chunk is an error, we can immediately emit it
+        controller.enqueue(chunk);
+        return;
+      }
+
       const now = Date.now();
       const timeSinceLastEmit = now - state.lastEmitTime;
 
@@ -238,7 +250,7 @@ export function throttle<T>(ms: number): Operator<T, T | ObservableError> {
       }
 
       // Otherwise, store this value to emit later
-      state.nextValue = chunk;
+      state.nextValue = chunk as ExcludeError<T>;
       state.hasNextValue = true;
 
       // If we don't have a timeout scheduled, schedule one
@@ -320,10 +332,16 @@ export function throttle<T>(ms: number): Operator<T, T | ObservableError> {
  * @param ms The timeout duration in milliseconds.
  * @returns An operator that enforces a timeout on each item.
  */
-export function timeout<T>(ms: number): Operator<T, T | ObservableError> {
-  return createOperator<T, T | ObservableError>({
+export function timeout<T>(ms: number): Operator<T | ObservableError, T | ObservableError> {
+  return createOperator<T | ObservableError, T | ObservableError>({
     name: 'timeout',
     transform(chunk, controller) {
+      if (isObservableError(chunk)) {
+        // If the chunk is an error, we can immediately emit it
+        controller.enqueue(chunk);
+        return;
+      }
+
       const timeoutId = setTimeout(() => {
         controller.enqueue(ObservableError.from(
           new Error(`Operation timed out after ${ms}ms`),

@@ -1,6 +1,9 @@
 import type { ExcludeError, Operator } from "../_types.ts";
+import type { ObservableError } from "../../error.ts";
+
 import { createStatefulOperator } from "../operators.ts";
-import { ObservableError } from "../../error.ts";
+import { isObservableError } from "../../error.ts";
+
 
 /**
  * Checks if every item in the stream passes a test.
@@ -39,14 +42,19 @@ import { ObservableError } from "../../error.ts";
  * @param predicate - Function to test each value
  * @returns A stream operator that tests all values
  */
-export function every<T>(predicate: (value: T, index: number) => boolean) {
-  return createStatefulOperator<T, boolean, { index: number, finished: boolean }>({
+export function every<T>(predicate: (value: ExcludeError<T>, index: number) => boolean): Operator<T | ObservableError, boolean | ObservableError> {
+  return createStatefulOperator<T | ObservableError, boolean, { index: number, finished: boolean }>({
     name: 'every',
     createState: () => ({ index: 0, finished: false }),
     transform(chunk, state, controller) {
-      if (state.finished) return;
+      if (isObservableError(chunk)) {
+        // If the chunk is an error, we can immediately emit it
+        controller.enqueue(chunk);
+        return;
+      }
 
-      const result = predicate(chunk, state.index++);
+      if (state.finished) return;
+      const result = predicate(chunk as ExcludeError<T>, state.index++);
 
       // If the predicate fails, emit false and complete
       if (!result) {
@@ -102,14 +110,19 @@ export function every<T>(predicate: (value: T, index: number) => boolean) {
  * @param predicate - Function to test each value
  * @returns A stream operator that tests for any matching value
  */
-export function some<T>(predicate: (value: T, index: number) => boolean): Operator<T, boolean | ObservableError> {
-  return createStatefulOperator<T, boolean, { index: number, finished: boolean }>({
+export function some<T>(predicate: (value: ExcludeError<T>, index: number) => boolean): Operator<T | ObservableError, boolean | ObservableError> {
+  return createStatefulOperator<T | ObservableError, boolean, { index: number, finished: boolean }>({
     name: 'some',
     createState: () => ({ index: 0, finished: false }),
     transform(chunk, state, controller) {
-      if (state.finished) return;
+      if (isObservableError(chunk)) {
+        // If the chunk is an error, we can immediately emit it
+        controller.enqueue(chunk);
+        return;
+      }
 
-      const result = predicate(chunk, state.index++);
+      if (state.finished) return;
+      const result = predicate(chunk as ExcludeError<T>, state.index++);
 
       // If the predicate passes, emit true and complete
       if (result) {
@@ -161,12 +174,18 @@ export function some<T>(predicate: (value: T, index: number) => boolean): Operat
  * @param predicate - Function to test each value
  * @returns A stream operator that finds the first matching value
  */
-export function find<T>(predicate: (value: T, index: number) => boolean): Operator<T, T | ObservableError> {
-  return createStatefulOperator<T, T, { index: number }>({
+export function find<T>(predicate: (value: ExcludeError<T>, index: number) => boolean): Operator<T | ObservableError, T | ObservableError> {
+  return createStatefulOperator<T | ObservableError, T, { index: number }>({
     name: 'find',
     createState: () => ({ index: 0 }),
     transform(chunk, state, controller) {
-      const result = predicate(chunk, state.index++);
+      if (isObservableError(chunk)) {
+        // If the chunk is an error, we can immediately emit it
+        controller.enqueue(chunk);
+        return;
+      }
+
+      const result = predicate(chunk as ExcludeError<T>, state.index++);
 
       // If the predicate passes, emit the value and complete
       if (result) {
@@ -218,14 +237,14 @@ export function find<T>(predicate: (value: T, index: number) => boolean): Operat
  */
 export function unique<T, K = T>(
   keySelector?: (value: ExcludeError<T>) => K
-): Operator<T, ExcludeError<T> | ObservableError> {
-  return createStatefulOperator<T, ExcludeError<T> | ObservableError, {
+): Operator<T | ObservableError, ExcludeError<T> | ObservableError> {
+  return createStatefulOperator<T | ObservableError, ExcludeError<T> | ObservableError, {
     seen: Set<K>
   }>({
     name: 'unique',
     createState: () => ({ seen: new Set() }),
     transform(chunk, state, controller) {
-      if (chunk instanceof ObservableError) {
+      if (isObservableError(chunk)) {
         controller.enqueue(chunk);
         return;
       }

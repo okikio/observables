@@ -1,7 +1,7 @@
 import type { Operator, CreateOperatorOptions, StatefulTransformFunctionOptions, TransformFunctionOptions, TransformStreamOptions, ExcludeError } from "./_types.ts";
 
 import { injectError, isTransformStreamOptions } from "./utils.ts";
-import { ObservableError } from "../error.ts";
+import { ObservableError, isObservableError } from "../error.ts";
 
 /**
  * Creates a stream operator with the specified transformation logic
@@ -58,7 +58,7 @@ import { ObservableError } from "../error.ts";
  */
 export function createOperator<T, R, O extends ExcludeError<R> = ExcludeError<R>>(options: TransformFunctionOptions<T, O> & { ignoreErrors: true }): Operator<T, O>;
 export function createOperator<T, R, O extends ExcludeError<R> = ExcludeError<R>>(options: TransformStreamOptions<T, O> & { ignoreErrors: true }): Operator<T, O>;
-export function createOperator<T, R, O extends R | ObservableError = R | ObservableError>(options: TransformFunctionOptions<T, O>  & { ignoreErrors?: false }): Operator<T, O>;
+export function createOperator<T, R, O extends R | ObservableError = R | ObservableError>(options: TransformFunctionOptions<T, O> & { ignoreErrors?: false }): Operator<T, O>;
 export function createOperator<T, R, O extends R | ObservableError = R | ObservableError>(options: TransformStreamOptions<T, O> & { ignoreErrors?: false }): Operator<T, O>;
 export function createOperator<T, R, O extends R | ExcludeError<R> | ObservableError = R | ExcludeError<R> | ObservableError>(options: CreateOperatorOptions<T, O>): Operator<T, unknown> {
   // Extract operator name from options or the function name for better error reporting
@@ -72,7 +72,7 @@ export function createOperator<T, R, O extends R | ExcludeError<R> | ObservableE
         new TransformStream<T, O>({
           // Transform function to process each chunk
           async transform(chunk, controller) {
-            if (ignoreErrors && chunk instanceof ObservableError) return;
+            if (ignoreErrors && isObservableError(chunk)) return;
 
             try {
               const result = await options.transform(chunk, controller);
@@ -235,7 +235,7 @@ export function createStatefulOperator<T, R, S, O extends R | ExcludeError<R> | 
           },
 
           transform(chunk, controller) {
-            if (ignoreErrors && chunk instanceof ObservableError) return; 
+            if (ignoreErrors && isObservableError(chunk)) return;
 
             try {
               // Apply the transform function with the current state
@@ -250,7 +250,7 @@ export function createStatefulOperator<T, R, S, O extends R | ExcludeError<R> | 
 
           flush(controller) {
             if (!options.flush) return;
-            
+
             try {
               // Call the flush function if provided
               return options.flush(state, controller);
@@ -270,9 +270,9 @@ export function createStatefulOperator<T, R, S, O extends R | ExcludeError<R> | 
       return source.pipeThrough(transformStream);
     } catch (err) {
       if (ignoreErrors) return source;
-      
+
       // If setup fails, return a stream that errors immediately
       return source.pipeThrough(injectError(err, `${operatorName}:setup`, options));
     }
-  }; 
+  };
 }

@@ -1,6 +1,8 @@
+import type { ExcludeError, Operator } from "../_types.ts";
 import type { ObservableError } from "../../error.ts";
-import type { Operator } from "../_types.ts";
+
 import { createStatefulOperator } from "../operators.ts";
+import { isObservableError } from "../../error.ts";
 
 /**
  * Collects all values from the source stream and emits them as a single array
@@ -46,12 +48,18 @@ import { createStatefulOperator } from "../operators.ts";
  * @typeParam T - Type of values from the source stream
  * @returns A stream operator that collects values into an array
  */
-export function toArray<T>(): Operator<T, T[] | ObservableError> {
-  return createStatefulOperator<T, T[], T[]>({
+export function toArray<T>(): Operator<T | ObservableError, T[] | ObservableError> {
+  return createStatefulOperator<T | ObservableError, T[], T[]>({
     name: "toArray",
     createState: () => [],
-    transform(chunk, state) {
-      state.push(chunk);
+    transform(chunk, state, controller) {
+      if (isObservableError(chunk)) {
+        // If chunk is an error, we should not push it to the array
+        controller.enqueue(chunk);
+        return;
+      }
+
+      state.push(chunk as ExcludeError<T>); // Ensure chunk is not an error
     },
     flush(state, controller) {
       controller.enqueue(state);
@@ -104,25 +112,31 @@ export function toArray<T>(): Operator<T, T[] | ObservableError> {
  * @param size - The size of each batch
  * @returns A stream operator that batches values
  */
-export function batch<T>(size: number): Operator<T, T[] | ObservableError> {
+export function batch<T>(size: number): Operator<T | ObservableError, T[] | ObservableError> {
   if (size <= 0) {
     throw new Error('batch: size must be greater than 0');
   }
 
-  return createStatefulOperator<T, T[], T[]>({
+  return createStatefulOperator<T | ObservableError, T[], T[]>({
     name: 'batch',
     createState: () => [],
     transform(chunk, buffer, controller) {
+      if (isObservableError(chunk)) {
+        // If chunk is an error, we should not push it to the buffer
+        controller.enqueue(chunk);
+        return;
+      }
+
       buffer.push(chunk);
 
       if (buffer.length >= size) {
-        controller.enqueue([...buffer]);
+        controller.enqueue(Array.from(buffer));
         buffer.length = 0;
       }
     },
     flush(buffer, controller) {
       if (buffer.length > 0) {
-        controller.enqueue([...buffer]);
+        controller.enqueue(Array.from(buffer));
       }
     }
   });

@@ -3,10 +3,10 @@
 // Reimplemented using createStatefulOperator for better compatibility with streaming pipeline
 
 import type { SpecObservable } from "../../_spec.ts";
-import type { Operator } from "../_types.ts";
+import type { ExcludeError, Operator } from "../_types.ts";
 
 import { createStatefulOperator } from "../operators.ts";
-import { ObservableError } from "../../error.ts";
+import { ObservableError, isObservableError } from "../../error.ts";
 import { pull } from "../../observable.ts";
 
 /**
@@ -55,13 +55,13 @@ import { pull } from "../../observable.ts";
  * @returns An operator function that maps and flattens values
  */
 export function mergeMap<T, R>(
-  project: (value: T, index: number) => SpecObservable<R>,
+  project: (value: ExcludeError<T>, index: number) => SpecObservable<R>,
   concurrent: number = Infinity
-) {
-  return createStatefulOperator<T, R, {
+): Operator<T | ObservableError, R | ObservableError> {
+  return createStatefulOperator<T | ObservableError, R, {
     // State for tracking active subscriptions and buffer
     activeSubscriptions: Map<number, { unsubscribe: () => void }>;
-    buffer: Array<[T, number]>;
+    buffer: Array<[ExcludeError<T>, number]>;
     sourceCompleted: boolean;
     index: number;
     activeCount: number;
@@ -79,12 +79,18 @@ export function mergeMap<T, R>(
 
     // Process each incoming chunk
     async transform(chunk, state, controller) {
+      if (isObservableError(chunk)) {
+        // If the chunk is an error, we can immediately enqueue it
+        controller.enqueue(chunk);
+        return;
+      }
+
       // If we're under the concurrency limit, process immediately
       if (state.activeCount < concurrent) {
         await subscribeToProjection(chunk, state.index++);
       } else {
         // Otherwise, buffer for later
-        state.buffer.push([chunk, state.index++]);
+        state.buffer.push([chunk as ExcludeError<T>, state.index++]);
       }
 
       // Helper function to subscribe to inner Observable
@@ -93,7 +99,7 @@ export function mergeMap<T, R>(
 
         try {
           // Apply projection function to get inner Observable
-          innerObservable = project(value, innerIndex);
+          innerObservable = project(value as ExcludeError<T>, innerIndex);
         } catch (err) {
           // Forward any errors from the projection function
           controller.enqueue(ObservableError.from(err, "mergeMap:project", value) as R);
@@ -213,8 +219,8 @@ export function mergeMap<T, R>(
  * @returns An operator function that maps and concatenates values
  */
 export function concatMap<T, R>(
-  project: (value: T, index: number) => SpecObservable<R>
-): Operator<T, R | ObservableError> {
+  project: (value: ExcludeError<T>, index: number) => SpecObservable<R>
+): Operator<T | ObservableError, R | ObservableError> {
   // concatMap is just mergeMap with concurrency = 1
   return mergeMap(project, 1);
 }
@@ -264,9 +270,9 @@ export function concatMap<T, R>(
  * @returns An operator function that maps and switches between values
  */
 export function switchMap<T, R>(
-  project: (value: T, index: number) => SpecObservable<R>
-): Operator<T, R | ObservableError> {
-  return createStatefulOperator<T, R | ObservableError, {
+  project: (value: ExcludeError<T>, index: number) => SpecObservable<R>
+): Operator<T | ObservableError, R | ObservableError> {
+  return createStatefulOperator<T | ObservableError, R | ObservableError, {
     // State for tracking inner subscription
     currentController: AbortController | null;
     sourceCompleted: boolean;
@@ -283,6 +289,12 @@ export function switchMap<T, R>(
 
     // Process each incoming chunk
     transform(chunk, state, controller) {
+      if (isObservableError(chunk)) {
+        // If the chunk is an error, we can immediately enqueue it
+        controller.enqueue(chunk);
+        return;
+      }
+
       // Cancel any existing inner subscription
       if (state.currentController) {
         state.currentController.abort();
@@ -293,7 +305,7 @@ export function switchMap<T, R>(
 
       try {
         // Apply projection function to get inner Observable
-        innerObservable = project(chunk, state.index++);
+        innerObservable = project(chunk as ExcludeError<T>, state.index++);
       } catch (err) {
         // Forward any errors from the projection function
         controller.enqueue(ObservableError.from(err, "switchMap:project", chunk) as R);

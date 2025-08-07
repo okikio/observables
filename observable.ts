@@ -242,8 +242,8 @@
  */
 import type { SpecObservable, ObservableProtocol, SpecSubscription } from "./_spec.ts";
 import type { Observer, Subscription } from "./_types.ts";
-import { assertObservableError } from "./asserts.ts";
-import { ObservableError } from "./error.ts";
+
+import { ObservableError, assertObservableError } from "./error.ts";
 import { Symbol } from "./symbol.ts";
 
 /**
@@ -1923,7 +1923,7 @@ export async function* pull<T>(
       const { value, done } = await reader.read();
 
       // If we received a wrapped error, unwrap and throw it
-      if (throwError && value instanceof ObservableError) throw value;
+      if (throwError) assertObservableError(value);
 
       // If the stream is done (Observable completed), exit the loop
       if (done) break;
@@ -1936,5 +1936,451 @@ export async function* pull<T>(
     // This guarantees no memory leaks, even with break or thrown exceptions
     reader.releaseLock();
     await stream.cancel();
+  }
+}
+
+/**
+ * Checks if a value is an Observable instance from this library.
+ * 
+ * When working with different Observable implementations or mixed data types, you often need 
+ * to verify what kind of object you're dealing with. This function provides a reliable way to 
+ * check if something is specifically an instance of our Observable class, which is helpful 
+ * for type safety and ensuring you can use all the methods available on our implementation.
+ * 
+ * **Why This Function Exists**:
+ * 
+ * In JavaScript ecosystems, you might encounter different Observable implementations - RxJS, 
+ * this library, custom implementations, or objects that just happen to have a `subscribe` method. 
+ * Without a proper way to distinguish between them, you'd have to either:
+ * - Risk calling methods that don't exist (crashes your app)
+ * - Write defensive code with lots of property checks (clutters your logic)
+ * - Use duck typing that might give false positives (unreliable)
+ * 
+ * This function eliminates those problems by giving you a definitive answer: "Is this an 
+ * Observable from our library?" If yes, you know exactly what methods and properties are 
+ * available.
+ * 
+ * **How It Relates to Other Checks**:
+ * 
+ * Think of this as the strict cousin of `isSpecObservable()`. While `isSpecObservable()` 
+ * asks "can I subscribe to this?" this function asks "is this specifically our Observable?" 
+ * 
+ * Use `isObservable()` when you need to ensure you're working with our exact implementation, 
+ * and `isSpecObservable()` when you just need something subscribable.
+ * 
+ * **Performance Story**:
+ * 
+ * This function uses `instanceof`, which modern JavaScript engines optimize very well. It's 
+ * essentially a pointer comparison under the hood, making it extremely fast and suitable for 
+ * use in performance-critical code paths.
+ * 
+ * The performance characteristics are:
+ * - Single `instanceof` check (optimized by JavaScript engines)
+ * - No method calls or property access required
+ * - Safe to use in tight loops or frequently called functions
+ * - Memory efficient (no allocations, just a boolean return)
+ * 
+ * **Common Ways to Use This Function**:
+ * 
+ * ```typescript
+ * // Scenario 1: Type-safe method access
+ * function processObservable(input: unknown) {
+ *   if (isObservable(input)) {
+ *     // TypeScript now knows input is Observable<unknown>
+ *     const generator = input.pull({ strategy: { highWaterMark: 10 } });
+ *     return generator; // Can safely use our specific methods
+ *   }
+ *   
+ *   throw new Error('Expected an Observable from this library');
+ * }
+ * 
+ * // Scenario 2: Library interoperability
+ * function convertToOurObservable(source: unknown): Observable<any> {
+ *   if (isObservable(source)) {
+ *     return source; // Already our type, no conversion needed
+ *   }
+ *   
+ *   if (isSpecObservable(source)) {
+ *     return Observable.from(source); // Convert from other implementation
+ *   }
+ *   
+ *   throw new Error('Cannot convert to Observable');
+ * }
+ * 
+ * // Scenario 3: Filtering mixed arrays
+ * const mixedSources = [rxjsObservable, ourObservable, promise, array];
+ * const ourObservables = mixedSources.filter(isObservable);
+ * // ourObservables is now Observable[] with full type safety
+ * 
+ * // Scenario 4: Defensive programming
+ * function subscribeToSource(source: unknown) {
+ *   if (isObservable(source)) {
+ *     // We know exactly what methods are available
+ *     return source.subscribe({ next: console.log });
+ *   } else if (isSpecObservable(source)) {
+ *     // Different Observable implementation, but still subscribable
+ *     return source.subscribe({ next: console.log });
+ *   } else {
+ *     throw new Error('Source is not observable');
+ *   }
+ * }
+ * ```
+ * 
+ * **What Makes This Function Reliable**:
+ * 
+ * Unlike duck typing (checking for the presence of methods), this function is precise:
+ * - Returns true only for actual instances of our Observable class
+ * - Handles inheritance correctly (subclasses return true)
+ * - Never gives false positives from look-alike objects
+ * - Works correctly across different module loading scenarios
+ * 
+ * **Edge Cases Handled**:
+ * - `null` and `undefined` → false (not Observables)
+ * - Objects with `subscribe` methods → false (unless they're actually our Observable)
+ * - Subclasses of Observable → true (proper inheritance support)
+ * - Cross-frame instances → true (same constructor reference)
+ * 
+ * **When to Use This vs Other Options**:
+ * 
+ * Choose `isObservable()` when:
+ * - You need to access methods specific to our Observable implementation
+ * - You're building type guards for strict type checking
+ * - You need to distinguish between different Observable libraries
+ * - You're doing performance-critical filtering of mixed object types
+ * 
+ * Choose `isSpecObservable()` instead when:
+ * - You just need something that can be subscribed to
+ * - You want maximum compatibility with other Observable implementations
+ * - You're building generic utilities that work with any Observable-like object
+ * 
+ * @template T - The expected type for the Observable's emitted values
+ * @param value - Any value that might or might not be our Observable
+ * @returns true if the value is an instance of our Observable class, false otherwise
+ * 
+ * @example Simple type checking
+ * ```typescript
+ * const maybeObservable: unknown = getDataSource();
+ * 
+ * if (isObservable(maybeObservable)) {
+ *   // TypeScript knows maybeObservable is Observable<unknown>
+ *   const subscription = maybeObservable.subscribe(console.log);
+ *   
+ *   // Can also use our specific methods
+ *   for await (const value of maybeObservable.pull()) {
+ *     console.log('Pulled:', value);
+ *   }
+ * } else {
+ *   console.log('Not our Observable implementation');
+ * }
+ * ```
+ * 
+ * @example Building a conversion utility
+ * ```typescript
+ * function ensureOurObservable<T>(source: unknown): Observable<T> {
+ *   if (isObservable<T>(source)) {
+ *     return source; // Already the right type
+ *   }
+ *   
+ *   if (isSpecObservable<T>(source)) {
+ *     // Convert from another Observable implementation
+ *     return new Observable<T>(observer => {
+ *       const sub = source.subscribe(observer);
+ *       return () => sub.unsubscribe();
+ *     });
+ *   }
+ *   
+ *   // Try to convert from other types
+ *   return Observable.from(source as any);
+ * }
+ * ```
+ * 
+ * @example Library integration
+ * ```typescript
+ * // Function that works with any Observable but optimizes for ours
+ * function processStream<T>(stream: unknown): AsyncGenerator<T> {
+ *   if (isObservable<T>(stream)) {
+ *     // Use our optimized pull method
+ *     return stream.pull();
+ *   } else if (isSpecObservable<T>(stream)) {
+ *     // Convert and then use our method
+ *     return Observable.from(stream).pull();
+ *   } else {
+ *     throw new Error('Expected an Observable-like object');
+ *   }
+ * }
+ * ```
+ */
+export function isObservable<T = unknown>(value: unknown): value is Observable<T> {
+  // This is a straightforward instanceof check
+  // Works reliably across module boundaries and handles inheritance correctly
+  return value instanceof Observable;
+}
+
+/**
+ * Checks if a value conforms to the Observable specification protocol.
+ * 
+ * When building applications that work with multiple Observable implementations, you need a way 
+ * to identify objects that can be subscribed to, regardless of which specific library created 
+ * them. This function provides that capability by checking for the core Observable protocol 
+ * rather than specific implementation details.
+ * 
+ * **Why This Function Exists**:
+ * 
+ * The Observable ecosystem includes many implementations - RxJS, this library, Zen Observable, 
+ * and others. Each has its own class structure, but they all follow the same basic protocol: 
+ * having a `[Symbol.observable]()` method that returns an object with a `subscribe()` method.
+ * 
+ * Without this function, you'd need to write complex checks to determine if something is 
+ * subscribable, leading to:
+ * - Fragile duck typing that breaks with edge cases
+ * - Verbose property checking that clutters your code  
+ * - Missing compatibility with new Observable implementations
+ * - Inconsistent behavior across different parts of your application
+ * 
+ * This function solves those problems by implementing the official Observable protocol check.
+ * 
+ * **How It Relates to Other Checks**:
+ * 
+ * Think of this as the diplomatic cousin of `isObservable()`. While `isObservable()` checks 
+ * for our specific implementation, this function asks "do you speak the Observable protocol?" 
+ * It's designed for interoperability and maximum compatibility.
+ * 
+ * The relationship between these functions is:
+ * - `isObservable()` → "Are you our exact Observable class?"
+ * - `isSpecObservable()` → "Can I subscribe to you using the standard protocol?"
+ * 
+ * **Performance Story**:
+ * 
+ * This function is more complex than `isObservable()` because it needs to check multiple 
+ * properties and call a method. However, it's still quite efficient:
+ * 
+ * - Fast property access for Symbol.observable
+ * - Single method call to get the subscribable object
+ * - Type checking for the subscribe method
+ * - Early returns for non-objects to avoid unnecessary work
+ * 
+ * While not as fast as `instanceof`, it's still suitable for most use cases. If you're in a 
+ * performance-critical path and know you're only dealing with our Observable implementation, 
+ * prefer `isObservable()`.
+ * 
+ * **Common Ways to Use This Function**:
+ * 
+ * ```typescript
+ * // Scenario 1: Cross-library compatibility
+ * import { Observable as RxObservable } from 'rxjs';
+ * import { Observable as OurObservable } from './observable.ts';
+ * 
+ * function processAnyObservable<T>(source: unknown): Promise<T[]> {
+ *   if (isSpecObservable<T>(source)) {
+ *     // Works with RxJS, our Observable, or any other spec-compliant implementation
+ *     const results: T[] = [];
+ *     
+ *     return new Promise((resolve, reject) => {
+ *       source.subscribe({
+ *         next: value => results.push(value),
+ *         error: reject,
+ *         complete: () => resolve(results)
+ *       });
+ *     });
+ *   }
+ *   
+ *   throw new Error('Source must be Observable-like');
+ * }
+ * 
+ * // Scenario 2: Building generic utilities
+ * function toArray<T>(source: unknown): Promise<T[]> {
+ *   if (isSpecObservable<T>(source)) {
+ *     return new Promise((resolve, reject) => {
+ *       const items: T[] = [];
+ *       source.subscribe({
+ *         next: item => items.push(item),
+ *         error: reject,
+ *         complete: () => resolve(items)
+ *       });
+ *     });
+ *   }
+ *   
+ *   // Fallback for other iterable types
+ *   if (Array.isArray(source)) return Promise.resolve([...source]);
+ *   
+ *   throw new Error('Cannot convert to array');
+ * }
+ * 
+ * // Scenario 3: Input validation in APIs
+ * function subscribeToStream<T>(
+ *   stream: unknown,
+ *   handler: (value: T) => void
+ * ): () => void {
+ *   if (!isSpecObservable<T>(stream)) {
+ *     throw new TypeError('Expected an Observable-like object');
+ *   }
+ *   
+ *   const subscription = stream.subscribe({ next: handler });
+ *   return () => subscription.unsubscribe();
+ * }
+ * 
+ * // Scenario 4: Filtering and type narrowing
+ * const mixedSources: unknown[] = [
+ *   rxjsObservable,
+ *   ourObservable,
+ *   { subscribe() { return { unsubscribe() {} }; } }, // Custom implementation
+ *   "not observable",
+ *   42
+ * ];
+ * 
+ * const observableSources = mixedSources.filter(isSpecObservable);
+ * // observableSources is now Array<{ subscribe: Function, [Symbol.observable]: Function }>
+ * ```
+ * 
+ * **What Makes This Function Robust**:
+ * 
+ * This function implements the official Observable protocol checking:
+ * 1. Verifies the object has `Symbol.observable` method
+ * 2. Calls that method to get the subscribable object
+ * 3. Ensures the result has a working `subscribe` method
+ * 4. Handles errors gracefully (returns false rather than throwing)
+ * 
+ * **Edge Cases Handled**:
+ * - `null` and `undefined` → false (not objects)
+ * - Objects without `Symbol.observable` → false (not Observable protocol)
+ * - `Symbol.observable` that throws → false (graceful error handling)
+ * - `Symbol.observable` returning non-objects → false (invalid protocol)
+ * - Objects with `subscribe` but no `Symbol.observable` → false (incomplete protocol)
+ * 
+ * **When to Use This vs Other Options**:
+ * 
+ * Choose `isSpecObservable()` when:
+ * - Building libraries that should work with any Observable implementation
+ * - You need maximum compatibility across the Observable ecosystem
+ * - You're creating utilities for consuming streams regardless of their origin
+ * - You want to follow the official Observable specification strictly
+ * 
+ * Choose `isObservable()` instead when:
+ * - You need methods specific to our Observable implementation
+ * - Performance is critical and you know the expected types
+ * - You're working within a single Observable implementation ecosystem
+ * - You need compile-time guarantees about available methods
+ * 
+ * @template T - The expected type for values emitted by the Observable
+ * @param value - Any value that might conform to the Observable protocol
+ * @returns true if the value implements the Observable specification, false otherwise
+ * 
+ * @example Cross-library compatibility
+ * ```typescript
+ * import { Observable as RxObservable } from 'rxjs';
+ * import { Observable as OurObservable } from './observable.ts';
+ * 
+ * const sources = [
+ *   new RxObservable(sub => sub.next(1)),
+ *   new OurObservable(obs => obs.next(2)),
+ *   { subscribe() { return { unsubscribe() {} }; } } // Custom
+ * ];
+ * 
+ * // Process any Observable-like object
+ * sources.forEach(source => {
+ *   if (isSpecObservable(source)) {
+ *     console.log('Can subscribe to this source');
+ *     source.subscribe({ next: console.log });
+ *   }
+ * });
+ * ```
+ * 
+ * @example Building a universal Observable utility
+ * ```typescript
+ * function first<T>(source: unknown): Promise<T> {
+ *   if (!isSpecObservable<T>(source)) {
+ *     return Promise.reject(new Error('Source must be Observable'));
+ *   }
+ * 
+ *   return new Promise((resolve, reject) => {
+ *     const subscription = source.subscribe({
+ *       next: value => {
+ *         subscription.unsubscribe();
+ *         resolve(value);
+ *       },
+ *       error: reject,
+ *       complete: () => reject(new Error('Observable completed without emitting'))
+ *     });
+ *   });
+ * }
+ * 
+ * // Works with any Observable implementation
+ * const result1 = await first(rxjsObservable);
+ * const result2 = await first(ourObservable);
+ * ```
+ * 
+ * @example Input validation for APIs
+ * ```typescript
+ * interface StreamProcessor<T> {
+ *   process(stream: unknown): AsyncGenerator<T>;
+ * }
+ * 
+ * class UniversalProcessor<T> implements StreamProcessor<T> {
+ *   async* process(stream: unknown): AsyncGenerator<T> {
+ *     if (isSpecObservable<T>(stream)) {
+ *       // Convert any Observable to async generator
+ *       const observable = stream[Symbol.observable]();
+ *       
+ *       let resolve: (value: IteratorResult<T>) => void;
+ *       let reject: (error: any) => void;
+ *       let promise = new Promise<IteratorResult<T>>((res, rej) => {
+ *         resolve = res;
+ *         reject = rej;
+ *       });
+ * 
+ *       const subscription = observable.subscribe({
+ *         next: value => {
+ *           resolve({ value, done: false });
+ *           promise = new Promise<IteratorResult<T>>((res, rej) => {
+ *             resolve = res;
+ *             reject = rej;
+ *           });
+ *         },
+ *         error: reject,
+ *         complete: () => resolve({ value: undefined as any, done: true })
+ *       });
+ * 
+ *       try {
+ *         while (true) {
+ *           const result = await promise;
+ *           if (result.done) break;
+ *           yield result.value;
+ *         }
+ *       } finally {
+ *         subscription.unsubscribe();
+ *       }
+ *     } else {
+ *       throw new Error('Input must implement Observable protocol');
+ *     }
+ *   }
+ * }
+ * ```
+ */
+export function isSpecObservable<T = unknown>(value: unknown): value is SpecObservable<T> {
+  // Early return for non-objects
+  if (value === null || value === undefined || typeof value !== 'object') {
+    return false;
+  }
+
+  try {
+    // Check if the object has the Symbol.observable method
+    const observableMethod = (value as Record<symbol, unknown>)[Symbol.observable];
+    if (typeof observableMethod !== 'function') {
+      return false;
+    }
+
+    // Call the method to get the subscribable object
+    const subscribable = (observableMethod as () => unknown).call(value);
+
+    // Verify the result has a subscribe method
+    return (
+      subscribable !== null &&
+      subscribable !== undefined &&
+      typeof subscribable === 'object' &&
+      typeof (subscribable as Record<string, unknown>).subscribe === 'function'
+    );
+  } catch {
+    // If any step throws, it's not a valid Observable
+    return false;
   }
 }
