@@ -8,7 +8,6 @@
     "./types": "./_types.ts",
     "./events": "./events.ts",
     "./observable": "./observable.ts",
-    "./asserts": "./asserts.ts",
     "./operators": "./helpers/mod.ts",
     "./operations": "./helpers/operations/mod.ts",
     "./operations/batch": "./helpers/operations/batch.ts",
