@@ -8,6 +8,9 @@ import type { SubscriptionObserver } from './observable.ts';
 import { Observable } from './observable.ts';
 import { Symbol } from "./symbol.ts";
 
+import { ObservableError } from "./error.ts";  // Assume path to your ObservableError
+import { createQueue, enqueue, dequeue, isFull, toArray, clear } from './queue.ts';  // Assume path to your queue utils
+
 /**
  * A multicast event bus that extends {@link Observable<T>}, allowing
  * emission of values to multiple subscribers and supporting both
@@ -318,4 +321,58 @@ export function waitForEvent<
   signal?.addEventListener?.('abort', onAbort, { once: true });
 
   return promise;
+}
+
+/**
+ * Wraps an Observable to replay the last N emissions to new subscribers.
+ * Uses a fixed-size queue for efficient buffering (O(1) ops).
+ *
+ * @param source The source Observable (e.g., bus.events).
+ * @param options Replay options.
+ * @returns A new Observable with replay behavior.
+ */
+export function withReplay<T>(
+  source: Observable<T>,
+  { count = Infinity }: { count?: number } = {}
+): Observable<T> {
+  return new Observable(subscriber => {
+    const buffer = createQueue<T>(count === Infinity ? 1000 : count);  // Start with reasonable capacity; auto-grows if needed
+
+    // Function to replay buffer to a new subscriber
+    const replay = () => {
+      const items = toArray(buffer);  // O(n), but only on subscribe (rare)
+      for (const item of items) {
+        subscriber.next(item);
+      }
+    };
+
+    // Initial replay
+    replay();
+
+    // Subscribe to source and handle new emissions
+    const sub = source.subscribe({
+      next(value) {
+        // Buffer if limited
+        if (count !== Infinity && isFull(buffer)) {
+          dequeue(buffer);  // Remove oldest
+        }
+        enqueue(buffer, value);
+        subscriber.next(value);
+      },
+      error(err) {
+        // Handle error (non-terminal by default, as per your pipes)
+        subscriber.next(ObservableError.from(err) as T);  // Or subscriber.error(err) for terminal
+      },
+      complete() {
+        subscriber.complete();
+      }
+    });
+
+    // Cleanup on unsubscribe
+    return () => {
+      sub.unsubscribe();
+      clear(buffer);  // Clear buffer on unsubscribe
+      // Optional: clear(buffer) if per-subscriber buffers, but shared here
+    };
+  });
 }

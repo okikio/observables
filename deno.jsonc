@@ -7,6 +7,7 @@
     "./error": "./error.ts",
     "./types": "./_types.ts",
     "./events": "./events.ts",
+    "./queue": "./queue.ts",
     "./observable": "./observable.ts",
     "./operators": "./helpers/mod.ts",
     "./operations": "./helpers/operations/mod.ts",
