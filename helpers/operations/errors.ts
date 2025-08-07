@@ -342,37 +342,47 @@ export function tapError<T>(
 }
 
 /**
- * Emits a default value if the source stream completes without emitting any
- * values.
+ * Throws an error if it encounters one in the stream.
  *
- * If the stream emits any item (even `null` or `undefined`), the default value
- * is not used.
+ * This operator is useful for enforcing strict error handling. If an error is
+ * encountered, it will throw immediately, stopping the iteration.
  *
  * @example
  * ```ts
- * import { pipe, orDefault, from } from "./helpers/mod.ts";
+ * import { pipe, throwErrors, from } from "./helpers/mod.ts";
  *
  * // Stream behavior
- * const emptyStream = from([]);
- * const defaultStream = pipe(emptyStream, orDefault("default")); // Emits "default"
+ * const sourceStream = from([1, new ObservableError("fail"), 2]);
+ * const throwingStream = pipe(sourceStream, throwErrors());
  *
- * const nonEmptyStream = from([1]);
- * const resultStream = pipe(nonEmptyStream, orDefault("default")); // Emits 1
+ * for await (const item of throwingStream) {
+ *   console.log(item); // Will log 1, then throw on "fail"
+ * }
  * ```
  *
  * ## Practical Use Case
  *
- * Use `orDefault` to ensure that a stream always produces at least one value,
- * which can simplify downstream logic. For example, if a database query
- * returns no results, you can provide a default empty array.
+ * Use `throwErrors` when you want to ensure that any error in the stream is
+ * treated as a critical failure. This is useful in scenarios where errors must
+ * be handled immediately and cannot be ignored.
  *
  * ## Key Insight
  *
- * `orDefault` prevents a stream from being "empty" and guarantees a value,
- * making subsequent operations more predictable.
+ * `throwErrors` provides a way to enforce strict error handling in streams,
+ * ensuring that no errors go unnoticed.
  *
  * @template T The type of data in the stream.
- * @template R The type of the default value.
- * @param defaultValue The value to emit if the stream is empty.
- * @returns An operator that provides a default value for an empty stream.
+ * @returns An operator that throws on errors.
  */
+export function throwErrors<T>(): Operator<T | ObservableError, T> {
+  return createOperator({
+    name: 'throwErrors',
+    transform(chunk, controller) {
+      if (chunk instanceof ObservableError) {
+        controller.error(chunk);  // Terminal, throws in iteration
+      } else {
+        controller.enqueue(chunk);
+      }
+    }
+  });
+}
