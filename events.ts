@@ -371,7 +371,6 @@ export function withReplay<T>(
     // Cleanup on unsubscribe
     return () => {
       sub.unsubscribe();
-      clear(buffer);  // Clear buffer on unsubscribe
       // Optional: clear(buffer) if per-subscriber buffers, but shared here
     };
   });
