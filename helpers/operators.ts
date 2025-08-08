@@ -1,4 +1,4 @@
-import type { Operator, CreateOperatorOptions, StatefulTransformFunctionOptions, TransformFunctionOptions, TransformStreamOptions, ExcludeError } from "./_types.ts";
+import type { Operator, CreateOperatorOptions, StatefulTransformFunctionOptions, TransformFunctionOptions, TransformStreamOptions, ExcludeError, OperatorErrorMode, TransformHandlerContext } from "./_types.ts";
 
 import { injectError, isTransformStreamOptions } from "./utils.ts";
 import { ObservableError, isObservableError } from "../error.ts";
@@ -63,62 +63,232 @@ export function createOperator<T, R, O extends R | ObservableError = R | Observa
 export function createOperator<T, R, O extends R | ExcludeError<R> | ObservableError = R | ExcludeError<R> | ObservableError>(options: CreateOperatorOptions<T, O>): Operator<T, unknown> {
   // Extract operator name from options or the function name for better error reporting
   const operatorName = `operator:${options.name || 'unknown'}`;
-  const ignoreErrors = (options as TransformFunctionOptions<T, O>)?.ignoreErrors ?? false;
+  const errorMode = (options as TransformFunctionOptions<T, O>)?.errorMode ?? "pass-through";
 
+  // Extract only what we need to avoid retaining the full options object
+  const transform = (options as TransformFunctionOptions<T, O>)?.transform;
+  const start = (options as TransformFunctionOptions<T, O>)?.start;
+  const flush = (options as TransformFunctionOptions<T, O>)?.flush;
+  
   return (source) => {
     try {
       // Create a transform stream with the provided options
-      const transformStream = isTransformStreamOptions(options) ? options.stream :
+      const transformStream = isTransformStreamOptions(options) ?
+        options.stream(options) :
         new TransformStream<T, O>({
-          // Transform function to process each chunk
-          async transform(chunk, controller) {
-            if (ignoreErrors && isObservableError(chunk)) return;
+            // Transform function to process each chunk
+            transform: handleTransform(errorMode, transform, { operatorName }),
 
-            try {
-              const result = await options.transform(chunk, controller);
-              controller.enqueue(result as O);
-            } catch (err) {
-              // If an error occurs during transformation, wrap it with context
-              if (ignoreErrors) return;
-              controller.enqueue(ObservableError.from(err, operatorName, chunk) as O);
-            }
+            // Start function called when the stream is initialized
+            start: handleStart(errorMode, start, { operatorName }),
+
+            // Flush function called when the input is done
+            flush: handleFlush(errorMode, flush, { operatorName }),
           },
-
-          // Start function called when the stream is initialized
-          async start(controller) {
-            if (!options.start) return;
-
-            try {
-              return await options.start(controller);
-            } catch (err) {
-              if (!ignoreErrors)
-                controller.enqueue(ObservableError.from(err, `${operatorName}:start`) as O);
-              controller.terminate();
-            }
-          },
-
-          // Flush function called when the input is done
-          async flush(controller) {
-            if (!options.flush) return;
-
-            try {
-              await options.flush(controller);
-            } catch (err) {
-              if (!ignoreErrors)
-                controller.enqueue(ObservableError.from(err, `${operatorName}:flush`) as O);
-              controller.terminate();
-            }
-          },
-        },
           { highWaterMark: 1 },
           { highWaterMark: 0 }
         );
-
+      
       // Pipe the source through the transform
       return source.pipeThrough(transformStream);
     } catch (err) {
       // If setup fails, return a stream that errors immediately
       return source.pipeThrough(injectError(err, `${operatorName}:setup`, options));
+    }
+  };
+}
+
+/**
+ * Wraps a transform function to handle errors based on the specified error mode
+ * 
+ * This utility function takes a transform function and wraps it to handle errors
+ * according to the specified error mode. It supports modes like "ignore", "pass-through",
+ * "throw", and "manual".
+ * 
+ * @typeParam T - Input chunk type
+ * @typeParam O - Output chunk type
+ * @typeParam S - State type (if applicable)
+ * @param S - State type (if applicable)
+ * @param errorMode - The error handling mode
+ * @param transform - The transform function to wrap
+ * @param context - The transform function options
+ * @returns A wrapped transform function with error handling
+ */
+export function handleTransform<T, O, S = never>(
+  errorMode: OperatorErrorMode,
+  transform: 
+    TransformFunctionOptions<T, O>['transform'] |
+    StatefulTransformFunctionOptions<T, O, S>['transform'],
+  context: TransformHandlerContext = { }
+): Transformer<T, O>['transform'] {
+  const operatorName = context.operatorName || `operator:unknown`;
+  const isStateful = context.isStateful || false;
+  const state = context.state;
+
+  switch (errorMode) {
+    case "pass-through":
+      return async (chunk: T, controller: TransformStreamDefaultController<O>) => {
+        if (isObservableError(chunk)) {
+          controller.enqueue(chunk as O);
+          return;
+        }
+        
+        try {
+          if (isStateful) {
+            // If stateful, pass the state along
+            return await (transform as StatefulTransformFunctionOptions<T, O, S>['transform'])(chunk, state as S, controller);
+          }
+
+          await (transform as TransformFunctionOptions<T, O>['transform'])(chunk, controller);
+        } catch (err) {
+          controller.enqueue(ObservableError.from(err, operatorName, chunk) as O);
+        }
+      };
+      
+    case "ignore":
+      return async (chunk: T, controller: TransformStreamDefaultController<O>) => {
+        if (isObservableError(chunk)) return;
+        
+        try {
+          if (isStateful) {
+            // If stateful, pass the state along
+            return await (transform as StatefulTransformFunctionOptions<T, O, S>['transform'])(chunk, state as S, controller);
+          }
+
+          await (transform as TransformFunctionOptions<T, O>['transform'])(chunk, controller);
+        } catch (_) {
+          // Silently ignore errors
+          return;
+        }
+      };
+      
+    case "throw":
+      return async (chunk: T, controller: TransformStreamDefaultController<O>) => {
+        if (isObservableError(chunk)) {
+          return controller.error(ObservableError.from(chunk, operatorName, chunk));
+        }
+        
+        try {
+          if (isStateful) {
+            // If stateful, pass the state along
+            return await (transform as StatefulTransformFunctionOptions<T, O, S>['transform'])(chunk, state as S, controller);
+          }
+
+          await (transform as TransformFunctionOptions<T, O>['transform'])(chunk, controller);
+        } catch (err) {
+          return controller.error(ObservableError.from(err, operatorName, chunk));
+        }
+      };
+      
+    case "manual":
+    default:
+      return async (chunk: T, controller: TransformStreamDefaultController<O>) => {
+        // In manual mode, user is expected to handle ALL errors
+        // If they don't catch something, let it bubble up and error the stream
+        if (isStateful) {
+          // If stateful, pass the state along
+          return await (transform as StatefulTransformFunctionOptions<T, O, S>['transform'])(chunk, state as S, controller);
+        }
+
+        await (transform as TransformFunctionOptions<T, O>['transform'])(chunk, controller);
+      };
+  }
+}
+
+/**
+ * Wraps a start function to handle errors based on the specified error mode
+ * 
+ * @typeParam O - Output chunk type
+ * @param errorMode - The error handling mode
+ * @param start - The start function to wrap
+ * @param operatorName - The name of the operator for error context
+ * @returns A wrapped start function with error handling
+ */
+
+export function handleStart<T, O, S extends undefined = undefined>(
+  errorMode: OperatorErrorMode,
+  start?: 
+    TransformFunctionOptions<T, O>['start'] |
+    StatefulTransformFunctionOptions<T, O, S>['start'],
+  context: TransformHandlerContext = { }
+): Transformer<T, O>['start'] {
+  if (!start) return;
+
+  const operatorName = context.operatorName || `operator:unknown`;
+  const isStateful = context.isStateful || false;
+  const state = context.state;
+
+  return async (controller: TransformStreamDefaultController<O>) => {
+    try {
+      if (isStateful) {
+        // If stateful, pass the state along
+        return await (start as StatefulTransformFunctionOptions<unknown, O, S>['start'])!(state as S, controller);
+      }
+
+      return await (start as TransformFunctionOptions<unknown, O>['start'])!(controller);
+    } catch (err) {
+      switch (errorMode) {
+        case "ignore":
+          controller.terminate();
+          break;
+        case "throw":
+          throw ObservableError.from(err, `${operatorName}:start`);
+        case "pass-through":
+          controller.enqueue(ObservableError.from(err, `${operatorName}:start`) as O);
+          controller.terminate();
+          break;
+        case "manual":
+        default:
+          throw err;
+      }
+    }
+  };
+}
+
+/**
+ * Wraps a flush function to handle errors based on the specified error mode
+ * 
+ * @typeParam O - Output chunk type
+ * @param errorMode - The error handling mode
+ * @param flush - The flush function to wrap
+ * @param operatorName - The name of the operator for error context
+ * @returns A wrapped flush function with error handling
+ */
+export function handleFlush<T, O, S extends undefined = undefined>(
+  errorMode: OperatorErrorMode,
+  flush?: TransformFunctionOptions<T, O>['flush'] |
+    StatefulTransformFunctionOptions<T, O, S>['flush'],
+  context: TransformHandlerContext = { }
+): Transformer<T, O>['flush'] {
+  if (!flush) return;
+
+  const operatorName = context.operatorName || `operator:unknown`;
+  const isStateful = context.isStateful || false;
+  const state = context.state;
+  
+  return async (controller: TransformStreamDefaultController<O>) => {
+    try {
+      if (isStateful) {
+        // If stateful, pass the state along
+        return await (flush as StatefulTransformFunctionOptions<unknown, O, S>['flush'])!(state as S, controller);
+      }
+
+      return await (flush as TransformFunctionOptions<unknown, O>['flush'])!(controller);
+    } catch (err) {
+      switch (errorMode) {
+        case "ignore":
+          controller.terminate();
+          break;
+        case "throw":
+          throw ObservableError.from(err, `${operatorName}:flush`);
+        case "pass-through":
+          controller.enqueue(ObservableError.from(err, `${operatorName}:flush`) as O);
+          controller.terminate();
+          break;
+        case "manual":
+        default:
+          throw err;
+      }
     }
   };
 }
@@ -199,7 +369,12 @@ export function createStatefulOperator<T, R, S, O extends R | ExcludeError<R> | 
 ): Operator<T, unknown> {
   // Extract operator name from options or the function name for better error reporting
   const operatorName = `operator:stateful:${options.name || 'unknown'}`;
-  const ignoreErrors = options?.ignoreErrors ?? false;
+  const errorMode = (options as StatefulTransformFunctionOptions<T, O, S>)?.errorMode ?? "pass-through";
+
+  // Extract only what we need to avoid retaining the full options object
+  const transform = (options as StatefulTransformFunctionOptions<T, O, S>)?.transform;
+  const start = (options as StatefulTransformFunctionOptions<T, O, S>)?.start;
+  const flush = (options as StatefulTransformFunctionOptions<T, O, S>)?.flush;
 
   return (source) => {
     try {
@@ -210,7 +385,13 @@ export function createStatefulOperator<T, R, S, O extends R | ExcludeError<R> | 
         // Initialize the state
         state = options.createState();
       } catch (err) {
-        if (ignoreErrors) return source;
+        switch (errorMode) {
+          case "ignore":
+            return source;
+          case "manual":
+          case "throw":
+            throw err;
+        }
 
         // If state creation fails, return a stream that errors immediately
         return source.pipeThrough(
@@ -221,46 +402,9 @@ export function createStatefulOperator<T, R, S, O extends R | ExcludeError<R> | 
       // Create a transform stream with the provided options
       const transformStream = new TransformStream<T, O>(
         {
-          start(controller) {
-            if (!options.start) return;
-
-            try {
-              return options.start(state, controller);
-            } catch (err) {
-              // If an error occurs during transformation, wrap it with context
-              if (!ignoreErrors)
-                controller.enqueue(ObservableError.from(err, `${operatorName}:start`, { state }) as O);
-              controller.terminate();
-            }
-          },
-
-          transform(chunk, controller) {
-            if (ignoreErrors && isObservableError(chunk)) return;
-
-            try {
-              // Apply the transform function with the current state
-              return options.transform(chunk, state, controller);
-            } catch (err) {
-              if (ignoreErrors) return;
-
-              // If an error occurs during transformation, wrap it with context
-              controller.enqueue(ObservableError.from(err, `${operatorName}:transform`, { chunk, state }) as O);
-            }
-          },
-
-          flush(controller) {
-            if (!options.flush) return;
-
-            try {
-              // Call the flush function if provided
-              return options.flush(state, controller);
-            } catch (err) {
-              // If an error occurs during transformation, wrap it with context
-              if (!ignoreErrors)
-                controller.enqueue(ObservableError.from(err, `${operatorName}:flush`, { state }) as O);
-              controller.terminate();
-            }
-          },
+          start: handleStart(errorMode, start, { operatorName, isStateful: true, state }),
+          transform: handleTransform(errorMode, transform, { operatorName, isStateful: true, state }),
+          flush: handleFlush(errorMode, flush, { operatorName, isStateful: true, state }),
         },
         { highWaterMark: 1 },
         { highWaterMark: 0 }
@@ -269,8 +413,6 @@ export function createStatefulOperator<T, R, S, O extends R | ExcludeError<R> | 
       // Pipe the source through the transform
       return source.pipeThrough(transformStream);
     } catch (err) {
-      if (ignoreErrors) return source;
-
       // If setup fails, return a stream that errors immediately
       return source.pipeThrough(injectError(err, `${operatorName}:setup`, options));
     }

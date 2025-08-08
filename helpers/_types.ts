@@ -53,6 +53,17 @@ export type ObservableWithPipe<
 > = Observable<InferOperatorItemOutputType<LastTupleItem<TPipe>>>;
 
 /**
+ * Type representing how to handle errors in operators
+ * - "ignore" => errors wrapped in ObservableError will be used as values
+ *               and can then be transformed as the operator sees fit
+ * - "pass-through" => errors automatically pass through, meaning ObservableError 
+ *                     will not appear as a value
+ * - "throw" => errors will cause the stream to throw and terminate
+ * - "manual" => errors are passed to the transform function to handle manually
+ */
+export type OperatorErrorMode = "ignore" | "pass-through" | "throw" | "manual";
+
+/**
  * Base interface with properties shared across all transform options
  */
 export interface BaseTransformOptions {
@@ -73,7 +84,7 @@ export interface TransformStreamOptions<T, R> extends BaseTransformOptions {
   /**
    * An existing TransformStream to use for transformation
    */
-  stream: TransformStream<T, R>;
+  stream: (opts: TransformStreamOptions<T, R>) => TransformStream<T, R>;
 }
 
 /**
@@ -81,14 +92,16 @@ export interface TransformStreamOptions<T, R> extends BaseTransformOptions {
  */
 export interface TransformFunctionOptions<T, R> extends BaseTransformOptions {
   /**
-   * Whether to allow errors to just pass through as a value or not,
-   * - true => when true errors wrapped in ObservableError will be used as values
-   *            and can then be transformed as the operator sees fit
-   * - false => when false errors automatically pass through, meaning ObservableError 
-   *           will not appear as a value,
-   * @default false
+   * How to handle errors in the stream:
+   * - "ignore" => errors wrapped in ObservableError will be used as values
+   *               and can then be transformed as the operator sees fit
+   * - "pass-through" => errors automatically pass through, meaning ObservableError 
+   *                     will not appear as a value
+   * - "throw" => errors will cause the stream to throw and terminate
+   * - "manual" => errors are passed to the transform function to handle manually
+   * @default "pass-through"
    */
-  ignoreErrors?: boolean;
+  errorMode?: OperatorErrorMode;
 
   /**
    * Function to transform each chunk
@@ -140,14 +153,16 @@ export type CreateOperatorOptions<T, R> =
  */
 export interface StatefulTransformFunctionOptions<T, R, S> extends BaseTransformOptions {
   /**
-   * Whether to allow errors to just pass through as a value or not,
-   * - true => when true errors wrapped in ObservableError will be used as values
-   *            and can then be transformed as the operator sees fit
-   * - false => when false errors automatically pass through, meaning ObservableError 
-   *           will not appear as a value,
-   * @default false
+   * How to handle errors in the stream:
+   * - "ignore" => errors wrapped in ObservableError will be used as values
+   *               and can then be transformed as the operator sees fit
+   * - "pass-through" => errors automatically pass through, meaning ObservableError 
+   *                     will not appear as a value
+   * - "throw" => errors will cause the stream to throw and terminate
+   * - "manual" => errors are passed to the transform function to handle manually
+   * @default "pass-through"
    */
-  ignoreErrors?: boolean;
+  errorMode?: OperatorErrorMode;
 
   /**
    * Function to create the initial state
@@ -196,4 +211,17 @@ export interface StatefulTransformFunctionOptions<T, R, S> extends BaseTransform
     state: S,
     reason?: unknown
   ) => void | Promise<void>;
+}
+
+/**
+ * Context for transform handlers
+ * This interface provides additional information for the transform handler,
+ * such as the operator name, whether it is
+ * stateful, and any associated state.
+ * @typeParam S - State type (if applicable)
+ */
+export interface TransformHandlerContext<S extends undefined = undefined> {
+  operatorName?: string;
+  isStateful?: boolean;
+  state?: S;
 }
