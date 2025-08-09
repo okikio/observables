@@ -79,15 +79,9 @@ export function mergeMap<T, R>(
 
     // Process each incoming chunk
     async transform(chunk, state, controller) {
-      if (isObservableError(chunk)) {
-        // If the chunk is an error, we can immediately enqueue it
-        controller.enqueue(chunk);
-        return;
-      }
-
       // If we're under the concurrency limit, process immediately
       if (state.activeCount < concurrent) {
-        await subscribeToProjection(chunk, state.index++);
+        await subscribeToProjection(chunk as ExcludeError<T>, state.index++);
       } else {
         // Otherwise, buffer for later
         state.buffer.push([chunk as ExcludeError<T>, state.index++]);
@@ -102,7 +96,7 @@ export function mergeMap<T, R>(
           innerObservable = project(value as ExcludeError<T>, innerIndex);
         } catch (err) {
           // Forward any errors from the projection function
-          controller.enqueue(ObservableError.from(err, "mergeMap:project", value) as R);
+          controller.enqueue(ObservableError.from(err, "operator:stateful:mergeMap:project", value) as R);
           return;
         }
 
@@ -308,7 +302,7 @@ export function switchMap<T, R>(
         innerObservable = project(chunk as ExcludeError<T>, state.index++);
       } catch (err) {
         // Forward any errors from the projection function
-        controller.enqueue(ObservableError.from(err, "switchMap:project", chunk) as R);
+        controller.enqueue(ObservableError.from(err, "operator:stateful:switchMap:project", chunk) as R);
         return;
       }
 

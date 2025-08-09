@@ -220,7 +220,7 @@ export interface StatefulTransformFunctionOptions<T, R, S> extends BaseTransform
  * stateful, and any associated state.
  * @typeParam S - State type (if applicable)
  */
-export interface TransformHandlerContext<S extends undefined = undefined> {
+export interface TransformHandlerContext<S extends unknown = undefined> {
   operatorName?: string;
   isStateful?: boolean;
   state?: S;

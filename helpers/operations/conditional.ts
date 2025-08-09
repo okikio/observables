@@ -2,8 +2,6 @@ import type { ExcludeError, Operator } from "../_types.ts";
 import type { ObservableError } from "../../error.ts";
 
 import { createStatefulOperator } from "../operators.ts";
-import { isObservableError } from "../../error.ts";
-
 
 /**
  * Checks if every item in the stream passes a test.
@@ -47,12 +45,6 @@ export function every<T>(predicate: (value: ExcludeError<T>, index: number) => b
     name: 'every',
     createState: () => ({ index: 0, finished: false }),
     transform(chunk, state, controller) {
-      if (isObservableError(chunk)) {
-        // If the chunk is an error, we can immediately emit it
-        controller.enqueue(chunk);
-        return;
-      }
-
       if (state.finished) return;
       const result = predicate(chunk as ExcludeError<T>, state.index++);
 
@@ -115,12 +107,6 @@ export function some<T>(predicate: (value: ExcludeError<T>, index: number) => bo
     name: 'some',
     createState: () => ({ index: 0, finished: false }),
     transform(chunk, state, controller) {
-      if (isObservableError(chunk)) {
-        // If the chunk is an error, we can immediately emit it
-        controller.enqueue(chunk);
-        return;
-      }
-
       if (state.finished) return;
       const result = predicate(chunk as ExcludeError<T>, state.index++);
 
@@ -179,12 +165,6 @@ export function find<T>(predicate: (value: ExcludeError<T>, index: number) => bo
     name: 'find',
     createState: () => ({ index: 0 }),
     transform(chunk, state, controller) {
-      if (isObservableError(chunk)) {
-        // If the chunk is an error, we can immediately emit it
-        controller.enqueue(chunk);
-        return;
-      }
-
       const result = predicate(chunk as ExcludeError<T>, state.index++);
 
       // If the predicate passes, emit the value and complete
@@ -244,11 +224,6 @@ export function unique<T, K = T>(
     name: 'unique',
     createState: () => ({ seen: new Set() }),
     transform(chunk, state, controller) {
-      if (isObservableError(chunk)) {
-        controller.enqueue(chunk);
-        return;
-      }
-
       const key = keySelector
         ? keySelector(chunk as ExcludeError<T>)
         : (chunk as unknown as K);

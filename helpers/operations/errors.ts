@@ -38,11 +38,9 @@ import { createOperator, createStatefulOperator } from "../operators.ts";
 export function ignoreErrors<T>(): Operator<T | ObservableError, ExcludeError<T>> {
   return createOperator<T | ObservableError, T>({
     name: 'ignoreErrors',
-    ignoreErrors: true,
+    errorMode: "ignore",
     transform(chunk, controller) {
-      if (!(isObservableError(chunk))) {
-        controller.enqueue(chunk as ExcludeError<T>);
-      }
+      controller.enqueue(chunk as ExcludeError<T>);
       // Errors are silently dropped
     }
   });
@@ -94,7 +92,7 @@ export function ignoreErrors<T>(): Operator<T | ObservableError, ExcludeError<T>
 export function catchErrors<T, R>(fallback: R): Operator<T | ObservableError, ExcludeError<T> | R> {
   return createOperator<T | ObservableError, ExcludeError<T> | R>({
     name: 'catchErrors',
-    ignoreErrors: false,
+    errorMode: "manual",
     transform(chunk, controller) {
       if (isObservableError(chunk)) {
         controller.enqueue(fallback);
@@ -102,7 +100,7 @@ export function catchErrors<T, R>(fallback: R): Operator<T | ObservableError, Ex
         controller.enqueue(chunk as ExcludeError<T>);
       }
     }
-  }) as Operator<T | ObservableError, ExcludeError<T> | R>;
+  });
 }
 
 /**
@@ -154,29 +152,29 @@ export function mapErrors<T, E>(
 ): Operator<T | ObservableError, ExcludeError<T> | E> {
   return createOperator<T | ObservableError, ExcludeError<T> | E>({
     name: 'mapErrors',
-    ignoreErrors: false,
+    errorMode: "manual",
     transform(chunk, controller) {
       if (isObservableError(chunk)) {
         try {
           const mappedError = errorMapper(chunk);
           controller.enqueue(mappedError);
         } catch (mapperError) {
-          throw new ObservableError(
+          controller.error(new ObservableError(
             [mapperError, chunk],
             `Your error mapper function threw an error: ${mapperError}`,
             {
-              operator: 'mapErrors:mapper',
+              operator: 'operator:mapErrors:mapper',
               value: mapperError,
               cause: chunk,
               tip: 'The function passed to mapErrors threw an error. Check its implementation.'
             }
-          );
+          ));
         }
       } else {
         controller.enqueue(chunk as ExcludeError<T>);
       }
     }
-  }) as Operator<T | ObservableError, ExcludeError<T> | E>;
+  });
 }
 
 /**
@@ -211,7 +209,7 @@ export function mapErrors<T, E>(
 export function onlyErrors<T>(): Operator<T | ObservableError, ObservableError> {
   return createOperator<T | ObservableError, ObservableError>({
     name: 'onlyErrors',
-    ignoreErrors: false,
+    errorMode: "manual",
     transform(chunk, controller) {
       if (isObservableError(chunk)) {
         controller.enqueue(chunk);
@@ -268,7 +266,7 @@ export function summarizeErrors<T>(): Operator<T | ObservableError, {
     { successCount: number, errorCount: number }
   >({
     name: 'summarizeErrors',
-    ignoreErrors: true,
+    errorMode: "manual",
     createState: () => ({ successCount: 0, errorCount: 0 }),
     transform(chunk, state) {
       if (isObservableError(chunk)) {
@@ -328,12 +326,15 @@ export function tapError<T>(
 ): Operator<T | ObservableError, T | ObservableError> {
   return createOperator<T | ObservableError, T | ObservableError>({
     name: 'tapError',
+    errorMode: "manual",
     transform(chunk, controller) {
       try {
         if (isObservableError(chunk)) {
           sideEffect(chunk);
         }
-      } catch (err) { throw err; }
+      }
+      // deno-lint-ignore no-empty
+      catch (_) { }
       finally {
         controller.enqueue(chunk);
       }
@@ -377,12 +378,10 @@ export function tapError<T>(
 export function throwErrors<T>(): Operator<T | ObservableError, T> {
   return createOperator({
     name: 'throwErrors',
+    errorMode: "throw",
     transform(chunk, controller) {
-      if (chunk instanceof ObservableError) {
-        controller.error(chunk);  // Terminal, throws in iteration
-      } else {
-        controller.enqueue(chunk);
-      }
+      // If it's an error, this will automatically throw due to errorMode: "throw"
+      controller.enqueue(chunk as T);
     }
   });
 }

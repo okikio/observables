@@ -2,7 +2,6 @@ import type { ExcludeError, Operator } from "../_types.ts";
 import type { ObservableError } from "../../error.ts";
 
 import { createStatefulOperator } from "../operators.ts";
-import { isObservableError } from "../../error.ts";
 
 /**
  * Collects all values from the source stream and emits them as a single array
@@ -52,13 +51,8 @@ export function toArray<T>(): Operator<T | ObservableError, T[] | ObservableErro
   return createStatefulOperator<T | ObservableError, T[], T[]>({
     name: "toArray",
     createState: () => [],
-    transform(chunk, state, controller) {
-      if (isObservableError(chunk)) {
-        // If chunk is an error, we should not push it to the array
-        controller.enqueue(chunk);
-        return;
-      }
-
+    transform(chunk, state) {
+      // If chunk is an error, we should not push it to the array
       state.push(chunk as ExcludeError<T>); // Ensure chunk is not an error
     },
     flush(state, controller) {
@@ -121,13 +115,8 @@ export function batch<T>(size: number): Operator<T | ObservableError, T[] | Obse
     name: 'batch',
     createState: () => [],
     transform(chunk, buffer, controller) {
-      if (isObservableError(chunk)) {
-        // If chunk is an error, we should not push it to the buffer
-        controller.enqueue(chunk);
-        return;
-      }
-
-      buffer.push(chunk);
+      // If chunk is an error, we should not push it to the buffer
+      buffer.push(chunk as ExcludeError<T>); // Ensure chunk is not an error
 
       if (buffer.length >= size) {
         controller.enqueue(Array.from(buffer));

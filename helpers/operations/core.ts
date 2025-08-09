@@ -2,7 +2,6 @@ import type { ExcludeError, Operator } from "../_types.ts";
 import type { ObservableError } from "../../error.ts";
 
 import { createOperator, createStatefulOperator } from "../operators.ts";
-import { isObservableError } from "../../error.ts";
 
 /**
  * @module operations/core
@@ -76,11 +75,6 @@ export function map<T, R>(
     name: "map",
     createState: () => ({ index: 0 }),
     transform(chunk, state, controller) {
-      if (isObservableError(chunk)) {
-        controller.enqueue(chunk);
-        return;
-      }
-
       const result = project(chunk as ExcludeError<T>, state.index++);
       controller.enqueue(result);
     },
@@ -120,11 +114,6 @@ export function filter<T>(
     name: "filter",
     createState: () => ({ index: 0 }),
     transform(chunk, state, controller) {
-      if (isObservableError(chunk)) {
-        controller.enqueue(chunk);
-        return;
-      }
-
       if (predicate(chunk as ExcludeError<T>, state.index++)) {
         controller.enqueue(chunk as ExcludeError<T>);
       }
@@ -172,11 +161,6 @@ export function take<T>(
     name: "take",
     createState: () => ({ taken: 0 }),
     transform(chunk, state, controller) {
-      if (isObservableError(chunk)) {
-        controller.enqueue(chunk);
-        return;
-      }
-
       if (state.taken < count) {
         controller.enqueue(chunk as ExcludeError<T>);
         state.taken++;
@@ -229,11 +213,6 @@ export function drop<T>(
     name: "drop",
     createState: () => ({ dropped: 0 }),
     transform(chunk, state, controller) {
-      if (isObservableError(chunk)) {
-        controller.enqueue(chunk);
-        return;
-      }
-
       if (state.dropped < count) {
         state.dropped++;
       } else {
@@ -283,11 +262,6 @@ export function tap<T>(
   return createOperator<T | ObservableError, T | ObservableError>({
     name: "tap",
     transform(chunk, controller) {
-      if (isObservableError(chunk)) {
-        controller.enqueue(chunk);
-        return;
-      }
-
       fn(chunk as ExcludeError<T>);
       controller.enqueue(chunk);
     },
@@ -339,11 +313,6 @@ export function scan<T, R>(
       controller.enqueue(state.acc);
     },
     transform(chunk, state, controller) {
-      if (isObservableError(chunk)) {
-        controller.enqueue(chunk);
-        return;
-      }
-
       state.acc = accumulator(
         state.acc,
         chunk as ExcludeError<T>,

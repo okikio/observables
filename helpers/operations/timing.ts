@@ -7,6 +7,9 @@ import { ObservableError, isObservableError } from "../../error.ts";
  *
  * This operator shifts the entire stream of events forward in time, preserving
  * the relative time between them.
+ * 
+ * > Note: This does not delay error emissions. If an error occurs, it will
+ * > be emitted immediately, regardless of the delay.
  *
  * @example
  * ```ts
@@ -87,6 +90,9 @@ export function delay<T>(ms: number): Operator<T | ObservableError, T | Observab
  *
  * This is the "search bar" operator. It waits for the user to stop typing
  * before firing off a search query.
+ * 
+ * > Note: This operator does not delay error emissions. If an error occurs,
+ * > it will be emitted immediately, regardless of the debounce period.
  *
  * @example
  * ```ts
@@ -129,12 +135,6 @@ export function debounce<T>(ms: number): Operator<T | ObservableError, T | Obser
     }),
 
     transform(chunk, state, controller) {
-      if (isObservableError(chunk)) {
-        // If the chunk is an error, we can immediately emit it
-        controller.enqueue(chunk);
-        return;
-      }
-
       // Cancel any pending timeout
       if (state.timeout !== null) {
         clearTimeout(state.timeout);
@@ -336,16 +336,11 @@ export function timeout<T>(ms: number): Operator<T | ObservableError, T | Observ
   return createOperator<T | ObservableError, T | ObservableError>({
     name: 'timeout',
     transform(chunk, controller) {
-      if (isObservableError(chunk)) {
-        // If the chunk is an error, we can immediately emit it
-        controller.enqueue(chunk);
-        return;
-      }
-
+      // If the chunk is an error, we can immediately emit it
       const timeoutId = setTimeout(() => {
         controller.enqueue(ObservableError.from(
           new Error(`Operation timed out after ${ms}ms`),
-          'timeout',
+          'operator:timeout',
           { timeoutMs: ms, chunk }
         ));
       }, ms);
