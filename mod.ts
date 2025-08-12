@@ -114,7 +114,6 @@
  *
  * **Utility Operators**
  * - `tap(fn)` – Side effects without modification
- * - `compose(op1, op2, ...)` – Group operators together
  *
  * ### Advanced Composition Patterns
  *
@@ -168,31 +167,6 @@
  *     results: [...acc.results, result]
  *   }), { processed: 0, results: [] })
  * );
- * ```
- *
- * @example Operator Composition Limits & Solutions
- * ```ts
- * // Due to TypeScript recursion limits, `pipe()` supports up to 9 operators: 
- * // ✅ Works - 9 operators
- * pipe(source, op1, op2, op3, op4, op5, op6, op7, op8, op9);
- *
- * // ❌ Too many - compilation error
- * pipe(source, op1, op2, op3, op4, op5, op6, op7, op8, op9, op10);
- *
- * // ✅ Solution - use compose() to group operators
- * const processData = compose(
- *   filter(x => x > 0),
- *   map(x => x * 2),
- *   debounce(100)
- * );
- *
- * const formatOutput = compose(
- *   take(10),
- *   map(x => `Result: ${x}`),
- *   tap(x => console.log(x))
- * );
- *
- * pipe(source, processData, formatOutput);
  * ```
  *
  * @example Custom Operators
@@ -255,8 +229,7 @@
  * - The helper `pull()` encodes thrown errors as `ObservableError` *values* so
  *   buffered items are not lost – remember to `instanceof` check if you rely
  *   on it.
- * - Operators in `pipe()` are limited to 9 due to TypeScript recursion limits;
- *   use `compose()` to group operators for larger pipelines.
+ * - Operators in `pipe()` are limited to 19 due to TypeScript recursion limits.
  *
  * @example Common Patterns
  * ```ts
@@ -444,8 +417,7 @@
  * ### Operator Pipelines
  * | Pipeline complexity | Recommendation | Notes |
  * |-------------------|----------------|-------|
- * | 1-9 operators | Use `pipe()` directly | Full type inference |
- * | 10+ operators | Use `compose()` to group | Avoids TypeScript recursion limits |
+ * | 1-19 operators | Use `pipe()` directly | Full type inference |
  * | Reusable logic | Extract to functions | Better maintainability |
  * | Hot paths | Minimize operator count | Each operator adds overhead |
  *
@@ -515,8 +487,6 @@
  *   are ignored by design.
  * - **Memory leak on interval** — Infinite streams require `unsubscribe()` or
  *   `using`.
- * - **Too many operators in pipe?** — Use `compose()` to group operators and avoid
- *   TypeScript recursion limits.
  * - **Operators not working as expected?** — Check that you're importing from 
  *   `./helpers/mod.ts` and using `pipe()` for composition.
  *

@@ -63,23 +63,18 @@
  * ```ts
  * import { pipe, compose, map, filter, take, tap } from "./helpers/mod.ts";
  * 
- * // Define reusable operator groups
- * const processNumbers = compose(
- *   filter(x => x % 2 === 0),
- *   map(x => x * 10),
- *   tap(x => console.log('Processed:', x))
- * );
- * 
- * const limitAndFormat = compose(
- *   take(3),
- *   map(x => `Result: ${x}`)
- * );
- * 
  * // Use them in a pipeline
  * const result = pipe(
  *   source,
- *   processNumbers,
- *   limitAndFormat
+ * 
+ *   // Process numbers
+ *   filter(x => x % 2 === 0),
+ *   map(x => x * 10),
+ *   tap(x => console.log('Processed:', x)),
+ * 
+ *   // Limit and format output
+ *   take(3),
+ *   map(x => `Result: ${x}`)
  * );
  * ```
  * 
