@@ -142,18 +142,58 @@ export class EventBus<T> extends Observable<T> {
 export type EventMap = Record<string, unknown>;
 
 /**
- * Options for `waitForEvent`.
+ * The return type of {@link createEventDispatcher}.
+ * Provides a strongly-typed event bus interface.
+ *
+ * @typeParam E - The event map type, mapping event names to payloads.
  */
-export interface WaitForEventOptions {
+export interface EventDispatcher<E extends EventMap> {
   /**
-   * An AbortSignal to cancel waiting for the event.
+   * Emit an event with the given name and payload.
+   * @param name - The event name.
+   * @param payload - The payload matching the event name.
    */
-  signal?: AbortSignal;
+  emit<Name extends keyof E>(name: Name, payload: E[Name]): void;
+
   /**
-   * If true, rejects if the underlying stream completes before the event fires.
-   * @defaultValue false
+   * Subscribe to a specific event by name.
+   * Only events with a matching `type` will invoke the handler.
+   * @param name - The event name to listen for.
+   * @param handler - The callback invoked with the event payload.
+   * @returns A subscription object with `unsubscribe()`.
    */
-  throwOnClose?: boolean;
+  on<Name extends keyof E>(
+    name: Name,
+    handler: (payload: E[Name]) => void
+  ): Subscription;
+
+  /**
+   * Observable stream of all emitted events, carrying `{ type, payload }` objects.
+   */
+  events: Observable<{ type: keyof E; payload: E[keyof E] }>;
+
+  /**
+   * Expose the bus itself as an Observable of `{ type, payload }`.
+   * This allows for direct subscription to all events.
+   */
+  bus: EventBus<{ type: keyof E; payload: E[keyof E] }>;
+
+  /**
+   * Synchronous disposal method (for `using` syntax).
+   * Closes the bus and completes all subscribers.
+   */
+  [Symbol.dispose](): void;
+
+  /**
+   * Asynchronous disposal method.
+   * Closes the bus and completes all subscribers.
+   */
+  [Symbol.asyncDispose](): Promise<void>;
+
+  /**
+   * Close the bus, completing all subscribers and preventing further emits.
+   */
+  close(): void;
 }
 
 /**
@@ -189,7 +229,7 @@ export interface WaitForEventOptions {
  * bus.close();
  * ```
  */
-export function createEventDispatcher<E extends EventMap>() {
+export function createEventDispatcher<E extends EventMap>(): EventDispatcher<E> {
   // Internal bus carries a union of all event types and payloads
   const bus = new EventBus<{ type: keyof E; payload: E[keyof E] }>();
 
@@ -257,6 +297,21 @@ export function createEventDispatcher<E extends EventMap>() {
       bus.close();
     }
   };
+}
+
+/**
+ * Options for `waitForEvent`.
+ */
+export interface WaitForEventOptions {
+  /**
+   * An AbortSignal to cancel waiting for the event.
+   */
+  signal?: AbortSignal;
+  /**
+   * If true, rejects if the underlying stream completes before the event fires.
+   * @defaultValue false
+   */
+  throwOnClose?: boolean;
 }
 
 /**

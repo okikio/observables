@@ -52,7 +52,7 @@ export function applyOperator(
   input: ReadableStream<unknown>,
   operator: Operator<any, any>,
   { message = `pipe:operator` } = { }
-) {
+): ReadableStream<unknown> {
   try {
     const result = operator(input);
     return result;
