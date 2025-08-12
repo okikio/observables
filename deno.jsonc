@@ -1,6 +1,6 @@
 {
   "name": "@okikio/observables",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "lock": false,
   "exports": {
     ".": "./mod.ts",
@@ -14,7 +14,7 @@
     "./operations/batch": "./helpers/operations/batch.ts",
     "./operations/combination": "./helpers/operations/combination.ts",
     "./operations/conditional": "./helpers/operations/conditional.ts",
-    "./operations/error": "./helpers/operations/error.ts",
+    "./operations/errors": "./helpers/operations/errors.ts",
     "./operations/timing": "./helpers/operations/timing.ts",
     "./operations/core": "./helpers/operations/core.ts"
   },

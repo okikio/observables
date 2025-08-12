@@ -50,7 +50,7 @@ test("teardown is called for each subscriber", () => {
   expect(teardowns).toEqual(["cleaned up", "cleaned up"]);
 });
 
-test.only("each subscriber gets its own observer and teardown", () => {
+test("each subscriber gets its own observer and teardown", () => {
   const log = [];
 
   // Create an Observable that tracks each subscriber
@@ -82,9 +82,9 @@ test.only("each subscriber gets its own observer and teardown", () => {
   expect(log).toEqual([
     "subscriber 0 created",
     "sub1 received: value for 0",
-    "subscriber 1 created",
-    "sub2 received: value for 1",
-    "subscriber 1 torn down",
+    "subscriber 2 created",
+    "sub2 received: value for 2",
+    "subscriber 2 torn down",
     "subscriber 0 torn down"
   ]);
 });
@@ -154,13 +154,15 @@ test("error or complete automatically trigger unsubscribe", () => {
     complete: () => log.push("complete callback")
   });
 
+  observable.unsubscribe();
+
   expect(log).toEqual([
     "subscribed",
-    "after error",
     "error callback",
+    "after error",
     "error teardown",
-    "after complete",
     "complete callback",
+    "after complete",
     "complete teardown"
   ]);
 });

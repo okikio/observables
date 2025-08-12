@@ -229,6 +229,28 @@ export function createEventDispatcher<E extends EventMap>() {
     events: bus.events as Observable<{ type: keyof E; payload: E[keyof E] }>,
 
     /**
+     * Expose the bus itself as an Observable of `{ type, payload }`.
+     * This allows for direct subscription to all events.
+     */
+    bus,
+
+    /**
+     * Synchronous disposal method (for `using` syntax).
+     * Closes the bus and completes all subscribers.
+     */
+    [Symbol.dispose](): void {
+      bus[Symbol.dispose]();
+    },
+
+    /**
+     * Asynchronous disposal method.
+     * Closes the bus and completes all subscribers.
+     */
+    [Symbol.asyncDispose](): Promise<void> {
+      return bus[Symbol.asyncDispose]();
+    },
+
+    /**
      * Close the bus, completing all subscribers and preventing further emits.
      */
     close(): void {
@@ -338,16 +360,11 @@ export function withReplay<T>(
   return new Observable(subscriber => {
     const buffer = createQueue<T>(count === Infinity ? 1000 : count);  // Start with reasonable capacity; auto-grows if needed
 
-    // Function to replay buffer to a new subscriber
-    const replay = () => {
-      const items = toArray(buffer);  // O(n), but only on subscribe (rare)
-      for (const item of items) {
-        subscriber.next(item);
-      }
-    };
-
     // Initial replay
-    replay();
+    const items = toArray(buffer);  // O(n), but only on subscribe (rare)
+    for (const item of items) {
+      subscriber.next(item);
+    }
 
     // Subscribe to source and handle new emissions
     const sub = source.subscribe({
@@ -356,6 +373,7 @@ export function withReplay<T>(
         if (count !== Infinity && isFull(buffer)) {
           dequeue(buffer);  // Remove oldest
         }
+
         enqueue(buffer, value);
         subscriber.next(value);
       },
@@ -371,6 +389,7 @@ export function withReplay<T>(
     // Cleanup on unsubscribe
     return () => {
       sub.unsubscribe();
+      clear(buffer);  // Clear buffer on unsubscribe
       // Optional: clear(buffer) if per-subscriber buffers, but shared here
     };
   });

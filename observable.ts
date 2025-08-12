@@ -317,7 +317,7 @@ export interface StateMap<T> {
  * 2. Let the garbage collector automatically clean up entries when subscriptions are no longer referenced
  * 3. Hide implementation details from users
  */
-export const SubscriptionStateMap = new WeakMap<Subscription, StateMap<unknown>>();
+export const SubscriptionStateMap: WeakMap<Subscription, StateMap<unknown>> = new WeakMap();
 
 /**
  * Creates a new Subscription object with properly initialized state.
