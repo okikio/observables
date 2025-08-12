@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-explicit-any
 import type { ObservableError } from "../error.ts";
 import type { Observable } from "../observable.ts";
 

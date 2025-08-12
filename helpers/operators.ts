@@ -274,6 +274,14 @@ import { ObservableError, isObservableError } from "../error.ts";
  * });
  * ```
  */
+// For "pass-through" error mode - output includes ObservableErrors
+export function createOperator<T, R, O extends R | ObservableError = R | ObservableError>(
+  options: TransformFunctionOptions<T, O> & { errorMode?: "pass-through" }
+): Operator<T, O>;
+export function createOperator<T, R, O extends R | ObservableError = R | ObservableError>(
+  options: TransformStreamOptions<T, O> & { errorMode?: "pass-through" }
+): Operator<T, O>;
+
 // For "ignore" error mode - no ObservableErrors in output
 export function createOperator<T, R, O extends ExcludeError<R> = ExcludeError<R>>(
   options: TransformFunctionOptions<T, O> & { errorMode: "ignore" }
@@ -288,14 +296,6 @@ export function createOperator<T, R, O extends ExcludeError<R> = ExcludeError<R>
 ): Operator<T, O>;
 export function createOperator<T, R, O extends ExcludeError<R> = ExcludeError<R>>(
   options: TransformStreamOptions<T, O> & { errorMode: "throw" }
-): Operator<T, O>;
-
-// For "pass-through" error mode - output includes ObservableErrors
-export function createOperator<T, R, O extends R | ObservableError = R | ObservableError>(
-  options: TransformFunctionOptions<T, O> & { errorMode?: "pass-through" }
-): Operator<T, O>;
-export function createOperator<T, R, O extends R | ObservableError = R | ObservableError>(
-  options: TransformStreamOptions<T, O> & { errorMode?: "pass-through" }
 ): Operator<T, O>;
 
 // For "manual" error mode - output is entirely up to the implementation
@@ -685,6 +685,12 @@ export function handleFlush<T, O, S extends unknown = undefined>(
  * });
  * ```
  */
+
+// For "pass-through" error mode - output includes ObservableErrors
+export function createStatefulOperator<T, R, S, O extends R | ObservableError = R | ObservableError>(
+  options: StatefulTransformFunctionOptions<T, O, S> & { errorMode?: "pass-through" }
+): Operator<T, O>;
+
 // For "ignore" error mode - no ObservableErrors in output
 export function createStatefulOperator<T, R, S, O extends ExcludeError<R> = ExcludeError<R>>(
   options: StatefulTransformFunctionOptions<T, O, S> & { errorMode: "ignore" }
@@ -693,11 +699,6 @@ export function createStatefulOperator<T, R, S, O extends ExcludeError<R> = Excl
 // For "throw" error mode - no ObservableErrors in output
 export function createStatefulOperator<T, R, S, O extends ExcludeError<R> = ExcludeError<R>>(
   options: StatefulTransformFunctionOptions<T, O, S> & { errorMode: "throw" }
-): Operator<T, O>;
-
-// For "pass-through" error mode - output includes ObservableErrors
-export function createStatefulOperator<T, R, S, O extends R | ObservableError = R | ObservableError>(
-  options: StatefulTransformFunctionOptions<T, O, S> & { errorMode?: "pass-through" }
 ): Operator<T, O>;
 
 // For "manual" error mode - output is entirely up to the implementation

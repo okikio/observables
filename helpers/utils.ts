@@ -50,6 +50,7 @@ export function isTransformFunctionOptions<T, R>(
  */
 export function applyOperator(
   input: ReadableStream<unknown>,
+  // deno-lint-ignore no-explicit-any
   operator: Operator<any, any>,
   { message = `pipe:operator` } = { }
 ): ReadableStream<unknown> {

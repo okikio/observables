@@ -1,17 +1,111 @@
 /**
- * A **spec-faithful** yet ergonomic TC39-inspired Observable implementation with detailed TSDocs and examples.
- *
+ * A **spec-faithful** yet ergonomic TC39-inspired Observable implementation with 
+ * detailed TSDocs and examples.
+ * 
  * Observables are a **push‑based stream abstraction** for events, data, and long‑running
- * operations. Think of it as a **multi‑value Promise** that keeps sending
- * values until you tell it to stop.
+ * operations. 
+ *
+ * If you've ever built a web app, you know the pain: user clicks, API responses, WebSocket messages,
+ * timers, file uploads, they all arrive at different times and need different handling. Before Observables,
+ * you'd end up with a mess of callbacks, Promise chains, event listeners, and async/await scattered
+ * throughout your code.
+ * 
+ * **Observables solve this by giving you one consistent way to handle all async data.**
+ * 
+ * Think of it as a **multi‑value Promise** that keeps sending values until you tell it to stop. 
+ * Where a Promise gives you one value eventually, an Observable can give you many values over time, 
+ * mouse clicks, search results, chat messages, sensor readings. And just like Promises have 
+ * `.then()` and `.catch()`, Observables have operators like `map()`, `filter()`, and `debounce()` 
+ * to transform data as it flows.
  *
  * ## Why This Exists
- * Apps juggle many async sources—mouse clicks, HTTP requests, timers,
+ * Apps juggle many async sources, mouse clicks, HTTP requests, timers,
  * WebSockets, file watchers. Before Observables you glued those together with a
  * mish‑mash of callbacks, Promises, `EventTarget`s and async iterators, each
  * with different rules for cleanup and error handling. **Observables give you
  * one mental model** for subscription → cancellation → propagation → teardown.
+ * 
+ * 
+ * Let's say you're building a search box. Without Observables, you might write something like this:
+ * 
+ * ```ts
+ * // The messy way: callbacks, timers, and manual cleanup 😫
+ * let searchTimeout: number;
+ * let lastRequest: Promise<any> | null = null;
+ * 
+ * searchInput.addEventListener('input', async (event) => {
+ *   const query = event.target.value;
+ *   
+ *   // Debounce: wait 300ms after user stops typing
+ *   clearTimeout(searchTimeout);
+ *   searchTimeout = setTimeout(async () => {
+ *     
+ *     // Cancel previous request somehow?
+ *     if (lastRequest) {
+ *       // How do you cancel a fetch? 🤔
+ *     }
+ *     
+ *     if (query.length < 3) return; // Skip short queries
+ *     
+ *     try {
+ *       lastRequest = fetch(`/search?q=${query}`);
+ *       const response = await lastRequest;
+ *       const results = await response.json();
+ *       
+ *       // Update UI, but what if user already typed something new?
+ *       updateSearchResults(results);
+ *     } catch (error) {
+ *       // Handle errors, but which errors? Network? Parsing?
+ *       handleSearchError(error);
+ *     }
+ *   }, 300);
+ * });
+ * 
+ * // Don't forget cleanup when component unmounts!
+ * // (Spoiler: everyone forgets this and creates memory leaks)
+ * ```
+ * 
+ * This works, but it's fragile, hard to test, and easy to mess up. Plus, you have to remember to
+ * clean up event listeners, cancel timers, and handle edge cases manually.
  *
+ * ## The Solution: Observable Pipelines
+ * 
+ * Here's the same search box with Observables:
+ * 
+ * ```ts
+ * // The Observable way: clean, composable, and robust ✨
+ * import { pipe, debounce, filter, switchMap, map } from './mod.ts';
+ * 
+ * const searchResults = pipe(
+ *   inputEvents,                          // Stream of input events
+ *   debounce(300),                        // Wait 300ms after user stops typing
+ *   filter(query => query.length >= 3),  // Skip short queries
+ *   switchMap(query =>                    // Cancel previous requests automatically
+ *     Observable.from(fetch(`/search?q=${query}`))
+ *   ),
+ *   map(response => response.json())      // Parse response
+ * );
+ * 
+ * // Subscribe to results (with automatic cleanup!)
+ * using subscription = searchResults.subscribe({
+ *   next: results => updateSearchResults(results),
+ *   error: error => handleSearchError(error)
+ * });
+ * // Subscription automatically cleaned up when leaving scope
+ * ```
+ * 
+ * Notice how much cleaner this is? No manual timers, no cancellation logic, no memory leaks.
+ * **The operators handle all the complex async stuff for you.**
+ * 
+ * Observables aren't just "nice to have", they solve real problems that bite every developer:
+ * 
+ * - **🧹 Memory Leaks**: Forgot to remove an event listener? Observable subscriptions can clean themselves up.
+ * - **🏃‍♂️ Race Conditions**: User clicks fast, requests arrive out of order? `switchMap` cancels old requests.
+ * - **🔄 Retry Logic**: Network failed? Built-in retry operators handle backoff and error recovery.
+ * - **⚡ Backpressure**: Producer too fast for consumer? Built-in flow control prevents memory bloat.
+ * - **🧪 Testing**: Complex async flows become simple to test with predictable, pure operators.
+ * - **🎯 Composability**: Mix and match operators like Lego blocks to build exactly what you need.
+ * 
  * ## ✨ Feature Highlights
  * - **Unified push + pull** – use callbacks *or* `for await … of` on the same
  *   stream.
@@ -24,471 +118,594 @@
  * - **Tiny surface** – <3 kB min+gzip of logic; treeshakes cleanly.
  * - **Rich operator library** – functional composition via `pipe()` with full
  *   type safety and backpressure support.
+ * - **EventBus & EventDispatcher** – built-in multicast event buses for pub/sub patterns.
+ * - **Advanced error handling** – 4-mode error handling system (pass-through, ignore, throw, manual).
+ * - **High-performance operators** – Web Streams-based operators with pre-compiled error handling.
  *
- * ## Core Observable API
+ * ## What Makes This Observables Implementation Special
+ * 
+ * `@okikio/observables` isn't just another Observable library. It's designed to be:
+ * 
+ * - **Beginner-friendly**: If you know `Array.map()`, you already understand operators
+ * - **Performance-first**: Built on Web Streams with pre-compiled error handling for speed
+ * - **TypeScript-native**: Full type safety with intelligent inference  
+ * - **Standards-compliant**: Follows the TC39 Observable proposal for future compatibility
+ * - **Tiny but complete**: <3KB but includes everything you need for real apps
+ * - **Error-resilient**: 4 different error handling modes for every situation
  *
- * @example Creation
+ * ## Getting Started: Your First Observable
+ *
+ * Let's start simple. Here's how to create and use an Observable:
+ *
+ * @example Creating Observables
  * ```ts
- * // From scratch
+ * import { Observable } from './observable.ts';
+ *
+ * // Method 1: From scratch (like creating a custom Promise)
  * const timer = new Observable(observer => {
- *   const id = setInterval(() => observer.next(Date.now()), 1000);
+ *   let count = 0;
+ *   const id = setInterval(() => {
+ *     observer.next(count++);  // Send values
+ *     if (count > 5) {
+ *       observer.complete();   // Finish
+ *     }
+ *   }, 1000);
+ *
+ *   // Return cleanup function (like Promise.finally)
  *   return () => clearInterval(id);
  * });
  *
- * // From values
+ * // Method 2: From existing values (like Promise.resolve)
  * const numbers = Observable.of(1, 2, 3, 4, 5);
  *
- * // From iterables/promises
- * const data = Observable.from(fetch('/api/data'));
- * const items = Observable.from([1, 2, 3]);
+ * // Method 3: From promises, arrays, or other async sources
+ * const apiData = Observable.from(fetch('/api/users'));
+ * const listData = Observable.from([1, 2, 3, 4, 5]);
  * ```
  *
- * @example Consumption
+ * @example Consuming Observables
  * ```ts
- * // Push-based (callbacks)
- * using subscription = timer.subscribe({
- *   next: time => console.log('Time:', time),
- *   error: err => console.error('Error:', err),
- *   complete: () => console.log('Done')
+ * // Method 1: Subscribe with callbacks (like Promise.then)
+ * const subscription = timer.subscribe({
+ *   next: value => console.log('Got:', value),      // Handle each value
+ *   error: err => console.error('Error:', err),     // Handle errors
+ *   complete: () => console.log('All done!')        // Handle completion
  * });
  *
- * // Pull-based (async iteration)
- * for await (const time of timer) {
- *   console.log('Time:', time);
- *   if (shouldStop) break; // Auto-cleanup
- * }
+ * // Don't forget to clean up! (or you'll get memory leaks)
+ * subscription.unsubscribe();
  *
- * // Pull with backpressure control
- * for await (const item of data.pull({ strategy: { highWaterMark: 5 } })) {
- *   await processSlowly(item); // Producer pauses when buffer fills
- * }
+ * // Method 2: Use modern "using" syntax for automatic cleanup
+ * {
+ *   using sub = timer.subscribe(value => console.log(value));
+ *   // Code here...
+ * } // Automatically unsubscribed at block end!
+ *
+ * // Method 3: Async iteration (like for-await with arrays)
+ * for await (const value of timer) {
+ *   console.log('Value:', value);
+ *   if (value > 3) break; // Stop early if needed
+ * } // Automatically cleaned up when loop exits
  * ```
  *
- * ## Functional Composition with Operators
+ * That's it! You now know the basics. But the real power comes from **operators**...
  *
- * The operator library enables powerful functional composition patterns using the `pipe()` function.
- * All operators are **type-safe**, **tree-shakable**, and support **automatic backpressure**.
+ * ## Operators
  *
- * @example Basic Transformation Pipeline
+ *
+ * If you've used `Array.map()` or `Array.filter()`, you already understand operators.
+ * They're just like array methods, but for data that arrives over time:
+ *
  * ```ts
- * import { pipe, map, filter, take } from './helpers/mod.ts';
+ * // With arrays (data you already have):
+ * [1, 2, 3, 4, 5]
+ *   .filter(x => x % 2 === 0)  // Keep even numbers: [2, 4]
+ *   .map(x => x * 10)          // Multiply by 10: [20, 40]
+ *   .slice(0, 1)               // Take first: [20]
  *
- * const result = pipe(
- *   Observable.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
- *   filter(x => x % 2 === 0),     // Keep even numbers: 2, 4, 6, 8, 10
- *   map(x => x * 10),             // Multiply by 10: 20, 40, 60, 80, 100
- *   take(3)                       // Take first 3: 20, 40, 60
+ * // With Observables (data arriving over time):
+ * pipe(
+ *   numberStream,
+ *   filter(x => x % 2 === 0),  // Keep even numbers
+ *   map(x => x * 10),          // Multiply by 10
+ *   take(1)                    // Take first
+ * )
+ * ```
+ *
+ * The difference? Arrays process everything at once. Observables process data
+ * piece-by-piece as it arrives, without loading everything into memory.
+ *
+ * @example Real-World Example: User Search
+ * ```ts
+ * import { pipe, debounce, filter, switchMap, map } from './helpers/mod.ts';
+ *
+ * // Transform raw input events into search results
+ * const searchResults = pipe(
+ *   userInput,                            // Raw keystrokes
+ *   debounce(300),                        // Wait for typing pause
+ *   filter(query => query.length > 2),   // Skip short queries
+ *   switchMap(query =>                    // Cancel old searches
+ *     Observable.from(fetch(`/search?q=${query}`))
+ *   ),
+ *   map(response => response.json())      // Parse JSON
  * );
  *
- * result.subscribe(x => console.log(x)); // 20, 40, 60
+ * // Use the results
+ * searchResults.subscribe(results => {
+ *   updateUI(results);
+ * });
  * ```
  *
- * ### Operator Categories
+ * Each operator transforms the data in some way, and you can chain as many as you need.
+ * It's like building a data processing pipeline where each step does one thing well.
  *
- * **Transformation Operators**
- * - `map(fn)` – Transform each value
- * - `scan(fn, seed)` – Accumulate with intermediate values
- * - `batch(size)` – Group values into arrays
- * - `toArray()` – Collect all values into single array
+ * ## Operator Categories
  *
- * **Filtering Operators**  
- * - `filter(predicate)` – Keep values that pass test
- * - `take(count)` – Limit to first N values
- * - `drop(count)` – Skip first N values
- * - `find(predicate)` – Emit first matching value
+ * Operators enables powerful functional composition patterns using the `pipe()` function.
+ * All operators are **type-safe**, **tree-shakable**, **support automatic backpressure**, and feature
+ * **advanced error handling** with 4 distinct modes: pass-through, ignore, throw, and manual.
  *
- * **Timing Operators**
- * - `delay(ms)` – Delay all emissions by time
- * - `debounce(ms)` – Emit only after silence period
- * - `throttle(ms)` – Limit emission rate
+ * There are many operators, but they fall into clear categories. You don't need to learn
+ * them all at once, start with the ones you need:
  *
- * **Combination Operators**
- * - `mergeMap(fn, concurrent?)` – Flatten with concurrency control
- * - `concatMap(fn)` – Flatten sequentially  
- * - `switchMap(fn)` – Cancel previous, switch to latest
- *
- * **Conditional Operators**
- * - `every(predicate)` – Test if all values pass
- * - `some(predicate)` – Test if any value passes
- * - `takeUntil(notifier)` – Stop when notifier emits
- *
- * **Utility Operators**
- * - `tap(fn)` – Side effects without modification
- *
- * ### Advanced Composition Patterns
- *
- * @example HTTP Request with Retry Logic
+ * ### 🔄 **Transformation**: Change data as it flows
  * ```ts
- * import { pipe, switchMap, map, filter, take } from './helpers/mod.ts';
+ * pipe(
+ *   numbers,
+ *   map(x => x * 2),           // Transform each value: 1 → 2, 2 → 4
+ *   scan((sum, x) => sum + x)  // Running total: 2, 6, 12, 20...
+ * )
+ * ```
+ * - `map(fn)` – Transform each value (like `Array.map`)
+ * - `scan(fn, seed)` – Running accumulation (like `Array.reduce` over time)
+ * - `batch(size)` – Group values into arrays
+ * - `toArray()` – Collect everything into one array
  *
+ * ### 🚰 **Filtering**: Control what data gets through
+ * ```ts
+ * pipe(
+ *   allClicks,
+ *   filter(event => event.target.matches('button')),  // Only button clicks
+ *   take(5)                                          // Stop after 5 clicks
+ * )
+ * ```
+ * - `filter(predicate)` – Keep values that pass a test (like `Array.filter`)
+ * - `take(count)` – Take only the first N values
+ * - `drop(count)` – Skip the first N values
+ * - `find(predicate)` – Find first matching value and stop
+ *
+ * ### ⏰ **Timing**: Control when things happen
+ * ```ts
+ * pipe(
+ *   keystrokes,
+ *   debounce(300),    // Wait 300ms after last keystroke
+ *   delay(100)        // Add 100ms delay to everything
+ * )
+ * ```
+ * - `debounce(ms)` – Wait for silence before emitting
+ * - `throttle(ms)` – Limit emission rate
+ * - `delay(ms)` – Delay all emissions by time
+ * - `timeout(ms)` – Cancel if nothing happens within time
+ *
+ * ### 🔀 **Combination**: Merge multiple streams
+ * ```ts
+ * pipe(
+ *   searchQueries,
+ *   switchMap(query =>           // For each query...
+ *     fetch(`/search?q=${query}`) // ...start a request (cancel previous)
+ *   )
+ * )
+ * ```
+ * - `mergeMap(fn)` – Start multiple operations, merge results
+ * - `concatMap(fn)` – Start operations one at a time
+ * - `switchMap(fn)` – Cancel previous operation when new one starts
+ *
+ * ### ⚠️ **Error Handling**: Deal with things going wrong
+ * ```ts
+ * pipe(
+ *   riskyOperations,
+ *   catchErrors('fallback'),     // Replace errors with fallback
+ *   ignoreErrors()              // Skip errors, keep going
+ * )
+ * ```
+ * - `catchErrors(fallback)` – Replace errors with fallback values
+ * - `ignoreErrors()` – Skip errors silently
+ * - `tapError(fn)` – Log errors without changing the stream
+ * - `mapErrors(fn)` – Transform error values
+ *
+ * ### 🔧 **Utilities**: Side effects and debugging
+ * ```ts
+ * pipe(
+ *   dataStream,
+ *   tap(x => console.log('Debug:', x)),    // Log without changing values
+ *   tap(x => analytics.track(x))           // Send to analytics
+ * )
+ * ```
+ * - `tap(fn)` – Run side effects without changing values
+ *
+ * ## Real-World Examples: See It In Action
+ *
+ * Let's see how these operators solve actual problems you face every day:
+ *
+ * @example Smart Search with Debouncing
+ * ```ts
+ * import { pipe, debounce, filter, switchMap, map, catchErrors } from './helpers/mod.ts';
+ *
+ * // Problem: User types fast, you don't want to spam the API
+ * // Solution: Debounce + cancel previous requests
  * const searchResults = pipe(
  *   searchInput,
- *   debounce(300),                    // Wait for typing pause
- *   filter(query => query.length > 2), // Skip short queries
- *   switchMap(query =>                // Cancel previous searches
+ *   debounce(300),                        // Wait for typing pause
+ *   filter(query => query.length > 2),   // Skip short queries
+ *   switchMap(query =>                    // Cancel old requests automatically
  *     pipe(
  *       Observable.from(fetch(`/search?q=${query}`)),
- *       map(res => res.json())
+ *       map(res => res.json()),
+ *       catchErrors([])                   // Return empty array on error
  *     )
  *   )
  * );
+ *
+ * searchResults.subscribe(results => updateUI(results));
  * ```
  *
- * @example Real-time Data Processing
+ * @example Real-Time Data Dashboard
  * ```ts
- * const processedStream = pipe(
- *   webSocketMessages,
- *   map(msg => JSON.parse(msg.data)),
- *   filter(data => data.type === 'metric'),
- *   scan((acc, data) => ({
+ * import { pipe, filter, scan, throttle, batch } from './helpers/mod.ts';
+ *
+ * // Problem: WebSocket sends lots of data, UI can't keep up
+ * // Solution: Filter, accumulate, and throttle updates
+ * const dashboardData = pipe(
+ *   webSocketEvents,
+ *   filter(event => event.type === 'metric'),    // Only metric events
+ *   scan((acc, event) => ({                     // Build running totals
  *     ...acc,
- *     total: acc.total + data.value,
+ *     total: acc.total + event.value,
  *     count: acc.count + 1,
- *     average: (acc.total + data.value) / (acc.count + 1)
+ *     average: (acc.total + event.value) / (acc.count + 1)
  *   }), { total: 0, count: 0, average: 0 }),
- *   throttle(1000)                    // Update UI max once per second
+ *   throttle(1000)                              // Update UI max once per second
  * );
+ *
+ * dashboardData.subscribe(stats => updateDashboard(stats));
  * ```
  *
- * @example Complex Async Operations
+ * @example File Upload with Progress
  * ```ts
- * const batchProcessor = pipe(
- *   dataStream,
- *   batch(50),                        // Process in batches of 50
- *   mergeMap(batch =>                 // Process up to 3 batches concurrently
+ * import { pipe, map, scan, tap } from './helpers/mod.ts';
+ *
+ * // Problem: Show upload progress and handle completion
+ * // Solution: Transform progress events into UI updates
+ * const uploadProgress = pipe(
+ *   fileUploadEvents,
+ *   map(event => ({                             // Extract useful info
+ *     loaded: event.loaded,
+ *     total: event.total,
+ *     percent: Math.round((event.loaded / event.total) * 100)
+ *   })),
+ *   tap(progress => updateProgressBar(progress.percent)), // Update UI
+ *   filter(progress => progress.percent === 100),         // Only completion
+ *   map(() => 'Upload complete!')                        // Success message
+ * );
+ *
+ * uploadProgress.subscribe(message => showSuccess(message));
+ * ```
+ *
+ * @example Background Data Sync
+ * ```ts
+ * import { pipe, mergeMap, delay, catchErrors, tap } from './helpers/mod.ts';
+ *
+ * // Problem: Sync data in background, retry on failure, don't overwhelm server
+ * // Solution: Batch processing with concurrency control and error recovery
+ * const syncResults = pipe(
+ *   pendingItems,
+ *   batch(10),                                  // Process 10 items at a time
+ *   mergeMap(batch =>                          // Process up to 3 batches concurrently
  *     pipe(
- *       Observable.from(processBatch(batch)),
- *       map(results => ({ batch, results, timestamp: Date.now() }))
+ *       Observable.from(syncBatch(batch)),
+ *       delay(100),                             // Be nice to the server
+ *       catchErrors(null),                      // Don't fail everything on one error
+ *       tap(result => updateSyncStatus(result))
  *     ),
- *     3 // Max 3 concurrent batch operations
+ *     3  // Max 3 concurrent operations
  *   ),
- *   scan((acc, result) => ({
- *     processed: acc.processed + result.batch.length,
- *     results: [...acc.results, result]
- *   }), { processed: 0, results: [] })
+ *   filter(result => result !== null)          // Skip failed syncs
  * );
+ *
+ * syncResults.subscribe(result => logSyncSuccess(result));
  * ```
  *
- * @example Custom Operators
- * ```ts
- * import { createOperator, createStatefulOperator } from './helpers/mod.ts';
+ * Notice the pattern? Each operator does one job well, and you combine them to solve
+ * complex problems. It's like having a Swiss Army knife for async data.
  *
- * // Create reusable operators with the utility functions:
- * // Stateless operator
+ * ## Building Your Own Operators
+ *
+ * Sometimes the built-in operators aren't enough. That's fine! You can build your own.
+ * Think of it like creating custom functions, but for streams:
+ *
+ * @example Simple Custom Operator
+ * ```ts
+ * import { createOperator } from './helpers/mod.ts';
+ *
+ * // Create a "double" operator (like multiplying every array element by 2)
  * function double<T extends number>() {
  *   return createOperator<T, T>({
- *     transform(chunk, controller) {
- *       controller.enqueue(chunk * 2);
+ *     name: 'double',                    // For debugging
+ *     transform(value, controller) {
+ *       controller.enqueue(value * 2);  // Send doubled value
  *     }
  *   });
  * }
  *
- * // Stateful operator  
+ * // Use it like any other operator
+ * pipe(
+ *   Observable.of(1, 2, 3),
+ *   double()
+ * ).subscribe(console.log); // 2, 4, 6
+ * ```
+ *
+ * @example Stateful Custom Operator
+ * ```ts
+ * import { createStatefulOperator } from './helpers/mod.ts';
+ *
+ * // Create a "moving average" operator that remembers previous values
  * function movingAverage(windowSize: number) {
  *   return createStatefulOperator<number, number, number[]>({
- *     createState: () => [],
- *     transform(value, window, controller) {
- *       window.push(value);
- *       if (window.length > windowSize) window.shift();
- *       
- *       const avg = window.reduce((sum, n) => sum + n, 0) / window.length;
+ *     name: 'movingAverage',
+ *     createState: () => [],             // Start with empty array
+ *
+ *     transform(value, arr, controller) {
+ *       arr.push(value);              // Add new value
+ *       if (arr.length > windowSize) {
+ *         arr.shift();                // Remove old values
+ *       }
+ *
+ *       // Calculate and emit average
+ *       const avg = arr.reduce((sum, n) => sum + n, 0) / arr.length;
  *       controller.enqueue(avg);
  *     }
  *   });
  * }
  *
- * // Usage
- * const smoothed = pipe(
- *   noisyData,
- *   movingAverage(5),
- *   double()
- * );
+ * // Use it to smooth noisy sensor data
+ * pipe(
+ *   noisySensorData,
+ *   movingAverage(5)  // 5-value moving average
+ * ).subscribe(smoothValue => updateDisplay(smoothValue));
  * ```
  *
- * ## Error Propagation Policy
- * 1. **Local catch** – If your observer supplies an `error` callback, **all**
- *    upstream errors funnel there.
- * 2. **Unhandled‑rejection style** – If no `error` handler is provided the
- *    exception is re‑thrown on the micro‑task queue (same timing semantics as
- *    an unhandled Promise rejection).
- * 3. **Observer callback failures** – Exceptions thrown inside `next()` or
- *    `complete()` are routed to `error()` if present, otherwise bubble as in
- *    (2).
- * 4. **Errors inside `error()`** – A second‑level failure is *always* queued to
- *    the micro‑task queue to avoid infinite recursion.
- * 5. **Operator errors** – Wrapped as `ObservableError` values in pull mode to
- *    preserve buffered data; thrown normally in push mode.
+ * The beauty of this system is that your custom operators work exactly like the built-in ones.
+ * You can combine them, test them separately, and reuse them across projects.
  *
- * ## Edge‑Cases & Gotchas
- * - `subscribe()` can synchronously call `complete()`/`error()` and still have
- *   its teardown captured – **ordering is guaranteed**.
- * - Subscribing twice to a *cold* observable triggers two side‑effects (e.g.
- *   two HTTP requests). Share the source if you want fan‑out.
- * - Infinite streams leak unless you call `unsubscribe()` or wrap them in a
- *   `using` block.
- * - The helper `pull()` encodes thrown errors as `ObservableError` *values* so
- *   buffered items are not lost – remember to `instanceof` check if you rely
- *   on it.
- * - Operators in `pipe()` are limited to 19 due to TypeScript recursion limits.
+ * ## Error Handling: When Things Go Wrong
  *
- * @example Common Patterns
+ * Real-world data is messy. Networks fail, users input bad data, APIs return errors.
+ * This library gives you **four ways** to handle errors, so you can choose what makes
+ * sense for your situation:
+ *
  * ```ts
- * // DOM events → Observable
- * const clicks = new Observable<Event>(obs => {
- *   const h = (e: Event) => obs.next(e);
- *   button.addEventListener("click", h);
- *   return () => button.removeEventListener("click", h);
- * });
- *
- * // HTTP polling every 5 s
- * const poll = new Observable<Response>(obs => {
- *   const id = setInterval(async () => {
- *     try { obs.next(await fetch("/api/data")); }
- *     catch (e) { obs.error(e); }
- *   }, 5000);
- *   return () => clearInterval(id);
- * });
- *
- * // WebSocket stream with graceful close
- * const live = new Observable<string>(obs => {
- *   const ws = new WebSocket("wss://example.com");
- *   ws.onmessage = e => obs.next(e.data);
- *   ws.onerror   = e => obs.error(e);
- *   ws.onclose   = () => obs.complete();
- *   return () => ws.close();
- * });
- * ```
- * 
- * @example Basic subscription:
- * ```ts
- * import { Observable } from './observable.ts';
- *
- * // Emit 1,2,3 then complete
- * const subscription = Observable.of(1, 2, 3).subscribe({
- *   start(sub) { console.log('Subscribed'); },
- *   next(val)  { console.log('Value:', val); },
- *   complete() { console.log('Complete'); }
- * });
- *
- * // Cancel manually if needed
- * subscription.unsubscribe();
- * ```
- *
- * @example Resource-safe usage with `using` statement:
- * ```ts
- * import { Observable } from './observable.ts';
- *
- * {
- *   using subscription = Observable.of(1, 2, 3).subscribe({
- *     next(val) { console.log('Value:', val); }
- *   });
- *
- *   // Code that uses the subscription
- *   doSomething();
- *
- * } // Subscription automatically unsubscribed at block end
- * ```
- *
- * @example Simple async iteration:
- * ```ts
- * import { Observable } from './observable.ts';
- *
- * (async () => {
- *   for await (const x of Observable.of('a', 'b', 'c')) {
- *     console.log(x);
+ * // 1. "pass-through" (default): Errors become values in the stream
+ * const safeParser = createOperator({
+ *   errorMode: 'pass-through',  // Errors become ObservableError values
+ *   transform(jsonString, controller) {
+ *     controller.enqueue(JSON.parse(jsonString)); // If this fails, error flows as value
  *   }
- * })();
- * ```
+ * });
  *
- * @example Pull with backpressure:
- * ```ts
- * import { Observable } from './observable.ts';
- *
- * const nums = Observable.from([1,2,3,4,5]);
- * (async () => {
- *   for await (const n of nums.pull({ strategy: { highWaterMark: 2 } })) {
- *     console.log('Pulled:', n);
- *     await new Promise(r => setTimeout(r, 1000)); // Slow consumer
+ * // 2. "ignore": Skip errors silently
+ * const lenientParser = createOperator({
+ *   errorMode: 'ignore',        // Errors are silently skipped
+ *   transform(jsonString, controller) {
+ *     controller.enqueue(JSON.parse(jsonString)); // Bad JSON just disappears
  *   }
- * })();
- * ```
+ * });
  *
- * @example Functional pipeline with operators:
- * ```ts
- * import { Observable, pipe, map, filter, take, debounce } from './mod.ts';
+ * // 3. "throw": Stop everything on first error
+ * const strictParser = createOperator({
+ *   errorMode: 'throw',         // Errors terminate the stream
+ *   transform(jsonString, controller) {
+ *     controller.enqueue(JSON.parse(jsonString)); // Bad JSON kills the stream
+ *   }
+ * });
  *
- * // Process user search input
- * const searchResults = pipe(
- *   userInput,
- *   debounce(300),                          // Wait for typing pause
- *   filter(query => query.length > 2),     // Skip short queries  
- *   map(query => query.toLowerCase()),      // Normalize
- *   switchMap(query =>                      // Cancel previous searches
- *     Observable.from(fetch(`/search?q=${query}`))
- *   ),
- *   map(response => response.json()),
- *   take(10)                                // Limit results
- * );
- *
- * searchResults.subscribe({
- *   next: results => updateUI(results),
- *   error: err => showError(err)
+ * // 4. "manual": You handle everything yourself
+ * const customParser = createOperator({
+ *   errorMode: 'manual',        // You're in control
+ *   transform(jsonString, controller) {
+ *     try {
+ *       controller.enqueue(JSON.parse(jsonString));
+ *     } catch (err) {
+ *       // Your custom error logic here
+ *       controller.enqueue({ error: err.message, input: jsonString });
+ *     }
+ *   }
  * });
  * ```
  *
- * @example Advanced data processing pipeline:
- * ```ts
- * import { Observable, pipe, batch, mergeMap, scan, throttle } from './mod.ts';
+ * **When to use which mode?**
+ * - **pass-through**: When you want to handle errors downstream (most common)
+ * - **ignore**: When bad data should just be filtered out
+ * - **throw**: When any error means the whole operation failed
+ * - **manual**: When you need custom error handling logic
  *
- * // Real-time analytics processing
- * const analytics = pipe(
- *   rawEvents,
- *   filter(event => event.type === 'user_action'),
- *   batch(100),                           // Process in batches
- *   mergeMap(batch =>                     // Process up to 3 batches concurrently
- *     Observable.from(enrichBatch(batch)),
- *     3
- *   ),
- *   scan((acc, enrichedEvents) => ({     // Accumulate metrics
- *     totalEvents: acc.totalEvents + enrichedEvents.length,
- *     uniqueUsers: new Set([...acc.uniqueUsers, ...enrichedEvents.map(e => e.userId)]),
- *     hourlyBreakdown: updateHourlyStats(acc.hourlyBreakdown, enrichedEvents)
- *   }), { totalEvents: 0, uniqueUsers: new Set(), hourlyBreakdown: {} }),
- *   throttle(5000)                        // Update dashboard every 5 seconds
- * );
+ * ## EventBus: For Pub/Sub Patterns
+ *
+ * Sometimes you need **one-to-many communication**, like a chat app where one message
+ * goes to multiple users, or a shopping cart that updates multiple UI components.
+ * That's where EventBus comes in:
+ *
+ * @example Simple EventBus
+ * ```ts
+ * import { EventBus } from './events.ts';
+ *
+ * // Create a bus for chat messages
+ * const chatBus = new EventBus<string>();
+ *
+ * // Multiple components can listen
+ * chatBus.events.subscribe(msg => updateChatWindow(msg));
+ * chatBus.events.subscribe(msg => updateNotificationBadge(msg));
+ * chatBus.events.subscribe(msg => logMessage(msg));
+ *
+ * // One emit reaches everyone
+ * chatBus.emit('Hello everyone!');
+ * // All three subscribers receive the message
+ *
+ * chatBus.close(); // Clean up when done
  * ```
  *
- * ## Spec Compliance & Notable Deviations
- * | Area                       | Proposal Behaviour                     | This Library                                                                            |
- * |----------------------------|----------------------------------------|-----------------------------------------------------------------------------------------|
- * | `subscribe` parameters     | Only **observer object**               | Adds `(next, error?, complete?)` triple‑param overload.                                 |
- * | Teardown shape             | Function or `{ unsubscribe() }`        | Also honours `[Symbol.dispose]` **and** `[Symbol.asyncDispose]`.                        |
- * | Pull‑mode iteration        | *Not in spec*                          | `pull()` helper returns an `AsyncGenerator` with `ReadableStream`‑backed back‑pressure. |
- * | Error propagation in pull  | Stream **error** ends iteration        | Error encoded as `ObservableError` value so buffered items drain first.                 |
- * | `Symbol.toStringTag`       | Optional                               | Provided for `Observable` and `SubscriptionObserver`.                                   |
- * | Operator library           | *Not in spec*                          | Full functional operator library with `pipe()` composition and type safety.             |
- *
- * Anything not listed above matches the TC39 draft (**May 2025**).
- *
- * ## Lifecycle State Machine
- * ```text
- * (inactive) --subscribe()--> [  active  ]
- *     ^                         |  next()
- *     |   unsubscribe()/error() |  complete()
- *     |<------------------------|  (closed)
- * ```
- * *Teardown executes exactly once on the leftward arrow.*
- *
- * @example Type‑Parameter Primer
+ * @example Typed EventDispatcher
  * ```ts
- * Observable<number>                     // counter
- * Observable<Response>                   // fetch responses
- * Observable<{x:number;y:number}>        // mouse coords
- * Observable<never>                      // signal‑only (no payload)
- * Observable<string | ErrorPayload>      // unions are fine
- * ```
+ * import { createEventDispatcher } from './events.ts';
  *
- * @example Interop Cheat‑Sheet
- * ```ts
- * // Promise → Observable (single value then complete)
- * Observable.from(fetch("/api"));
- *
- * // Observable → async iterator (back‑pressure aware)
- * for await (const chunk of obs) {
- *   …
+ * // Define your event types (TypeScript ensures you use them correctly)
+ * interface AppEvents {
+ *   userLogin: { userId: string; timestamp: number };
+ *   userLogout: { userId: string };
+ *   cartUpdate: { items: number; total: number };
  * }
  *
- * // Observable → Promise (first value only)
- * const first = (await obs.pull().next()).value;
+ * const events = createEventDispatcher<AppEvents>();
  *
- * // Functional composition with operators
- * const processed = pipe(obs, map(x => x * 2), filter(x => x > 10));
- * ```
+ * // Type-safe event emission
+ * events.emit('userLogin', { userId: '123', timestamp: Date.now() });
+ * events.emit('cartUpdate', { items: 3, total: 29.99 });
  *
- * ## Performance Cookbook 
- * 
- * ### Pull Mode (`pull()`)
- * | Producer speed | Consumer speed | Suggested `highWaterMark` | Notes                                   |
- * |---------------:|---------------:|--------------------------:|-----------------------------------------|
- * | 🔥 Very fast   | 🐢 Slow         | 1‑8                       | Minimal RAM; heavy throttling.          |
- * | ⚡ Fast         | 🚶 Moderate     | 16‑64 (default 64)        | Good balance for most apps.             |
- * | 🚀 Bursty      | 🚀 Bursty       | 128‑512                   | Smooths spikes at the cost of memory.   |
- *
- * ### Operator Pipelines
- * | Pipeline complexity | Recommendation | Notes |
- * |-------------------|----------------|-------|
- * | 1-19 operators | Use `pipe()` directly | Full type inference |
- * | Reusable logic | Extract to functions | Better maintainability |
- * | Hot paths | Minimize operator count | Each operator adds overhead |
- *
- * ➜ If RSS climbs steadily, halve `highWaterMark`; if you're dropping messages
- * under load, raise it (RAM permitting).
- *
- * ## Memory Management
- *
- * **Critical**: Infinite Observables need manual cleanup via `unsubscribe()` or `using` blocks
- * to prevent memory leaks. Finite Observables auto-cleanup on complete/error.
- *
- * @example Quick start - DOM events
- * ```ts
- * const clicks = new Observable(observer => {
- *   const handler = e => observer.next(e);
- *   button.addEventListener('click', handler);
- *   return () => button.removeEventListener('click', handler);
+ * // Type-safe event handling
+ * events.on('userLogin', (data) => {
+ *   analytics.track('login', data.userId);  // TypeScript knows data.userId exists
  * });
  *
- * using subscription = clicks.subscribe(event => console.log('Clicked!'));
- * // Auto-cleanup when leaving scope
+ * events.on('cartUpdate', (data) => {
+ *   updateCartIcon(data.items);             // TypeScript knows data.items is a number
+ * });
  * ```
  *
- * @example Network with backpressure
- * ```ts
- * const dataStream = new Observable(observer => {
- *   const ws = new WebSocket('ws://api.com/live');
- *   ws.onmessage = e => observer.next(JSON.parse(e.data));
- *   ws.onerror = e => observer.error(e);
- *   return () => ws.close();
- * });
+ * **When to use EventBus vs Observable?**
+ * - **Observable**: One-to-one, like transforming API data
+ * - **EventBus**: One-to-many, like app-wide notifications
  *
- * // Consume at controlled pace
- * for await (const data of dataStream.pull({ strategy: { highWaterMark: 10 } })) {
- *   await processSlowly(data); // Producer pauses when buffer fills
+ * ## Performance: Built for Speed
+ *
+ * This isn't just a learning library, it's built for production apps that need to handle
+ * lots of data efficiently:
+ *
+ * ### Web Streams Foundation
+ * Under the hood, operators use **Web Streams**, which gives you:
+ * - **Native backpressure**: Fast producers don't overwhelm slow consumers
+ * - **Memory efficiency**: Process data piece-by-piece, not all at once
+ * - **Browser optimization**: Built-in browser optimizations kick in
+ *
+ * ### Pre-compiled Error Handling
+ * Instead of checking error modes on every piece of data (slow), we generate
+ * optimized functions for each error mode (fast):
+ *
+ * | Error Mode | Performance | When to Use |
+ * |------------|-------------|-------------|
+ * | `manual` | Fastest | Hot paths where you handle errors yourself |
+ * | `ignore` | Very fast | Filtering bad data |
+ * | `pass-through` | Fast | Error recovery, debugging |
+ * | `throw` | Good | Fail-fast validation |
+ *
+ * ### Memory Management
+ * - **Automatic cleanup**: `using` syntax and `Symbol.dispose` prevent leaks
+ * - **Circular buffer queues**: O(1) operations for high-throughput data
+ * - **Smart resource management**: Resources freed immediately when streams end
+ *
+ * @example Performance Tuning
+ * ```ts
+ * // For high-throughput data processing
+ * const optimized = pipe(
+ *   highVolumeStream,
+ *
+ *   // Use manual error mode for maximum speed
+ *   createOperator({
+ *     errorMode: 'manual',
+ *     transform(chunk, controller) {
+ *       try {
+ *         controller.enqueue(processChunk(chunk));
+ *       } catch (err) {
+ *         logError(err); // Handle as needed
+ *       }
+ *     }
+ *   }),
+ *
+ *   batch(100),                    // Process in efficient batches
+ *   mergeMap(batch => processBatch(batch), 3) // Limit concurrency
+ * );
+ *
+ * // For memory-constrained environments
+ * for await (const chunk of bigDataStream.pull({
+ *   strategy: { highWaterMark: 8 } // Small buffer
+ * })) {
+ *   await processLargeChunk(chunk);
  * }
  * ```
  *
- * @example Testing & Debugging Tips
+ * ## Common Gotchas & How to Avoid Them
+ *
+ * Even with great tools, there are some things that can trip you up. Here's how to avoid them:
+ *
+ * **🔥 Memory Leaks**: The #1 Observable mistake
  * ```ts
- * import { assertEquals } from "@std/assert";
- * import { pipe, toArray, tap } from './helpers/mod.ts';
- *
- * Deno.test("emits three ticks then completes", async () => {
- *   const ticks = Observable.of(1, 2, 3);
- *   const out: number[] = [];
- *   for await (const n of ticks) out.push(n);
- *   assertEquals(out, [1, 2, 3]);
+ * // ❌ Bad: Creates memory leak
+ * const timer = new Observable(obs => {
+ *   setInterval(() => obs.next(Date.now()), 1000);
+ *   // Missing cleanup function!
  * });
+ * timer.subscribe(console.log); // This will run forever
  *
- * // Quick console probe with operators
- * const debugged = pipe(
- *   obs,
- *   tap(v => console.log("[DEBUG]", v)),
- *   map(v => v * 2),
- *   tap(v => console.log("[AFTER MAP]", v))
- * );
- *
- * // Collect all values for testing
- * const allValues = await pipe(obs, toArray()).pull().next();
+ * // ✅ Good: Always provide cleanup
+ * const timer = new Observable(obs => {
+ *   const id = setInterval(() => obs.next(Date.now()), 1000);
+ *   return () => clearInterval(id); // Cleanup function
+ * });
+ * using sub = timer.subscribe(console.log); // Auto-cleanup with 'using'
  * ```
  *
- * ## FAQ
- * - **Why does my network request fire twice?** Cold observables run once per
- *   subscribe. Reuse a single subscription or share the source.
- * - **Why does `next()` throw after `complete()`?** The stream is closed; calls
- *   are ignored by design.
- * - **Memory leak on interval** — Infinite streams require `unsubscribe()` or
- *   `using`.
- * - **Operators not working as expected?** — Check that you're importing from 
- *   `./helpers/mod.ts` and using `pipe()` for composition.
+ * **🏁 Race Conditions**: When requests finish out of order
+ * ```ts
+ * // ❌ Bad: Last request might not be latest
+ * searchInput.subscribe(query => {
+ *   fetch(`/search?q=${query}`)
+ *     .then(response => response.json())
+ *     .then(results => updateUI(results)); // Wrong results might appear!
+ * });
+ *
+ * // ✅ Good: Use switchMap to cancel old requests
+ * pipe(
+ *   searchInput,
+ *   switchMap(query => Observable.from(fetch(`/search?q=${query}`)))
+ * ).subscribe(response => updateUI(response));
+ * ```
+ *
+ * **❄️ Cold vs Hot Confusion**: Understanding when side effects happen
+ *
+ * Observable (cold): Side effect runs once per subscription.
+ * EventBus (hot): Single source shared among multiple subscribers.
+ *
+ * **🚧 Operator Limits**: TypeScript has recursion limits
+ *
+ * Break into smaller, reusable functions for complex pipelines.
+ *
+ * ## Getting Started: Your First Steps
+ *
+ * 1. **Start simple**: Convert a Promise to an Observable
+ * 2. **Add operators**: Try transformation and filtering first
+ * 3. **Handle timing**: Add debouncing to a search input
+ * 4. **Manage errors**: Use error catching for graceful degradation
+ * 5. **Combine streams**: Use switching operators for request cancellation
+ *
+ * The operators work just like array methods, if you know transformation and filtering,
+ * you're already halfway there. The real power comes from combining operators to
+ * solve complex async problems with simple, composable code.
+ *
+ * **Implementation Notes:**
+ * - Follows TC39 Observable proposal for future compatibility
+ * - Built on Web Streams for performance and native backpressure
+ * - Fully tree-shakable - import only what you use
+ * - Comprehensive TypeScript support with intelligent inference
+ * - Multiple error handling modes for different use cases
+ * - Extensive test suite ensuring reliability
  *
  * @module
  */
