@@ -553,6 +553,63 @@
  * chatBus.close(); // Clean up when done
  * ```
  *
+ * @example EventBus with async iteration
+ * ```ts
+ * import { EventBus } from './events.ts';
+ *
+ * const statusBus = new EventBus<{ status: string; data: any }>();
+ *
+ * // Listen using for-await (great for async processing)
+ * async function handleStatusUpdates() {
+ *   for await (const update of statusBus.events) {
+ *     console.log('Status changed:', update.status);
+ *
+ *     if (update.status === 'error') {
+ *       await handleError(update.data);
+ *     } else if (update.status === 'complete') {
+ *       await finalizeProcess(update.data);
+ *       break; // Exit the loop
+ *     }
+ *   }
+ * }
+ *
+ * // Start listening
+ * handleStatusUpdates();
+ *
+ * // Emit updates from anywhere in your app
+ * statusBus.emit({ status: 'processing', data: { progress: 50 } });
+ * statusBus.emit({ status: 'complete', data: { result: 'success' } });
+ * ```
+ *
+ * @example EventBus with operators
+ * ```ts
+ * import { EventBus } from './events.ts';
+ * import { pipe, filter, map, debounce } from './helpers/mod.ts';
+ *
+ * const clickBus = new EventBus<{ x: number; y: number; target: string }>();
+ *
+ * // Process clicks with operators
+ * const buttonClicks = pipe(
+ *   clickBus.events,
+ *   filter(click => click.target === 'button'),     // Only button clicks
+ *   debounce(100),                                  // Prevent double-clicks
+ *   map(click => ({ ...click, timestamp: Date.now() })) // Add timestamp
+ * );
+ *
+ * buttonClicks.subscribe(click => {
+ *   console.log('Button clicked at', click.x, click.y);
+ * });
+ *
+ * // Emit clicks (maybe from a global click handler)
+ * document.addEventListener('click', (e) => {
+ *   clickBus.emit({
+ *     x: e.clientX,
+ *     y: e.clientY,
+ *     target: e.target.tagName.toLowerCase()
+ *   });
+ * });
+ * ```
+ *
  * @example Typed EventDispatcher
  * ```ts
  * import { createEventDispatcher } from './events.ts';
@@ -562,6 +619,7 @@
  *   userLogin: { userId: string; timestamp: number };
  *   userLogout: { userId: string };
  *   cartUpdate: { items: number; total: number };
+ *   notification: { message: string; type: 'info' | 'warning' | 'error' };
  * }
  *
  * const events = createEventDispatcher<AppEvents>();
@@ -569,20 +627,109 @@
  * // Type-safe event emission
  * events.emit('userLogin', { userId: '123', timestamp: Date.now() });
  * events.emit('cartUpdate', { items: 3, total: 29.99 });
+ * events.emit('notification', { message: 'Welcome!', type: 'info' });
  *
- * // Type-safe event handling
+ * // Type-safe event handling - listen to specific events
  * events.on('userLogin', (data) => {
  *   analytics.track('login', data.userId);  // TypeScript knows data.userId exists
+ *   console.log('User logged in at', new Date(data.timestamp));
  * });
  *
  * events.on('cartUpdate', (data) => {
  *   updateCartIcon(data.items);             // TypeScript knows data.items is a number
+ *   updateCartTotal(data.total);
  * });
+ *
+ * // Listen to ALL events (useful for debugging or logging)
+ * events.events.subscribe(event => {
+ *   console.log('Event:', event.type, 'Data:', event.payload);
+ * });
+ *
+ * // Use async iteration for event processing
+ * async function processNotifications() {
+ *   for await (const event of events.events) {
+ *     if (event.type === 'notification') {
+ *       await showNotification(event.payload.message, event.payload.type);
+ *     }
+ *   }
+ * }
+ * ```
+ *
+ * @example Advanced EventBus patterns
+ * ```ts
+ * import { EventBus, withReplay, waitForEvent } from './events.ts';
+ *
+ * // Create a bus that replays the last 5 events to new subscribers
+ * const statusBus = new EventBus<string>();
+ * const replayableStatus = withReplay(statusBus.events, { count: 5 });
+ *
+ * // Emit some events
+ * statusBus.emit('initializing');
+ * statusBus.emit('loading data');
+ * statusBus.emit('processing');
+ *
+ * // New subscribers get the last 5 events immediately
+ * replayableStatus.subscribe(status => {
+ *   console.log('Status:', status); // Will log all 3 previous events first
+ * });
+ *
+ * // Wait for a specific event (useful for async coordination)
+ * async function waitForCompletion() {
+ *   try {
+ *     const result = await waitForEvent(
+ *       { events: statusBus.events },
+ *       'complete',
+ *       { signal: AbortSignal.timeout(5000) } // 5 second timeout
+ *     );
+ *     console.log('Operation completed:', result);
+ *   } catch (error) {
+ *     console.log('Timed out or aborted');
+ *   }
+ * }
+ *
+ * waitForCompletion();
+ * statusBus.emit('complete'); // This will resolve the waitForEvent promise
+ * ```
+ *
+ * @example EventBus resource management
+ * ```ts
+ * import { EventBus } from './events.ts';
+ *
+ * // EventBus supports using/await using for automatic cleanup
+ * {
+ *   using messageBus = new EventBus<string>();
+ *
+ *   // Set up listeners
+ *   messageBus.events.subscribe(msg => console.log('Received:', msg));
+ *
+ *   // Use the bus
+ *   messageBus.emit('Hello world!');
+ *
+ * } // Bus automatically closed and all resources cleaned up
+ *
+ * // Also works with async using
+ * async function setupEventSystem() {
+ *   await using eventSystem = new EventBus<any>();
+ *
+ *   // Set up complex event handling
+ *   eventSystem.events.subscribe(processEvents);
+ *
+ *   // Do async work...
+ *   await someAsyncOperation();
+ *
+ * } // Async cleanup happens automatically
  * ```
  *
  * **When to use EventBus vs Observable?**
- * - **Observable**: One-to-one, like transforming API data
- * - **EventBus**: One-to-many, like app-wide notifications
+ * - **Observable**: One-to-one, like transforming API data or handling user input
+ * - **EventBus**: One-to-many, like app-wide notifications, state updates, or cross-component communication
+ * - **EventDispatcher**: Type-safe pub/sub with multiple event types in one system
+ *
+ * **EventBus Consumption Patterns:**
+ * - **subscribe()**: For imperative event handling with callbacks
+ * - **for await**: For sequential async processing of events
+ * - **pipe() + operators**: For transforming and filtering events
+ * - **waitForEvent()**: For waiting for specific events in async functions
  *
  * ## Performance: Built for Speed
  *
