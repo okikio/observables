@@ -7,7 +7,7 @@
  * values until you tell it to stop.
  *
  * ## Why This Exists
- * Apps juggle many async sources—mouse clicks, HTTP requests, timers,
+ * Apps juggle many async sources, mouse clicks, HTTP requests, timers,
  * WebSockets, file watchers. Before Observables you glued those together with a
  * mish‑mash of callbacks, Promises, `EventTarget`s and async iterators, each
  * with different rules for cleanup and error handling. **Observables give you
@@ -235,7 +235,7 @@
  *   subscribe. Reuse a single subscription or share the source.
  * - **Why does `next()` throw after `complete()`?** The stream is closed; calls
  *   are ignored by design.
- * - **Memory leak on interval** — Infinite streams require `unsubscribe()` or
+ * - **Memory leak on interval** ,  Infinite streams require `unsubscribe()` or
  *   `using`.
  *
  * @module

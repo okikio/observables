@@ -3,7 +3,7 @@
  * 
  * If you've ever used `Array.map` or `Array.filter`, you already know the core idea:
  * an **operator** takes a sequence of values and transforms, filters, or combines them
- * into a new sequence. Operators let you build data pipelines—think of them as the
+ * into a new sequence. Operators let you build data pipelines, think of them as the
  * Lego bricks for working with streams of data.
  * 
  * Think of an operator as a function that takes a stream of values and returns a new stream,
@@ -175,7 +175,7 @@
  * 
  * ## Stateful Operators: Remembering Across Chunks
  * 
- * Sometimes you need to keep track of things as data flows through—like running totals,
+ * Sometimes you need to keep track of things as data flows through, like running totals,
  * buffers, or windows. Your `createStatefulOperator` lets you do this easily:
  * 
  * ```ts

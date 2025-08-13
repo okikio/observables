@@ -333,8 +333,7 @@ export function tapError<T>(
           sideEffect(chunk);
         }
       }
-      // deno-lint-ignore no-empty
-      catch (_) { }
+      catch (_) { /* no empty */ }
       finally {
         controller.enqueue(chunk);
       }

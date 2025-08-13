@@ -19,8 +19,17 @@
     "./operations/core": "./helpers/operations/core.ts"
   },
   "tasks": {
-    "test": "deno test -RW --allow-run=deno,bun,node,npx --clean --trace-leaks",
-    "dev": "deno task test --filter='/^DENO/'"
+    "test": "deno test --allow-read --allow-net --coverage --doc --trace-leaks",
+    "test:watch": "deno test --allow-read --allow-net --watch",
+    "test:cross-platform": "deno run --allow-read --allow-net tests/cross-platform.ts",
+    "bench": "deno run --allow-read --allow-hrtime bench/run.ts",
+    "bench:compare": "deno run --allow-read --allow-hrtime bench/compare.ts",
+    "coverage": "deno coverage --html",
+    "lint": "deno lint",
+    "fmt": "deno fmt",
+    "check": "deno check **/*.ts",
+    "publish:dry": "deno publish --dry-run",
+    "publish": "deno publish"
   },
   "license": "MIT",
   "imports": {

@@ -130,9 +130,7 @@ export function mergeMap<T, R>(
 
         // If the source is completed and we have no active inner
         // subscriptions, complete the output stream
-        if (state.sourceCompleted && state.activeCount === 0) {
-          // Nothing more to do, transformation is complete
-        }
+        // Nothing more to do, transformation is complete
       }
     },
 
@@ -142,9 +140,7 @@ export function mergeMap<T, R>(
       state.sourceCompleted = true;
 
       // If no active inner subscriptions, we're done
-      if (state.activeCount === 0) {
-        // Stream will close naturally
-      }
+      // Stream will close naturally
       // Otherwise, let the active subscriptions complete
     },
 
@@ -334,9 +330,7 @@ export function switchMap<T, R>(
             state.currentController = null;
 
             // If source is completed and we have no active inner, we're done
-            if (state.sourceCompleted) {
-              // Stream will close naturally
-            }
+            // Stream will close naturally
           }
         }
       })();
@@ -348,9 +342,7 @@ export function switchMap<T, R>(
       state.sourceCompleted = true;
 
       // If there's no active inner subscription, we're done
-      if (!state.currentController) {
-        // Stream will close naturally
-      }
+      // Stream will close naturally
       // Otherwise, let the active inner subscription complete
     },
 
