@@ -774,15 +774,15 @@ test("Observable integration - Converting other observables to EventBus", () => 
 	const sourceObservable = Observable.of(1, 2, 3, 4, 5);
 	const bus = new EventBus<number>();
 
+	// Subscribe to bus
+	const { handler, calls } = createEventSpy<number>();
+	bus.subscribe({ next: handler });
+
 	// Act - Pipe source observable to bus
 	sourceObservable.subscribe({
 		next: value => bus.emit(value),
 		complete: () => bus.close()
 	});
-
-	// Subscribe to bus
-	const { handler, calls } = createEventSpy<number>();
-	bus.subscribe({ next: handler });
 
 	// Assert
 	expect(calls).toEqual([1, 2, 3, 4, 5]);
@@ -876,6 +876,9 @@ if (runtime === "deno") {
 
 		const response = await fetch(`http://${server.addr.hostname}:${server.addr.port}`);
 		expect(response.status).toBe(200);
+
+		// Dispose of the response body if it exists
+		await response?.body?.cancel();
 	}, { permissions: { net: "inherit" } });
 }
 
