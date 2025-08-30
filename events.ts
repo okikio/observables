@@ -139,7 +139,7 @@ export class EventBus<T> extends Observable<T> {
  * }
  * ```
  */
-export type EventMap = Record<string, unknown>;
+export type EventMap = {};
 
 /**
  * The return type of {@link createEventDispatcher}.
@@ -170,13 +170,7 @@ export interface EventDispatcher<E extends EventMap> {
   /**
    * Observable stream of all emitted events, carrying `{ type, payload }` objects.
    */
-  events: Observable<{ type: keyof E; payload: E[keyof E] }>;
-
-  /**
-   * Expose the bus itself as an Observable of `{ type, payload }`.
-   * This allows for direct subscription to all events.
-   */
-  bus: EventBus<{ type: keyof E; payload: E[keyof E] }>;
+  events: EventBus<{ type: keyof E; payload: E[keyof E] }>;
 
   /**
    * Synchronous disposal method (for `using` syntax).
@@ -266,13 +260,7 @@ export function createEventDispatcher<E extends EventMap>(): EventDispatcher<E> 
     /**
      * Observable stream of all emitted events, carrying `{ type, payload }` objects.
      */
-    events: bus.events as Observable<{ type: keyof E; payload: E[keyof E] }>,
-
-    /**
-     * Expose the bus itself as an Observable of `{ type, payload }`.
-     * This allows for direct subscription to all events.
-     */
-    bus,
+    events: bus.events as EventBus<{ type: keyof E; payload: E[keyof E] }>,
 
     /**
      * Synchronous disposal method (for `using` syntax).
