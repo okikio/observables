@@ -450,6 +450,10 @@ export interface ReplayOptions {
  * - 'eager' mode holds references even with no subscribers (potential memory leak)
  * - 'lazy' mode clears buffer when all subscribers disconnect (automatic cleanup)
  * - Consider using finite counts for long-running streams to prevent unbounded growth
+ *
+ * > **Note**: Infinite buffers are by default capped at 1000 items to prevent memory issues.
+ * > The primary reason for this cap is because some runtimes such as Deno and Node.js
+ * > litereally crash when you try to allocate Ininity-sized arrays.
  * 
  * ## Performance Characteristics
  * 
@@ -501,7 +505,7 @@ export function withReplay<T>(
 
   // Shared state across all subscribers
   // Using 1000 as a reasonable default for "infinite" to avoid memory issues
-  const buffer = createQueue<T>(count === Infinity ? Number.MAX_SAFE_INTEGER : count);
+  const buffer = createQueue<T>(count === Infinity ? 1000 : count);
   const subscribers = new Set<SubscriptionObserver<T>>();
 
   const observer: Observer<T> = {
@@ -537,10 +541,7 @@ export function withReplay<T>(
    */
   return new Observable(subscriber => {
     // Step 1: Replay buffered values to the new subscriber
-    forEach(buffer, item => {
-      console.log('Replaying to new subscriber:', item);
-      subscriber.next(item);
-    });
+    forEach(buffer, item => subscriber.next(item));
 
     // Step 2: Add to active subscribers for future emissions
     subscribers.add(subscriber);
