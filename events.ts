@@ -2,14 +2,13 @@
  * @module EventBus
  */
 
-import type { Subscription } from "./_types.ts";
+import type { Observer, Subscription } from "./_types.ts";
 import type { SubscriptionObserver } from './observable.ts';
 
 import { Observable } from './observable.ts';
 import { Symbol } from "./symbol.ts";
 
-import { ObservableError } from "./error.ts";  // Assume path to your ObservableError
-import { createQueue, enqueue, dequeue, isFull, toArray, clear } from './queue.ts';  // Assume path to your queue utils
+import { createQueue, enqueue, dequeue, isFull, clear, forEach } from './queue.ts';  // Assume path to your queue utils
 
 /**
  * A multicast event bus that extends {@link Observable<T>}, allowing
@@ -366,7 +365,7 @@ export function waitForEvent<
       cleanup();
 
       if (throwOnClose) {
-        reject(new Error(`Stream closed before event "${String(type)}" fired`));
+        reject(new Error(`Stream closed before event "{String(type)}" fired`));
       } else {
         resolve(undefined);
       }
@@ -388,52 +387,180 @@ export function waitForEvent<
   return promise;
 }
 
+
 /**
- * Wraps an Observable to replay the last N emissions to new subscribers.
- * Uses a fixed-size queue for efficient buffering (O(1) ops).
+ * Controls when the replay buffer connects to the source Observable.
  *
- * @param source The source Observable (e.g., bus.events).
- * @param options Replay options.
- * @returns A new Observable with replay behavior.
+ * - `'eager'`: Connects immediately and buffers values even with zero subscribers.
+ *              Like a security camera that's always recording.
+ * - `'lazy'`:  Connects only when the first subscriber arrives, disconnects when
+ *              the last one leaves. Like a motion-activated camera.
+ *
+ * Choose 'eager' for system-critical events you never want to miss.
+ * Choose 'lazy' for expensive operations that shouldn't run without consumers.
+ */
+export type ReplayMode = 'eager' | 'lazy';
+
+/**
+ * Configuration options for replay behavior.
+ */
+export interface ReplayOptions {
+  /**
+   * Maximum number of values to buffer.
+   * When the buffer is full, the oldest value is discarded (FIFO).
+   * 
+   * @default Infinity (unlimited buffer, use with caution)
+   */
+  count?: number;
+
+  /**
+   * Determines when to connect to the source Observable.
+   * 
+   * @default 'lazy' (resource-efficient, connects on-demand)
+   */
+  mode?: ReplayMode;
+}
+
+/**
+ * Adds replay capability to an Observable, multicasting values to multiple subscribers
+ * while maintaining a buffer of recent emissions.
+ * 
+ * Without replay, each new subscriber triggers a fresh execution of the source Observable:
+ * ```ts
+ * const apiCall = new Observable(subscriber => {
+ *   console.log('Making expensive API call...');
+ *   fetch('/api/data').then(response => subscriber.next(response));
+ * });
+ * 
+ * apiCall.subscribe(data1 => {}); // Triggers API call #1
+ * apiCall.subscribe(data2 => {}); // Triggers API call #2 (duplicate!)
+ * ```
+ * 
+ * With replay, the source executes once and shares results:
+ * ```ts
+ * const sharedApi = withReplay(apiCall, { count: 1, mode: 'lazy' });
+ * 
+ * sharedApi.subscribe(data1 => {}); // Triggers API call
+ * sharedApi.subscribe(data2 => {}); // Gets cached result, no new call!
+ * ```
+ * 
+ * ## Memory Considerations
+ * 
+ * - Buffer size directly impacts memory usage: `count * sizeof(T)`
+ * - 'eager' mode holds references even with no subscribers (potential memory leak)
+ * - 'lazy' mode clears buffer when all subscribers disconnect (automatic cleanup)
+ * - Consider using finite counts for long-running streams to prevent unbounded growth
+ * 
+ * ## Performance Characteristics
+ * 
+ * - Enqueue/Dequeue: O(1) constant time
+ * - New subscriber replay: O(n) where n = buffer size
+ * - Memory overhead: One queue + subscriber set + source subscription
+ * 
+ * ## Edge Cases & Gotchas
+ * 
+ * 1. **Late subscribers in eager mode**: May receive very old values if the source
+ *    emitted long ago and no cleanup occurred.
+ * 
+ * 2. **Infinite buffers**: Without a count limit, buffers grow indefinitely.
+ *    Always set a reasonable count for production use.
+ * 
+ * 3. **Error handling**: Errors are multicast to all subscribers but don't clear
+ *    the buffer. New subscribers still get the replay before the error.
+ * 
+ * 4. **Completion**: The source completion is multicast, but the replay buffer
+ *    remains accessible to new subscribers (they get replay + completion).
+ * 
+ * @param source The source Observable to add replay behavior to
+ * @param options Configuration for replay behavior
+ * @returns A new Observable with replay capability
+ * 
+ * @example
+ * ```ts
+ * // Lazy mode - only buffers when subscribers are present
+ * const shared = withReplay(expensive, { 
+ *   count: 5, 
+ *   mode: 'lazy'  // Only run expensive when needed
+ * });
+ * 
+ * // Eager mode - always buffering, like a flight recorder
+ * const eventLog = withReplay(systemEvents, { 
+ *   count: 100, 
+ *   mode: 'eager'  // Capture events even if no one's listening
+ * });
+ * ```
  */
 export function withReplay<T>(
   source: Observable<T>,
-  { count = Infinity }: { count?: number } = {}
+  { count = Infinity, mode = "lazy" }: ReplayOptions = {}
 ): Observable<T> {
-  return new Observable(subscriber => {
-    const buffer = createQueue<T>(count === Infinity ? 1000 : count);  // Start with reasonable capacity; auto-grows if needed
+  // Validate inputs
+  if (count <= 0) {
+    throw new Error(`Replay count must be positive, got {count}`);
+  }
 
-    // Initial replay
-    const items = toArray(buffer);  // O(n), but only on subscribe (rare)
-    for (const item of items) {
-      subscriber.next(item);
-    }
+  // Shared state across all subscribers
+  // Using 1000 as a reasonable default for "infinite" to avoid memory issues
+  const buffer = createQueue<T>(count === Infinity ? Number.MAX_SAFE_INTEGER : count);
+  const subscribers = new Set<SubscriptionObserver<T>>();
 
-    // Subscribe to source and handle new emissions
-    const sub = source.subscribe({
-      next(value) {
-        // Buffer if limited
-        if (count !== Infinity && isFull(buffer)) {
-          dequeue(buffer);  // Remove oldest
-        }
-
-        enqueue(buffer, value);
-        subscriber.next(value);
-      },
-      error(err) {
-        // Handle error (non-terminal by default, as per your pipes)
-        subscriber.next(ObservableError.from(err) as T);  // Or subscriber.error(err) for terminal
-      },
-      complete() {
-        subscriber.complete();
+  const observer: Observer<T> = {
+    next(value) {
+      // Manage buffer capacity
+      if (count !== Infinity && isFull(buffer)) {
+        dequeue(buffer);  // Remove oldest
       }
+      enqueue(buffer, value);
+
+      // Emit to all active subscribers
+      for (const sub of subscribers) {
+        sub.next(value);
+      }
+    },
+    error(err) {
+      for (const sub of subscribers) {
+        sub.error(err);
+      }
+    },
+    complete() {
+      for (const sub of subscribers) {
+        sub.complete();
+      }
+    }
+  };
+
+  const isEager = mode === "eager";
+  let shared: Subscription | null = isEager ? source.subscribe(observer) : null;
+
+  /**
+   * Creates the replay Observable that new subscribers will receive.
+   */
+  return new Observable(subscriber => {
+    // Step 1: Replay buffered values to the new subscriber
+    forEach(buffer, item => {
+      console.log('Replaying to new subscriber:', item);
+      subscriber.next(item);
     });
 
-    // Cleanup on unsubscribe
+    // Step 2: Add to active subscribers for future emissions
+    subscribers.add(subscriber);
+
+    // Step 3: Connect to source if needed (lazy mode, first subscriber)
+    if (!isEager && !shared && subscribers.size > 0) {
+      shared = source.subscribe(observer);
+    }
+
+    // Step 4: Return cleanup function
     return () => {
-      sub.unsubscribe();
-      clear(buffer);  // Clear buffer on unsubscribe
-      // Optional: clear(buffer) if per-subscriber buffers, but shared here
+      subscribers.delete(subscriber);
+
+      // In lazy mode, disconnect and clear when last subscriber leaves
+      if (!isEager && subscribers.size === 0 && shared) {
+        shared.unsubscribe();
+        shared = null;
+        clear(buffer);  // Clear shared buffer when fully disconnected
+      }
+      // In eager mode, we keep the connection alive regardless
     };
   });
 }
