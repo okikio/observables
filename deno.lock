@@ -2,11 +2,13 @@
   "version": "5",
   "specifiers": {
     "jsr:@libs/testing@^4.1.0": "4.1.0",
+    "jsr:@libs/typing@^3.1.3": "3.1.3",
     "jsr:@lowlighter/std-expect@1.0.18-rc.1": "1.0.18-rc.1",
     "jsr:@std/assert@1": "1.0.14",
     "jsr:@std/assert@^1.0.13": "1.0.14",
     "jsr:@std/assert@^1.0.14": "1.0.14",
     "jsr:@std/data-structures@^1.0.9": "1.0.9",
+    "jsr:@std/expect@^1.0.17": "1.0.17",
     "jsr:@std/fmt@1": "1.0.8",
     "jsr:@std/fs@^1.0.19": "1.0.19",
     "jsr:@std/html@1": "1.0.4",
@@ -23,6 +25,7 @@
     "@libs/testing@4.1.0": {
       "integrity": "15d11fc4a08bec066886bc402e31968223b33cd87684df56a3876c9ee516b878",
       "dependencies": [
+        "jsr:@libs/typing",
         "jsr:@lowlighter/std-expect",
         "jsr:@std/assert@1",
         "jsr:@std/fmt",
@@ -30,6 +33,9 @@
         "jsr:@std/http",
         "npm:highlight.js"
       ]
+    },
+    "@libs/typing@3.1.3": {
+      "integrity": "339d3c6475f1180c43b2a0aec73e2142dca4cbfa42ef995a36643824b400465d"
     },
     "@lowlighter/std-expect@1.0.18-rc.1": {
       "integrity": "f978e4787d95c9b98e6dabb1448c770be83d15cfa1ea31c1b87174b6ba6bbfab",
@@ -46,6 +52,13 @@
     },
     "@std/data-structures@1.0.9": {
       "integrity": "033d6e17e64bf1f84a614e647c1b015fa2576ae3312305821e1a4cb20674bb4d"
+    },
+    "@std/expect@1.0.17": {
+      "integrity": "316b47dd65c33e3151344eb3267bf42efba17d1415425f07ed96185d67fc04d9",
+      "dependencies": [
+        "jsr:@std/assert@^1.0.14",
+        "jsr:@std/internal"
+      ]
     },
     "@std/fmt@1.0.8": {
       "integrity": "71e1fc498787e4434d213647a6e43e794af4fd393ef8f52062246e06f7e372b7"
@@ -103,6 +116,7 @@
     "dependencies": [
       "jsr:@libs/testing@^4.1.0",
       "jsr:@std/assert@^1.0.14",
+      "jsr:@std/expect@^1.0.17",
       "jsr:@std/testing@^1.0.15",
       "npm:mitata@^1.0.34"
     ]

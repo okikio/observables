@@ -46,7 +46,7 @@ test("EventBus - Basic event emission and subscription", () => {
   // Assert
   expect(handlerSpy.calls.length).toBe(2);
   expect(handlerSpy.calls[0].args[0]).toBe("hello");
-  expect(handlerSpy.calls[39].args).toBe("world");
+  expect(handlerSpy.calls[1].args[0]).toBe("world");  // Fixed: was calls[39]
   expect(calls).toEqual(["hello", "world"]);
 
   // Cleanup
@@ -231,9 +231,9 @@ test("Event Dispatcher - Type-safe event emission and handling", () => {
 
   // Verify correct data was passed
   const loginCall = loginSpy.calls[0];
-  expect(loginCall.args.userId).toBeDefined();
-  expect(loginCall.args.timestamp).toBeDefined();
-  expect(loginCall.args.userId).toBe("123");
+  expect(loginCall.args[0].userId).toBeDefined();  // Fixed: was loginCall.args.userId
+  expect(loginCall.args[0].timestamp).toBeDefined();  // Fixed: was loginCall.args.timestamp
+  expect(loginCall.args[0].userId).toBe("123");  // Fixed: was loginCall.args.userId
 
   // Cleanup
   loginSub.unsubscribe();
@@ -325,8 +325,8 @@ test("Event Dispatcher - Multiple handlers for same event", () => {
   // Verify same data passed to all
   const expectedPayload = { id: 42, data: "test-data" };
   expect(handler1.calls[0].args[0]).toEqual(expectedPayload);
-  expect(handler2.calls.args).toEqual(expectedPayload);
-  expect(handler3.calls.args).toEqual(expectedPayload);
+  expect(handler2.calls[0].args[0]).toEqual(expectedPayload);  // Fixed: was handler2.calls.args
+  expect(handler3.calls[0].args[0]).toEqual(expectedPayload);  // Fixed: was handler3.calls.args
 
   dispatcher.close();
 });
@@ -486,7 +486,7 @@ test("waitForEvent utility - Immediate abort", async () => {
 test("withReplay utility - Replays last N emissions to new subscribers", () => {
   // Arrange
   const bus = new EventBus<number>();
-  const replaySource = withReplay(bus.events, { count: 3 });
+  const replaySource = withReplay(bus.events, { count: 3, mode: "eager" });
   
   // Act - Emit some events before subscribing
   bus.emit(1);
@@ -526,7 +526,7 @@ test("withReplay utility - Infinite replay buffer", () => {
   // Assert - Should replay all events
   expect(calls.length).toBe(1000);
   expect(calls[0]).toBe("event-0");
-  expect(calls).toBe("event-999");
+  expect(calls[999]).toBe("event-999");  // Fixed: was expect(calls).toBe("event-999")
 
   // Cleanup
   subscription.unsubscribe();
@@ -619,7 +619,7 @@ test("Error handling - Dispatcher handles large payloads", () => {
 
   // Assert
   expect(handler.calls.length).toBe(1);
-  expect(handler.calls[0].args.data.length).toBe(10000);
+  expect(handler.calls[0].args[0].data.length).toBe(10000);  // Fixed: was handler.calls[0].args.data.length
 
   dispatcher.close();
 });
@@ -735,7 +735,7 @@ test("Performance - Memory usage with replay buffer", () => {
   // Assert - Should only replay last 1000 events
   expect(calls.length).toBe(1000);
   expect(calls[0]).toBe("event-1000"); // First in buffer should be event-1000
-  expect(calls).toBe("event-1999"); // Last should be event-1999
+  expect(calls[999]).toBe("event-1999"); // Fixed: was expect(calls).toBe("event-1999")
 
   bus.close();
 });
@@ -882,8 +882,9 @@ if (runtime === "deno") {
 if (runtime === "node") {
   test("Node.js-specific - Process environment test", () => {
     // This test only runs on Node.js
-    expect(typeof globalThis?.process).toBe("object");
-    expect(globalThis?.process?.versions?.node).toBeDefined();
+    const global = globalThis as any;  // Fixed: type assertion for Node.js globals
+    expect(typeof global?.process).toBe("object");
+    expect(global?.process?.versions?.node).toBeDefined();
   });
 }
 
