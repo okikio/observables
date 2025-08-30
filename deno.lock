@@ -1,61 +1,85 @@
 {
   "version": "5",
   "specifiers": {
-    "jsr:@libs/testing@^4.0.1": "4.0.2",
-    "jsr:@libs/typing@^3.1.2": "3.1.3",
-    "jsr:@std/assert@1": "1.0.13",
-    "jsr:@std/assert@^1.0.13": "1.0.13",
-    "jsr:@std/expect@1": "1.0.16",
+    "jsr:@libs/testing@^4.1.0": "4.1.0",
+    "jsr:@lowlighter/std-expect@1.0.18-rc.1": "1.0.18-rc.1",
+    "jsr:@std/assert@1": "1.0.14",
+    "jsr:@std/assert@^1.0.13": "1.0.14",
+    "jsr:@std/assert@^1.0.14": "1.0.14",
+    "jsr:@std/data-structures@^1.0.9": "1.0.9",
     "jsr:@std/fmt@1": "1.0.8",
+    "jsr:@std/fs@^1.0.19": "1.0.19",
     "jsr:@std/html@1": "1.0.4",
-    "jsr:@std/http@1": "1.0.19",
-    "jsr:@std/internal@^1.0.6": "1.0.9",
-    "jsr:@std/internal@^1.0.7": "1.0.9",
+    "jsr:@std/http@1": "1.0.20",
+    "jsr:@std/internal@^1.0.10": "1.0.10",
+    "jsr:@std/path@^1.1.1": "1.1.2",
+    "jsr:@std/testing@^1.0.15": "1.0.15",
     "npm:@types/node@*": "22.15.15",
-    "npm:highlight.js@^11.10.0": "11.11.1",
+    "npm:highlight.js@^11.11.1": "11.11.1",
     "npm:mitata@*": "1.0.34",
     "npm:mitata@^1.0.34": "1.0.34"
   },
   "jsr": {
-    "@libs/testing@4.0.2": {
-      "integrity": "2dcbfcc76e4a0fa84d9722a3f0875e5d8b5a07b3dcd128708fe6c8c6bb347246",
+    "@libs/testing@4.1.0": {
+      "integrity": "15d11fc4a08bec066886bc402e31968223b33cd87684df56a3876c9ee516b878",
       "dependencies": [
-        "jsr:@libs/typing",
+        "jsr:@lowlighter/std-expect",
         "jsr:@std/assert@1",
-        "jsr:@std/expect",
         "jsr:@std/fmt",
         "jsr:@std/html",
         "jsr:@std/http",
         "npm:highlight.js"
       ]
     },
-    "@libs/typing@3.1.3": {
-      "integrity": "339d3c6475f1180c43b2a0aec73e2142dca4cbfa42ef995a36643824b400465d"
-    },
-    "@std/assert@1.0.13": {
-      "integrity": "ae0d31e41919b12c656c742b22522c32fb26ed0cba32975cb0de2a273cb68b29",
+    "@lowlighter/std-expect@1.0.18-rc.1": {
+      "integrity": "f978e4787d95c9b98e6dabb1448c770be83d15cfa1ea31c1b87174b6ba6bbfab",
       "dependencies": [
-        "jsr:@std/internal@^1.0.6"
+        "jsr:@std/assert@^1.0.14",
+        "jsr:@std/internal"
       ]
     },
-    "@std/expect@1.0.16": {
-      "integrity": "ceeef6dda21f256a5f0f083fcc0eaca175428b523359a9b1d9b3a1df11cc7391",
+    "@std/assert@1.0.14": {
+      "integrity": "68d0d4a43b365abc927f45a9b85c639ea18a9fab96ad92281e493e4ed84abaa4",
       "dependencies": [
-        "jsr:@std/assert@^1.0.13",
-        "jsr:@std/internal@^1.0.7"
+        "jsr:@std/internal"
       ]
+    },
+    "@std/data-structures@1.0.9": {
+      "integrity": "033d6e17e64bf1f84a614e647c1b015fa2576ae3312305821e1a4cb20674bb4d"
     },
     "@std/fmt@1.0.8": {
       "integrity": "71e1fc498787e4434d213647a6e43e794af4fd393ef8f52062246e06f7e372b7"
     },
+    "@std/fs@1.0.19": {
+      "integrity": "051968c2b1eae4d2ea9f79a08a3845740ef6af10356aff43d3e2ef11ed09fb06",
+      "dependencies": [
+        "jsr:@std/path"
+      ]
+    },
     "@std/html@1.0.4": {
       "integrity": "eff3497c08164e6ada49b7f81a28b5108087033823153d065e3f89467dd3d50e"
     },
-    "@std/http@1.0.19": {
-      "integrity": "52128c8d00a1f0b20019f8b72376e7ef5f3133375b6f805b5bc89b9de2ad4686"
+    "@std/http@1.0.20": {
+      "integrity": "b5cc33fc001bccce65ed4c51815668c9891c69ccd908295997e983d8f56070a1"
     },
-    "@std/internal@1.0.9": {
-      "integrity": "bdfb97f83e4db7a13e8faab26fb1958d1b80cc64366501af78a0aee151696eb8"
+    "@std/internal@1.0.10": {
+      "integrity": "e3be62ce42cab0e177c27698e5d9800122f67b766a0bea6ca4867886cbde8cf7"
+    },
+    "@std/path@1.1.2": {
+      "integrity": "c0b13b97dfe06546d5e16bf3966b1cadf92e1cc83e56ba5476ad8b498d9e3038",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
+    },
+    "@std/testing@1.0.15": {
+      "integrity": "a490169f5ccb0f3ae9c94fbc69d2cd43603f2cffb41713a85f99bbb0e3087cbc",
+      "dependencies": [
+        "jsr:@std/assert@^1.0.13",
+        "jsr:@std/data-structures",
+        "jsr:@std/fs",
+        "jsr:@std/internal",
+        "jsr:@std/path"
+      ]
     }
   },
   "npm": {
@@ -77,8 +101,9 @@
   },
   "workspace": {
     "dependencies": [
-      "jsr:@libs/testing@^4.0.1",
-      "jsr:@std/assert@1",
+      "jsr:@libs/testing@^4.1.0",
+      "jsr:@std/assert@^1.0.14",
+      "jsr:@std/testing@^1.0.15",
       "npm:mitata@^1.0.34"
     ]
   }
