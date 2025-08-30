@@ -365,7 +365,7 @@ export function waitForEvent<
       cleanup();
 
       if (throwOnClose) {
-        reject(new Error(`Stream closed before event "{String(type)}" fired`));
+        reject(new Error(`Stream closed before event "${String(type)}" fired`));
       } else {
         resolve(undefined);
       }
