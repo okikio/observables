@@ -1,6 +1,6 @@
 // @ts-nocheck TODO: fix tests
 import type { Observer } from "../../_types.ts";
-import { test, expect, fn } from "@libs/testing";
+import { test, expect } from "@libs/testing";
 
 import { Observable } from "../../observable.ts";
 import { Symbol } from "../../symbol.ts";
@@ -42,8 +42,8 @@ test("teardown is called for each subscriber", () => {
   });
 
   // Subscribe twice
-  const sub1 = observable.subscribe({});
-  const sub2 = observable.subscribe({});
+  const _sub1 = observable.subscribe({});
+  const _sub2 = observable.subscribe({});
 
   // Both subscribers should have triggered the teardown function
   expect(teardowns.length).toBe(2);
@@ -93,7 +93,7 @@ test("unsubscribe is idempotent and only triggers teardown once", () => {
   let teardownCount = 0;
 
   // Create an Observable with a teardown that counts calls
-  const observable = new Observable(observer => {
+  const observable = new Observable(_ => {
     return () => {
       teardownCount++;
     };
@@ -113,7 +113,7 @@ test("error or complete automatically trigger unsubscribe", () => {
   const log = [];
 
   // Create an Observable that logs teardown
-  const observable = new Observable(observer => {
+  const observable = new Observable(_ => {
     log.push("subscribed");
     return () => {
       log.push("torn down");
@@ -331,7 +331,7 @@ test("Observable handles errors in next callback without crashing", () => {
       observer.next(1); // This will throw in the next handler
       observer.next(2); // This should still be delivered
       observer.complete();
-    } catch (e) {
+    } catch (_) {
       errorThrown = true;
     }
   });
@@ -368,7 +368,7 @@ test("error in user-provided error handler does not prevent cleanup", () => {
   });
 
   obs.subscribe({
-    error(err) {
+    error(_) {
       errorHandlerCalled = true;
       throw new Error("Error in error handler");
     }
@@ -567,7 +567,6 @@ test("unsubscribing in start prevents subscriber from being called", () => {
 
 test("Observable constructor requires a function argument", () => {
   // These should throw
-  // @ts-ignore 
   expect(() => new Observable({})).toThrow(TypeError);
   expect(() => new Observable(null)).toThrow(TypeError);
   expect(() => new Observable(undefined)).toThrow(TypeError);
@@ -815,8 +814,6 @@ test("teardown is called when subscriber function throws", () => {
   try {
     new Observable(() => {
       throw new Error("Subscriber error");
-      // This is unreachable, but TypeScript doesn't know that
-      return () => { };
     }).subscribe({
       error() { },
       // Instead, we'll add a start function that sets up the cleanup
@@ -829,7 +826,7 @@ test("teardown is called when subscriber function throws", () => {
         };
       }
     });
-  } catch (e) {
+  } catch (_) {
     // Ignore error
   }
 
@@ -856,7 +853,7 @@ test("teardown is only called once when unsubscribe is called multiple times", (
 test("teardown is called when unsubscribe is called in start", () => {
   const log = [];
 
-  const obs = new Observable(observer => {
+  const obs = new Observable(_ => {
     log.push("subscriber called");
     return () => { log.push("teardown called"); };
   });

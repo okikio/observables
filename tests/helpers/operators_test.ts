@@ -38,7 +38,7 @@ test("createOperator with existing TransformStream", async () => {
   // Create operator using an existing TransformStream
   const stringify = createOperator<number, string>({
     name: 'stringify',
-    stream: new TransformStream({
+    stream: () => new TransformStream({
       transform(chunk: number, controller) {
         controller.enqueue(String(chunk));
       }

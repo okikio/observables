@@ -330,7 +330,7 @@ test("SharedArrayBuffer coordination between workers", async () => {
 
 test("React-like hook with AsyncIterator", async () => {
   const events: string[] = [];
-  let cleanupCalled = false;
+  let _cleanupCalled = false;
 
   // Mock React with state and effect hooks
   function useObservableState(observable: Observable<number>) {
@@ -350,7 +350,7 @@ test("React-like hook with AsyncIterator", async () => {
       }
 
       return () => {
-        cleanupCalled = true;
+        _cleanupCalled = true;
         events.push('effect cleanup');
       };
     })();

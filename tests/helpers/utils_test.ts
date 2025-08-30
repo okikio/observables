@@ -10,7 +10,7 @@ import type { CreateOperatorOptions } from "../../helpers/_types.ts";
 test("isTransformStreamOptions identifies stream options correctly", () => {
   const streamOptions: CreateOperatorOptions<number, string> = {
     name: 'test',
-    stream: new TransformStream()
+    stream: () => new TransformStream()
   };
 
   const functionOptions: CreateOperatorOptions<number, string> = {
@@ -27,7 +27,7 @@ test("isTransformStreamOptions identifies stream options correctly", () => {
 test("isTransformFunctionOptions identifies function options correctly", () => {
   const streamOptions: CreateOperatorOptions<number, string> = {
     name: 'test',
-    stream: new TransformStream()
+    stream: () => new TransformStream()
   };
 
   const functionOptions: CreateOperatorOptions<number, string> = {

@@ -41,7 +41,9 @@ interface MockKeyboardEvent extends MockEvent {
 }
 
 interface MockElement {
+  // deno-lint-ignore ban-types
   addEventListener: Function;
+  // deno-lint-ignore ban-types
   removeEventListener: Function;
 }
 
