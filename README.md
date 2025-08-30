@@ -94,7 +94,7 @@ This library was built by developers who've felt these same frustrations. It foc
 - **Performance**: Built on Web Streams with pre-compiled error handling  
 - **Type Safety**: Full TypeScript support with intelligent inference
 - **Standards**: Follows the TC39 Observable proposal for future compatibility
-- **Practicality**: <3KB but includes everything you need for real apps
+- **Practicality**: <4KB but includes everything you need for real apps
 - **Flexibility**: 4 different error handling modes for different situations
 
 ## Installation
@@ -363,7 +363,7 @@ We built this on Web Streams for good reason, native backpressure and memory eff
 
 - **Web Streams Foundation**: Handles backpressure automatically, no memory bloat
 - **Pre-compiled Error Modes**: Skip runtime checks in hot paths  
-- **Tree Shaking**: Import only what you use (most apps need <3KB)
+- **Tree Shaking**: Import only what you use (most apps need <4KB)
 - **TypeScript Native**: Zero runtime overhead for type safety
 
 Performance varies by use case, but here's how different error modes stack up:
@@ -379,7 +379,7 @@ Performance varies by use case, but here's how different error modes stack up:
 
 | Feature | @okikio/observables | RxJS | zen-observable |
 |---------|-------------------|------|----------------|
-| Bundle Size | <3KB | ~35KB | ~2KB |
+| Bundle Size | <4KB | ~35KB | ~2KB |
 | Operators | 19+ | 100+ | 5 |
 | Error Modes | 4 modes | 1 mode | 1 mode |
 | EventBus | ✅ Built-in | ❌ Separate | ❌ None |
