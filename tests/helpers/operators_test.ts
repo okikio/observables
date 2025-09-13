@@ -54,22 +54,23 @@ test("createOperator with existing TransformStream", async () => {
 
 test("createOperator handles errors in transform function", async () => {
   // Create an operator that throws on certain values
-  const errorOnTwo = createOperator<number, number>({
+  const errorOnTwo = createOperator<unknown, number>({
     name: 'errorOnTwo',
+    errorMode: 'ignore',
     transform(chunk, controller) {
       if (chunk === 2) {
         throw new Error('Cannot process 2');
       }
-      controller.enqueue(chunk);
+      controller.enqueue(chunk as number);
     }
   });
 
   const source = Observable.of(1, 2, 3);
-  const result = pipe(source, ignoreErrors(), errorOnTwo);
-
+  const result = pipe<number, number>(source, errorOnTwo);
   const values = await collectValues(result);
+
   // Should handle the error gracefully
-  expect(values.length).toBeGreaterThan(0);
+  expect(values).toEqual([1, 3]);
 });
 
 // -----------------------------------------------------------------------------

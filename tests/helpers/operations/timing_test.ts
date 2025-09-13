@@ -1,4 +1,5 @@
 import { test, expect } from "@libs/testing";
+import { delay as stdDelay } from "@std/async";
 
 import { Observable } from "../../../observable.ts";
 import { delay, debounce, throttle } from "../../../helpers/operations/timing.ts";
@@ -29,9 +30,12 @@ function measureTime<T>(fn: () => Promise<T>): Promise<{ result: T; duration: nu
 
 test("delay postpones emission by specified time", async () => {
   const source = Observable.of(1, 2, 3);
-  const result = pipe(source, ignoreErrors(), delay(100));
+  const result = pipe(source, delay(100));
 
-  const { result: values, duration } = await measureTime(() => collectValues(result));
+  const [{ result: values, duration }] = await Promise.all([
+    measureTime(() => collectValues(result)),
+    stdDelay(500)
+  ]);
 
   expect(values).toEqual([1, 2, 3]);
   expect(duration).toBeGreaterThanOrEqual(100);
@@ -42,7 +46,10 @@ test("delay with zero time emits immediately", async () => {
   const source = Observable.of(1, 2, 3);
   const result = pipe(source, ignoreErrors(), delay(0));
 
-  const { result: values, duration } = await measureTime(() => collectValues(result));
+  const [{ result: values, duration }] = await Promise.all([
+    measureTime(() => collectValues(result)),
+    stdDelay(500)
+  ]);
 
   expect(values).toEqual([1, 2, 3]);
   expect(duration).toBeLessThan(50); // Should be very fast

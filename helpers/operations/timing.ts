@@ -39,47 +39,168 @@ import { ObservableError, isObservableError } from "../../error.ts";
  */
 export function delay<T>(ms: number): Operator<T | ObservableError, T | ObservableError> {
   return createStatefulOperator<T | ObservableError, T, {
-    pendingTimeouts: Set<ReturnType<typeof setTimeout>>,
-    completed: boolean
+    timeoutId: ReturnType<typeof setTimeout> | null,
+    pendingFlush: PromiseWithResolvers<void> | null,
+    hasStarted: boolean,
+    buffer: T[],
+    delayOver: boolean
   }>({
     name: 'delay',
+    errorMode: 'pass-through', // Should be explicit
     createState: () => ({
-      pendingTimeouts: new Set(),
-      completed: false
+      timeoutId: null,
+      buffer: [],
+      hasStarted: false,
+      delayOver: false,
+      pendingFlush: null
     }),
 
     transform(chunk, state, controller) {
-      const timeout = setTimeout(() => {
-        controller.enqueue(chunk);
-        state.pendingTimeouts.delete(timeout);
+      // If delay period is over, emit immediately
+      if (state.delayOver) controller.enqueue(chunk);
 
-        // If the stream is completed and no more pending timeouts,
-        // close the stream
-        if (state.completed && state.pendingTimeouts.size === 0) {
+      // Buffer the item and start delay timer if not already started
+      else state.buffer.push(chunk as T);
+
+
+      // Start the delay timer on the first item
+      if (!state.hasStarted) {
+        state.pendingFlush = Promise.withResolvers<void>();
+        state.timeoutId = setTimeout(() => {
+          // Mark delay as complete
+          state.delayOver = true;
+
+          // Release all buffered items
+          for (const value of state.buffer) {
+            controller.enqueue(value);
+          }
+
+          state.buffer.length = 0; // Fast array clear
+
+          // Clean up timeout reference
+          clearTimeout(state.timeoutId!);
+          state.timeoutId = null;
+
+          // If flush was waiting, complete it now
+          if (state.pendingFlush) {
+            state.pendingFlush.resolve();
+            state.pendingFlush = null;
+          }
+        }, ms);
+
+        state.hasStarted = true;
+      }
+    },
+
+    async flush(state, controller) {
+      // If delay hasn't completed yet, we need to wait
+      if (state.pendingFlush) await state.pendingFlush.promise;
+
+      // Cancel timeout if stream ends during delay
+      if (state.timeoutId !== null) {
+        clearTimeout(state.timeoutId);
+        state.timeoutId = null;
+      }
+
+      // Emit any remaining buffered items
+      for (const item of state.buffer) {
+        controller.enqueue(item);
+      }
+
+      state.buffer.length = 0;
+    },
+
+    cancel(state) {
+      // Critical: clean up timeout to prevent memory leaks
+      if (state.timeoutId !== null) {
+        clearTimeout(state.timeoutId);
+        state.timeoutId = null;
+      }
+
+      state.buffer.length = 0;
+    }
+  });
+}
+
+/**
+ * Delays each individual item by a specified number of milliseconds.
+ *
+ * This operator delays every item independently, preserving the relative
+ * spacing between them while shifting each one forward by the same amount.
+ * Think of it as "adding X milliseconds to each item's timestamp."
+ * 
+ * > Note: This does not delay error emissions. If an error occurs, it will
+ * > be emitted immediately, regardless of the delay.
+ *
+ * @example
+ * ```ts
+ * import { pipe, delayEach, from } from "./helpers/mod.ts";
+ *
+ * // Stream behavior  
+ * const sourceStream = from([1, 2, 3]); // Items at T+0, T+100, T+200
+ * const delayedStream = pipe(sourceStream, delayEach(1000));
+ * // Emits 1 (at T+1000), 2 (at T+1100), 3 (at T+1200)
+ * ```
+ *
+ * ## Practical Use Case
+ *
+ * Use `delayEach` to simulate processing time for each item, or to add
+ * consistent lag to every operation (useful for testing race conditions
+ * or simulating network latency per request).
+ *
+ * ## Key Insight
+ *
+ * `delayEach` maintains the original spacing between items while shifting
+ * each one. For delaying the entire stream timeline, use `delay` instead.
+ *
+ * @typeParam T - Type of values from the source stream
+ * @param ms - The delay duration in milliseconds for each item
+ * @returns A stream operator that delays each value individually
+ */
+export function delayEach<T>(ms: number): Operator<T | ObservableError, T | ObservableError> {
+  return createStatefulOperator<T | ObservableError, T, {
+    pendingTimeouts: Set<ReturnType<typeof setTimeout>>,
+    isComplete: boolean
+  }>({
+    name: 'delayEach',
+    errorMode: 'pass-through',
+    createState: () => ({
+      pendingTimeouts: new Set(),
+      isComplete: false
+    }),
+
+    transform(chunk, state, controller) {
+      // Schedule delayed emission for this specific item
+      const timeout = setTimeout((_chunk) => {
+        controller.enqueue(_chunk);
+        state.pendingTimeouts.delete(timeout);
+        clearTimeout(timeout);
+
+        // If stream ended and this was the last pending timeout, close stream
+        if (state.isComplete && state.pendingTimeouts.size === 0) {
           controller.terminate();
         }
-      }, ms);
+      }, ms, chunk);
 
       state.pendingTimeouts.add(timeout);
     },
 
-    flush(state) {
-      state.completed = true;
+    flush(state, controller) {
+      state.isComplete = true;
 
-      // If no pending timeouts, the flush function will complete
-      // naturally and close the stream
-
-      // Note: We don't need to call terminate() here because:
-      // 1. If there are pending timeouts, we want to wait for them
-      // 2. If there are no pending timeouts, the stream will complete
-      //    after this flush function returns
+      // If no pending timeouts, stream can complete immediately
+      if (state.pendingTimeouts.size === 0) {
+        controller.terminate();
+      }
+      // Otherwise, wait for pending timeouts to finish (handled in transform)
     },
 
     cancel(state) {
-      // Clear all pending timeouts if the stream is cancelled
+      // Critical: clean up all pending timeouts to prevent memory leaks
       for (const timeout of state.pendingTimeouts) {
         clearTimeout(timeout);
       }
+
       state.pendingTimeouts.clear();
     }
   });
@@ -128,6 +249,7 @@ export function debounce<T>(ms: number): Operator<T | ObservableError, T | Obser
     hasValue: boolean
   }>({
     name: 'debounce',
+    errorMode: 'pass-through',
     createState: () => ({
       timeout: null,
       lastValue: null,
@@ -225,6 +347,7 @@ export function throttle<T>(ms: number): Operator<T | ObservableError, T | Obser
     timeoutId: ReturnType<typeof setTimeout> | null
   }>({
     name: 'throtle',
+    errorMode: 'pass-through',
     createState: () => ({
       lastEmitTime: 0,
       nextValue: null,
@@ -335,6 +458,7 @@ export function throttle<T>(ms: number): Operator<T | ObservableError, T | Obser
 export function timeout<T>(ms: number): Operator<T | ObservableError, T | ObservableError> {
   return createOperator<T | ObservableError, T | ObservableError>({
     name: 'timeout',
+    errorMode: 'pass-through',
     transform(chunk, controller) {
       // If the chunk is an error, we can immediately emit it
       const timeoutId = setTimeout(() => {

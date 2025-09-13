@@ -86,14 +86,11 @@ test("batch with size larger than stream emits single batch", async () => {
   expect(values).toEqual([[1, 2, 3]]);
 });
 
-test("batch with zero size emits empty arrays", async () => {
-  const source = Observable.of(1, 2, 3);
-  const result = pipe(source, ignoreErrors(), batch(0));
-
-  const values = await collectValues(result);
-
-  // Behavior might vary - this tests current implementation
-  expect(values).toEqual([]);
+test("batch with zero size emits empty arrays", () => {
+  expect(() => {
+    const source = Observable.of(1, 2, 3); 
+    pipe(source, batch(0));
+  }).toThrow("batch: size must be greater than 0");
 });
 
 test("batch handles empty stream", async () => {
