@@ -742,7 +742,8 @@ describe("Advanced Operations", () => {
       enqueue(queue, 5);
       enqueue(queue, 6);
       
-      // Queue: [5, 6, _, _, 3, 4] with head and tail wrapped
+      // Internal state: [5, 6, 3, 4] with head=2, tail=2
+      // toArray reads in order: starting from head (index 2), we get 3, 4, 5, 6
       expect(toArray(queue)).toEqual([3, 4, 5, 6]);
     });
 

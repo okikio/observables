@@ -480,7 +480,7 @@ describe("createOperator()", () => {
 
   describe("Operator Composition", () => {
     it("should compose multiple operators in a pipeline", async () => {
-      // Like chaining Array methods: arr.map().filter().map()
+      // Like chaining Array methods: arr.map().map()
       const addOne = createOperator<number, number>({
         name: 'addOne',
         transform(chunk, controller) {

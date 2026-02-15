@@ -330,7 +330,8 @@ describe("Integration Tests - Real World Patterns", () => {
 
       const values = await collect(result);
       
-      // Despite different delays, order is preserved
+      // concatMap preserves input order, not processing time order
+      // Input order was [3, 1, 2], so output is also [3, 1, 2]
       expect(values).toEqual(['Item 3', 'Item 1', 'Item 2']);
     });
 
