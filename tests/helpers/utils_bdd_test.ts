@@ -1,49 +1,13 @@
 /**
- * Comprehensive BDD tests for stream utility functions.
+ * Tests for stream utilities that connect the Observable and operator ecosystem - type guards
+ * for distinguishing operator option types, stream conversion from arrays/iterables/async iterables,
+ * error injection, and operator application with graceful error handling.
  * 
- * This test suite validates the low-level utilities that power the Observable
- * and operator ecosystem. These are the plumbing functions that connect different
- * parts of the streaming infrastructure.
- * 
- * ## What We're Testing
- * 
- * Stream utilities are like the adapters and converters in your toolkit:
- * 
- * 1. **Type Guards**: Functions that help TypeScript understand what kind of options
- *    we're working with (stream-based vs function-based operators)
- * 
- * 2. **Stream Conversion**: Converting arrays, iterables, and async iterables into
- *    ReadableStreams that can flow through operators
- * 
- * 3. **Error Injection**: Safely injecting errors into streams so they can be
- *    handled by downstream operators
- * 
- * 4. **Operator Application**: Applying operators to streams with graceful error
- *    handling
- * 
- * ## Why These Utilities Matter
- * 
- * Think of these utilities as the connective tissue of the Observable system.
- * They handle the messy details of:
- * 
- * - **Type Safety**: Making sure TypeScript knows what we're working with
- * - **Conversion**: Turning plain data into streams
- * - **Error Resilience**: Making sure errors don't crash the whole pipeline
- * - **Interoperability**: Connecting Web Streams with Observables
- * 
- * Without these utilities, you'd be writing lots of boilerplate code to convert
- * between different stream types and handle edge cases manually.
- * 
- * ## Web Streams Primer
- * 
- * The Web Streams API provides three main types:
- * 
- * - **ReadableStream**: A source of data you can read from (like a faucet)
- * - **WritableStream**: A destination you can write to (like a sink)
- * - **TransformStream**: Sits in the middle, transforms data (like a filter)
- * 
- * Our utilities help you work with these streams without getting bogged down
- * in the low-level details.
+ * These utilities provide the plumbing between plain data and streams: type guards help TypeScript
+ * narrow operator options (stream-based vs function-based), toStream converts any iterable into
+ * ReadableStream, injectError safely wraps errors as values, and applyOperator handles failures
+ * during operator application. Built on Web Streams (ReadableStream/WritableStream/TransformStream)
+ * for cross-platform compatibility without low-level boilerplate.
  */
 
 import { describe, it, beforeEach, afterEach } from "@std/testing/bdd";
@@ -63,10 +27,7 @@ import { pipe } from "../../helpers/pipe.ts";
 import { ignoreErrors } from "../../helpers/operations/errors.ts";
 
 /**
- * Helper to collect all values from a ReadableStream.
- * 
- * This is like draining a stream into an array - useful for testing.
- * We use the stream's reader API to pull values one by one.
+ * Collects all values from a ReadableStream using the reader API.
  */
 async function collectStream<T>(stream: ReadableStream<T>): Promise<T[]> {
   const values: T[] = [];
@@ -86,7 +47,7 @@ async function collectStream<T>(stream: ReadableStream<T>): Promise<T[]> {
 }
 
 /**
- * Helper to collect values from an Observable.
+ * Collects values from an Observable.
  */
 async function collectValues<T>(obs: Observable<T>): Promise<T[]> {
   const values: T[] = [];

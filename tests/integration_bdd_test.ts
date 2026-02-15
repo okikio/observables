@@ -1,32 +1,12 @@
 /**
- * Integration tests for complex operator chains and real-world scenarios.
+ * Integration tests validating operator composition in real-world patterns. Unlike unit tests
+ * focused on individual operators, these ensure complete pipelines handle order dependencies,
+ * error propagation, state isolation, performance, and memory management correctly.
  * 
- * These tests validate how multiple operators work together in realistic use cases.
- * Unlike unit tests that focus on individual operators, integration tests ensure
- * that the whole pipeline behaves correctly when operators are composed.
- * 
- * ## Why Integration Tests Matter
- * 
- * Individual operators might work perfectly in isolation, but combining them can
- * reveal subtle issues:
- * 
- * - **Order Dependencies**: Does changing operator order break behavior?
- * - **Error Propagation**: Do errors flow correctly through multi-step pipelines?
- * - **State Leaks**: Does state from one operator affect another?
- * - **Performance**: Do certain combinations cause unexpected slowdowns?
- * - **Memory Leaks**: Do some patterns prevent garbage collection?
- * 
- * Think of it like testing a car: you can test the engine, brakes, and steering
- * separately, but you also need to test them working together on actual roads.
- * 
- * ## Real-World Patterns We Test
- * 
- * 1. **Search-as-you-type**: debounce + filter + switchMap (cancel previous requests)
- * 2. **Data processing pipeline**: map + filter + batch (ETL-like workflows)
- * 3. **Error recovery**: catchErrors + retry + fallback values
- * 4. **Rate limiting**: throttle + batch + concurrency limits
- * 5. **Aggregation**: scan + reduce + moving averages
- * 6. **Fan-out/fan-in**: mergeMap for parallelism, concatMap for ordering
+ * Patterns tested: search-as-you-type (debounce + filter + switchMap for request cancellation),
+ * ETL pipelines (map + filter + batch), error recovery (catchErrors + fallback), rate limiting
+ * (throttle + batch + concurrency), aggregation (scan + moving averages), fan-out/fan-in
+ * (mergeMap for parallelism, concatMap for ordering).
  */
 
 import { describe, it, beforeEach } from "@std/testing/bdd";
@@ -71,7 +51,7 @@ import {
 import { ObservableError, isObservableError } from "../../error.ts";
 
 /**
- * Helper to collect values from an Observable.
+ * Collects values from an Observable.
  */
 async function collect<T>(obs: Observable<T>): Promise<T[]> {
   const values: T[] = [];
@@ -82,7 +62,7 @@ async function collect<T>(obs: Observable<T>): Promise<T[]> {
 }
 
 /**
- * Helper to create a delay
+ * Creates a delay using setTimeout.
  */
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
