@@ -1,53 +1,19 @@
 /**
- * Comprehensive BDD tests for operator creation utilities.
+ * Tests for `createOperator` and `createStatefulOperator` - the core functions for building
+ * custom Observable operators that wrap Web Streams with ergonomic error handling.
  * 
- * This test suite validates the behavior of `createOperator` and `createStatefulOperator`,
- * the foundational functions for building custom Observable operators. These functions
- * wrap the Web Streams API to provide ergonomic operator creation with built-in error
- * handling and state management.
+ * Operators transform, filter, or combine streams like Array.map but for async data. This suite
+ * validates basic transformations, state management across values, all four error modes 
+ * (pass-through, ignore, throw, manual), operator composition, and edge cases like empty streams
+ * and async transforms.
  * 
- * ## What We're Testing
+ * Error modes control failure behavior: pass-through wraps errors as ObservableError values
+ * (preserves buffered data, good for debugging), ignore silently drops errors (filtering noisy
+ * sources), throw stops immediately (fail-fast validation), and manual gives full control
+ * (custom error handling).
  * 
- * Operators are the building blocks of Observable pipelines. They transform, filter, or
- * combine streams of values. This suite ensures that:
- * 
- * 1. **Basic Transformation**: Operators can transform values (like Array.map)
- * 2. **State Management**: Stateful operators maintain state across values
- * 3. **Error Handling**: All four error modes work correctly (pass-through, ignore, throw, manual)
- * 4. **Composition**: Operators can be chained together
- * 5. **Edge Cases**: Empty streams, synchronous errors, async transforms all work
- * 
- * ## Error Handling Philosophy
- * 
- * Operators support four error handling modes:
- * 
- * - **pass-through** (default): Errors become `ObservableError` values in the stream
- *   - Like bubble-wrapping errors so they're safe to handle downstream
- *   - Preserves all buffered values even when errors occur
- *   - Best for: Debugging, error recovery, logging
- * 
- * - **ignore**: Errors are silently dropped, stream continues
- *   - Like a filter that removes errors from the stream
- *   - Best for: Filtering noisy/unreliable data sources
- * 
- * - **throw**: Stream stops immediately on first error
- *   - Like Promise.reject() - fast failure
- *   - Best for: Validation, fail-fast scenarios
- * 
- * - **manual**: You handle errors yourself in the transform function
- *   - Full control, but you're responsible for all error cases
- *   - Best for: Custom error handling, specialized operators
- * 
- * ## Web Streams Foundation
- * 
- * Under the hood, operators use the Web Streams TransformStream API. This gives us:
- * - **Backpressure**: Slow consumers don't overwhelm fast producers
- * - **Memory efficiency**: Process data chunk-by-chunk, not all at once
- * - **Standard API**: Works across all modern browsers and runtimes
- * 
- * Think of it like a factory assembly line: each operator is a station that
- * processes items, and the conveyor belt (stream) handles the flow control
- * automatically.
+ * Built on Web Streams TransformStream for automatic backpressure (slow consumers don't overwhelm
+ * fast producers), chunk-by-chunk processing (memory efficient), and cross-platform compatibility.
  */
 
 import { describe, it, beforeEach, afterEach } from "@std/testing/bdd";
@@ -60,13 +26,7 @@ import { ignoreErrors } from "../../helpers/operations/errors.ts";
 import { ObservableError, isObservableError } from "../../error.ts";
 
 /**
- * Helper to collect all values from an observable into an array.
- * 
- * This uses the async iteration protocol (for await...of) to consume
- * the observable. It's like doing Array.from() but for async streams.
- * 
- * @param obs - The observable to collect values from
- * @returns Array of all emitted values
+ * Collects all observable values into an array using async iteration (for await...of).
  */
 async function collectValues<T>(obs: Observable<T>): Promise<T[]> {
   const values: T[] = [];
@@ -77,14 +37,7 @@ async function collectValues<T>(obs: Observable<T>): Promise<T[]> {
 }
 
 /**
- * Helper to collect values with a timeout.
- * 
- * Prevents tests from hanging if an observable doesn't complete.
- * Like Promise.race() but for observables.
- * 
- * @param obs - The observable to collect from
- * @param timeoutMs - Maximum time to wait in milliseconds
- * @returns Array of collected values or timeout error
+ * Collects observable values with a timeout to prevent hanging tests.
  */
 async function collectWithTimeout<T>(
   obs: Observable<T>, 

@@ -1,62 +1,16 @@
 /**
- * Comprehensive BDD tests for the circular buffer queue implementation.
+ * Tests for circular buffer queue - a high-performance FIFO data structure using O(1) operations
+ * instead of O(n) Array.shift(). Think of it as a ring of parking spaces: when you reach the last
+ * slot and add another item, it wraps to the first slot (if empty). Array.shift() moves every
+ * element forward on each dequeue (expensive), while circular buffer just moves a head pointer.
  * 
- * This test suite validates a high-performance queue built on a circular buffer.
- * If you've ever needed a task queue, message buffer, or any FIFO data structure,
- * this is what powers it efficiently.
+ * Visual: Array.shift() [A,B,C,D,E] → shift() → [B,C,D,E] (everyone moved!)
+ *         Circular [A,B,C,D,E] ↑head ↑tail → dequeue() → [_,B,C,D,E] ↑head ↑tail (pointer moved)
  * 
- * ## What is a Circular Buffer Queue?
- * 
- * Think of a circular buffer like a ring of parking spaces. When you reach the last
- * space and add another car, you wrap around to the first space (if it's empty).
- * This is much faster than Array.shift() which is like moving every car forward
- * one space every time someone leaves - expensive and slow!
- * 
- * **Visual representation:**
- * ```
- * Array.shift() approach (slow, O(n)):
- * [A, B, C, D, E]  →  shift()  →  [B, C, D, E]  ← everyone moved!
- * 
- * Circular buffer approach (fast, O(1)):
- * [A, B, C, D, E]
- *  ↑head          ↑tail
- * 
- * After dequeue():
- * [_, B, C, D, E]
- *     ↑head       ↑tail      ← head just moves, no copying!
- * 
- * After enqueue(F) when full:
- * [F, B, C, D, E]  ← wraps around to start
- *     ↑head    ↑tail
- * ```
- * 
- * ## Why This Matters
- * 
- * Regular array operations like `shift()` and `unshift()` are slow for queues
- * because they move every element. Here's the performance difference:
- * 
- * - Array.shift(): O(n) - moves all elements
- * - Circular buffer dequeue: O(1) - just moves a pointer
- * 
- * For a queue processing thousands of items, this difference is HUGE.
- * 
- * ## What We're Testing
- * 
- * 1. **Basic Operations**: enqueue, dequeue, peek all work correctly
- * 2. **FIFO Order**: First In, First Out is maintained
- * 3. **Circular Wrapping**: Head and tail wrap around correctly
- * 4. **Capacity Management**: Queue handles being full/empty
- * 5. **Edge Cases**: Empty queues, full queues, single items
- * 6. **Performance**: O(1) operations even with large queues
- * 7. **Memory Management**: GC-friendly, no memory leaks
- * 
- * ## Real-World Use Cases
- * 
- * - **Task Queues**: Process jobs in order (print queue, email queue)
- * - **Message Buffers**: Store incoming messages before processing
- * - **Rate Limiting**: Queue requests to avoid overwhelming a service
- * - **Event Processing**: Handle events in order they occurred
- * - **Breadth-First Search**: Classic algorithm uses a queue
+ * Tests cover basic operations (enqueue/dequeue/peek), FIFO order, circular wrapping when head/tail
+ * reach capacity, status checks (isEmpty/isFull), advanced operations (clear/toArray/forEach), edge
+ * cases (capacity 1, rapid cycles, null/undefined), and real-world scenarios (task queues, message
+ * buffers, rate limiting).
  */
 
 import { describe, it, beforeEach, afterEach } from "@std/testing/bdd";

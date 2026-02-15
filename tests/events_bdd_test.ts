@@ -1,55 +1,13 @@
 /**
- * Comprehensive BDD tests for the EventBus and event dispatcher utilities.
+ * Tests for Observable-based event patterns: EventBus (simple multicast), EventDispatcher
+ * (type-safe routing), withReplay (buffer for late subscribers), and waitForEvent (Promise-based
+ * waiting). These replace EventEmitter patterns with automatic cleanup, full TypeScript inference,
+ * and operator composability.
  * 
- * This test suite validates the reactive event system built on top of Observable.
- * If you've ever used EventEmitter or custom pub/sub systems, this is the Observable-powered
- * version with better type safety and resource management.
- * 
- * ## What We're Testing
- * 
- * The events module provides three main patterns:
- * 
- * 1. **EventBus**: A simple multicast Observable - one source, many listeners
- * 2. **EventDispatcher**: Type-safe event routing - different event types, different payloads
- * 3. **withReplay**: Replay buffer for late subscribers - like a DVR for your data stream
- * 4. **waitForEvent**: Promise-based event waiting - "notify me when X happens"
- * 
- * ## Real-World Analogies
- * 
- * **EventBus** is like a loudspeaker:
- * - One person speaks (emit)
- * - Everyone hears the same message (subscribe)
- * - Simple, fast, no filtering
- * 
- * **EventDispatcher** is like a routing system:
- * - Messages have types ('login', 'logout', etc.)
- * - Each listener chooses what to hear
- * - Type-safe payloads per event type
- * 
- * **withReplay** is like a DVR/TiVo:
- * - New viewers can see what they missed
- * - Configurable how much history to keep
- * - Lazy mode: only records when someone's watching
- * - Eager mode: always recording (security camera)
- * 
- * **waitForEvent** is like setting an alarm:
- * - "Wake me when the package arrives"
- * - Can be canceled (AbortSignal)
- * - Optional timeout/error handling
- * 
- * ## Why These Patterns Matter
- * 
- * Before Observables, you'd use EventEmitter or custom event systems. Problems:
- * - Memory leaks from forgotten listeners
- * - No type safety for event payloads
- * - Manual cleanup management
- * - Can't use operators (map, filter, etc.)
- * 
- * These Observable-based patterns solve all of that:
- * - Automatic cleanup with `using` syntax
- * - Full TypeScript type inference
- * - Composable with all Observable operators
- * - Standard interface across your app
+ * EventBus multicasts to all subscribers (loudspeaker analogy), EventDispatcher routes typed
+ * messages to specific handlers, withReplay buffers recent values (DVR: lazy mode records only
+ * when subscribers present, eager always records), waitForEvent returns Promise that resolves
+ * on event (supports AbortSignal cancellation).
  */
 
 import { describe, it, beforeEach, afterEach } from "@std/testing/bdd";
@@ -67,7 +25,7 @@ import {
 import { Observable } from "../../observable.ts";
 
 /**
- * Helper to collect values from an Observable into an array.
+ * Collects values from an Observable.
  */
 async function collectValues<T>(obs: Observable<T>, count?: number): Promise<T[]> {
   const values: T[] = [];
@@ -79,7 +37,7 @@ async function collectValues<T>(obs: Observable<T>, count?: number): Promise<T[]
 }
 
 /**
- * Helper to collect values with a timeout.
+ * Collects values with timeout to prevent hanging tests.
  */
 async function collectWithTimeout<T>(
   obs: Observable<T>,
