@@ -7,6 +7,7 @@
 
 import { bench, run, do_not_optimize } from 'npm:mitata';
 import { Observable } from '../observable.ts';
+import { isObservableError } from '../error.ts';
 import { pipe } from '../helpers/pipe.ts';
 import { map, filter, scan, take, tap } from '../helpers/operations/core.ts';
 import { debounce, delay, throttle } from '../helpers/operations/timing.ts';
@@ -26,7 +27,7 @@ bench('Operators: map only (1000 items)', async () => {
   
   const values: number[] = [];
   for await (const val of result) {
-    values.push(val);
+    if (!isObservableError(val)) values.push(val);
   }
   
   do_not_optimize(values);
@@ -40,7 +41,7 @@ bench('Operators: filter only (1000 items)', async () => {
   
   const values: number[] = [];
   for await (const val of result) {
-    values.push(val);
+    if (!isObservableError(val)) values.push(val);
   }
   
   do_not_optimize(values);
@@ -56,7 +57,7 @@ bench('Operators: map + filter chain', async () => {
   
   const values: number[] = [];
   for await (const val of result) {
-    values.push(val);
+    if (!isObservableError(val)) values.push(val);
   }
   
   do_not_optimize(values);
@@ -72,7 +73,7 @@ bench('Operators: map + filter + take', async () => {
   
   const values: number[] = [];
   for await (const val of result) {
-    values.push(val);
+    if (!isObservableError(val)) values.push(val);
   }
   
   do_not_optimize(values);
@@ -86,7 +87,7 @@ bench('Operators: scan (running sum)', async () => {
   
   const values: number[] = [];
   for await (const val of result) {
-    values.push(val);
+    if (!isObservableError(val)) values.push(val);
   }
   
   do_not_optimize(values);
@@ -104,7 +105,7 @@ bench('Operators: complex chain (5 operators)', async () => {
   
   const values: number[] = [];
   for await (const val of result) {
-    values.push(val);
+    if (!isObservableError(val)) values.push(val);
   }
   
   do_not_optimize(values);
@@ -121,7 +122,7 @@ bench('Operators: tap (side effects)', async () => {
   
   const values: number[] = [];
   for await (const val of result) {
-    values.push(val);
+    if (!isObservableError(val)) values.push(val);
   }
   
   do_not_optimize({ values, sideEffectCount });
@@ -135,7 +136,7 @@ bench('Operators: batch (groups of 10)', async () => {
   
   const batches: number[][] = [];
   for await (const batch of result) {
-    batches.push(batch);
+    if (!isObservableError(batch)) batches.push(batch);
   }
   
   do_not_optimize(batches);
@@ -150,7 +151,7 @@ bench('Operators: toArray collector', async () => {
   
   const arrays: number[][] = [];
   for await (const arr of result) {
-    arrays.push(arr);
+    if (!isObservableError(arr)) arrays.push(arr);
   }
   
   do_not_optimize(arrays);
@@ -173,7 +174,7 @@ bench('Operators: deep chain (10 operators)', async () => {
   
   const values: number[] = [];
   for await (const val of result) {
-    values.push(val);
+    if (!isObservableError(val)) values.push(val);
   }
   
   do_not_optimize(values);

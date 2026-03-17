@@ -86,7 +86,7 @@ export class EventBus<T> extends Observable<T> {
    * @param value - The value to deliver.
    */
   emit(value: T): void {
-    if (this.#closed) return;
+    if (this.#closed || this.#subscribers.size === 0) return;
     for (const subscriber of this.#subscribers) {
       subscriber.next?.(value);
     }
@@ -98,6 +98,8 @@ export class EventBus<T> extends Observable<T> {
   close(): void {
     if (this.#closed) return;
     this.#closed = true;
+
+    if (this.#subscribers.size === 0) return;
 
     for (const subscriber of this.#subscribers) {
       subscriber.complete?.();
