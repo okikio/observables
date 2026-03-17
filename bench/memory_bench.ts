@@ -8,6 +8,7 @@
 
 import { bench, run, do_not_optimize } from 'npm:mitata';
 import { Observable } from '../observable.ts';
+import { isObservableError } from '../error.ts';
 import { pipe } from '../helpers/pipe.ts';
 import { map, filter, take, scan } from '../helpers/operations/core.ts';
 import { createQueue, enqueue, dequeue } from '../queue.ts';
@@ -121,7 +122,7 @@ bench('Memory: Operator chain with large data (10MB)', async () => {
   
   const values: number[] = [];
   for await (const val of result) {
-    values.push(val);
+    if (!isObservableError(val)) values.push(val);
   }
   
   do_not_optimize(values);

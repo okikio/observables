@@ -30,6 +30,16 @@ console.log('-'.repeat(80));
 await import('./memory_bench.ts');
 
 console.log('');
+console.log('Running Event benchmarks...');
+console.log('-'.repeat(80));
+await import('./events_bench.ts');
+
+console.log('');
+console.log('Running Latency benchmarks...');
+console.log('-'.repeat(80));
+await import('./latency_bench.ts');
+
+console.log('');
 console.log('═'.repeat(80));
 console.log('✅ All benchmarks complete');
 console.log('═'.repeat(80));
