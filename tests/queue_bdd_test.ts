@@ -13,8 +13,8 @@
  * buffers, rate limiting).
  */
 
-import { describe, it, beforeEach, afterEach } from "@std/testing/bdd";
-import { expect } from "@std/expect";
+import { describe, it } from '@std/testing/bdd';
+import { expect } from '@std/expect';
 
 import { 
   createQueue,
@@ -29,7 +29,7 @@ import {
   toArray,
   forEach,
   type Queue
-} from "../../queue.ts";
+} from '../queue.ts';
 
 describe("Queue Creation", () => {
   describe("createQueue()", () => {
@@ -277,15 +277,17 @@ describe("Basic Queue Operations", () => {
       enqueue(queue, { priority: 'low', action: 'send-email' });
       enqueue(queue, { priority: 'high', action: 'process-payment' });
       
-      // Peek to check priority before processing
+      // Peek helps decide whether to process now or leave the queue alone.
+      // The queue stays FIFO, so a low-priority item at the front does not let
+      // us skip ahead to the later high-priority item.
       const next = peek(queue);
       if (next && next.priority === 'high') {
-        // Process immediately
+        // Process immediately only when the front item is high priority.
         dequeue(queue);
       }
       
-      // After dequeuing low priority task, high priority is next
-      expect(peek(queue)?.priority).toBe('high');
+      // The low-priority task is still at the front because peek is non-destructive.
+      expect(peek(queue)?.priority).toBe('low');
     });
   });
 });

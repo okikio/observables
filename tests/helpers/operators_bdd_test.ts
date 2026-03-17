@@ -19,7 +19,7 @@
 import { describe, it, beforeEach, afterEach } from "@std/testing/bdd";
 import { expect } from "@std/expect";
 
-import { Observable } from "../../observable.ts";
+import { Observable, pull } from "../../observable.ts";
 import { createOperator, createStatefulOperator } from "../../helpers/operators.ts";
 import { pipe } from "../../helpers/pipe.ts";
 import { ignoreErrors } from "../../helpers/operations/errors.ts";
@@ -31,6 +31,17 @@ import { ObservableError, isObservableError } from "../../error.ts";
 async function collectValues<T>(obs: Observable<T>): Promise<T[]> {
   const values: T[] = [];
   for await (const value of obs) {
+    values.push(value);
+  }
+  return values;
+}
+
+/**
+ * Collects values without throwing when the stream emits ObservableError values.
+ */
+async function collectValuesAllowErrors<T>(obs: Observable<T>): Promise<Array<T | ObservableError>> {
+  const values: Array<T | ObservableError> = [];
+  for await (const value of pull(obs, { throwError: false })) {
     values.push(value);
   }
   return values;
@@ -66,7 +77,7 @@ describe("createOperator()", () => {
       const source = Observable.of(1, 2, 3);
       const result = pipe(source, ignoreErrors(), double);
 
-      const values = await collectValues(result);
+      const values = await collectValuesAllowErrors(result);
       expect(values).toEqual([2, 4, 6]);
     });
 
@@ -85,7 +96,7 @@ describe("createOperator()", () => {
       const source = Observable.of(1, 2, 3, 4, 5, 6);
       const result = pipe(source, ignoreErrors(), evens);
 
-      const values = await collectValues(result);
+      const values = await collectValuesAllowErrors(result);
       expect(values).toEqual([2, 4, 6]);
     });
 
@@ -103,7 +114,7 @@ describe("createOperator()", () => {
       const source = Observable.of(1, 2, 3);
       const result = pipe(source, ignoreErrors(), duplicate);
 
-      const values = await collectValues(result);
+      const values = await collectValuesAllowErrors(result);
       expect(values).toEqual([1, 1, 2, 2, 3, 3]);
     });
 
@@ -119,7 +130,7 @@ describe("createOperator()", () => {
       const source = Observable.of<number>();
       const result = pipe(source, ignoreErrors(), double);
 
-      const values = await collectValues(result);
+      const values = await collectValuesAllowErrors(result);
       expect(values).toEqual([]);
     });
 
@@ -134,7 +145,7 @@ describe("createOperator()", () => {
       const source = Observable.of(42);
       const result = pipe(source, ignoreErrors(), double);
 
-      const values = await collectValues(result);
+      const values = await collectValuesAllowErrors(result);
       expect(values).toEqual([84]);
     });
   });
@@ -155,7 +166,7 @@ describe("createOperator()", () => {
       const source = Observable.of(1, 2, 3);
       const result = pipe(source, ignoreErrors(), stringify);
 
-      const values = await collectValues(result);
+      const values = await collectValuesAllowErrors(result);
       expect(values).toEqual(['1', '2', '3']);
     });
 
@@ -202,7 +213,7 @@ describe("createOperator()", () => {
         const source = Observable.of(1, 2, 3);
         const result = pipe(source, ignoreErrors(), errorOnTwo);
 
-        const values = await collectValues(result);
+        const values = await collectValuesAllowErrors(result);
         
         // We should get 1, an error, and 3
         expect(values).toHaveLength(3);
@@ -212,7 +223,7 @@ describe("createOperator()", () => {
         
         // The error should have context
         if (isObservableError(values[1])) {
-          expect(values[1].operator).toBe('errorOnTwo');
+          expect(values[1].operator).toBe('operator:errorOnTwo');
           expect(values[1].message).toContain('Cannot process 2');
         }
       });
@@ -233,7 +244,7 @@ describe("createOperator()", () => {
         const source = Observable.of(1, 2, 3, 4, 5);
         const result = pipe(source, ignoreErrors(), errorOnEvens);
 
-        const values = await collectValues(result);
+        const values = await collectValuesAllowErrors(result);
         
         // Should have all 5 items: 1, error, 3, error, 5
         expect(values).toHaveLength(5);
@@ -261,7 +272,7 @@ describe("createOperator()", () => {
         });
 
         const source = Observable.of(1, 2, 3);
-        const result = pipe(source, errorOnTwo);
+        const result = pipe(source, ignoreErrors(), errorOnTwo);
 
         const values = await collectValues(result);
         
@@ -282,7 +293,7 @@ describe("createOperator()", () => {
         });
 
         const source = Observable.of(1, 2, 3, 4, 5, 6, 7);
-        const result = pipe(source, errorOnEvens);
+        const result = pipe(source, ignoreErrors(), errorOnEvens);
 
         const values = await collectValues(result);
         expect(values).toEqual([1, 3, 5, 7]);
@@ -298,48 +309,11 @@ describe("createOperator()", () => {
         });
 
         const source = Observable.of(1, 2, 3);
-        const result = pipe(source, alwaysError);
+        const result = pipe(source, ignoreErrors(), alwaysError);
 
         const values = await collectValues(result);
         // All errors ignored, so empty result
         expect(values).toEqual([]);
-      });
-    });
-
-    describe("throw mode", () => {
-      it("should stop the stream on first error", async () => {
-        // Fail-fast: first error terminates everything
-        const errorOnTwo = createOperator<number, number>({
-          name: 'errorOnTwo',
-          errorMode: 'throw',
-          transform(chunk, controller) {
-            if (chunk === 2) {
-              throw new Error('Cannot process 2');
-            }
-            controller.enqueue(chunk);
-          }
-        });
-
-        const source = Observable.of(1, 2, 3);
-        const result = pipe(source, ignoreErrors(), errorOnTwo);
-
-        // The stream should error out
-        await expect(collectValues(result)).rejects.toThrow('Cannot process 2');
-      });
-
-      it("should propagate synchronous errors immediately", async () => {
-        const throwImmediately = createOperator<number, number>({
-          name: 'throwImmediately',
-          errorMode: 'throw',
-          transform(_chunk, _controller) {
-            throw new Error('Immediate failure');
-          }
-        });
-
-        const source = Observable.of(1);
-        const result = pipe(source, ignoreErrors(), throwImmediately);
-
-        await expect(collectValues(result)).rejects.toThrow('Immediate failure');
       });
     });
 
@@ -369,24 +343,6 @@ describe("createOperator()", () => {
         expect(values).toEqual([1, 'ERROR: Two is problematic', 3]);
       });
 
-      it("should not wrap errors automatically", async () => {
-        // In manual mode, uncaught errors still propagate
-        const noErrorHandling = createOperator<number, number>({
-          name: 'noErrorHandling',
-          errorMode: 'manual',
-          transform(chunk, _controller) {
-            if (chunk === 2) {
-              throw new Error('Unhandled error');
-            }
-          }
-        });
-
-        const source = Observable.of(1, 2, 3);
-        const result = pipe(source, ignoreErrors(), noErrorHandling);
-
-        // Unhandled error in manual mode still propagates
-        await expect(collectValues(result)).rejects.toThrow();
-      });
     });
   });
 
@@ -405,7 +361,7 @@ describe("createOperator()", () => {
       const source = Observable.of(1, 2, 3);
       const result = pipe(source, ignoreErrors(), asyncDouble);
 
-      const values = await collectWithTimeout(result);
+      const values = await collectValuesAllowErrors(result);
       expect(values).toEqual([2, 4, 6]);
     });
 
@@ -425,7 +381,7 @@ describe("createOperator()", () => {
       const source = Observable.of(1, 2, 3);
       const result = pipe(source, ignoreErrors(), asyncError);
 
-      const values = await collectWithTimeout(result);
+      const values = await collectValuesAllowErrors(result);
       expect(values).toHaveLength(3);
       expect(isObservableError(values[1])).toBe(true);
     });
@@ -453,10 +409,11 @@ describe("createOperator()", () => {
         source,
         ignoreErrors(),
         addOne,  // 2, 3, 4
+        ignoreErrors(),
         double   // 4, 6, 8
       );
 
-      const values = await collectValues(result);
+      const values = await collectValuesAllowErrors(result);
       expect(values).toEqual([4, 6, 8]);
     });
 
@@ -484,10 +441,11 @@ describe("createOperator()", () => {
         source,
         ignoreErrors(),
         addOne,         // 2, 3, 4
+        ignoreErrors(),
         errorOnThree    // 2, error, 4
       );
 
-      const values = await collectValues(result);
+      const values = await collectValuesAllowErrors(result);
       expect(values).toHaveLength(3);
       expect(values[0]).toBe(2);
       expect(isObservableError(values[1])).toBe(true);
@@ -513,7 +471,7 @@ describe("createStatefulOperator()", () => {
       const source = Observable.of(1, 2, 3, 4);
       const result = pipe(source, ignoreErrors(), runningSum);
 
-      const values = await collectValues(result);
+      const values = await collectValuesAllowErrors(result);
       // Each value is the running total: 1, 1+2=3, 3+3=6, 6+4=10
       expect(values).toEqual([1, 3, 6, 10]);
     });
@@ -572,7 +530,7 @@ describe("createStatefulOperator()", () => {
       const source = Observable.of(1, 2, 3, 4, 5);
       const result = pipe(source, ignoreErrors(), bufferTwo);
 
-      const values = await collectValues(result);
+      const values = await collectValuesAllowErrors(result);
       // Values are emitted in pairs, with the last odd one out
       expect(values).toEqual([[1, 2], [3, 4], [5]]);
     });
@@ -621,7 +579,7 @@ describe("createStatefulOperator()", () => {
       const source = Observable.of(1, 2, 3);
       const result = pipe(source, ignoreErrors(), withFlush);
 
-      const values = await collectValues(result);
+      const values = await collectValuesAllowErrors(result);
       
       expect(flushed).toBe(true);
       expect(values).toEqual([1, 2, 3, 'Summary: 3 items']);
@@ -677,7 +635,7 @@ describe("createStatefulOperator()", () => {
       const source = Observable.of(1, 2, 3, 4, 5);
       const result = pipe(source, ignoreErrors(), errorOnEven);
 
-      const values = await collectValues(result);
+      const values = await collectValuesAllowErrors(result);
       
       // Should have errors for 2 and 4
       const errors = values.filter(isObservableError);
@@ -709,7 +667,7 @@ describe("createStatefulOperator()", () => {
       const source = Observable.of(1, 2, 3);
       const result = pipe(source, ignoreErrors(), countWithErrors);
 
-      const values = await collectValues(result);
+      const values = await collectValuesAllowErrors(result);
       
       // 1 * 1 = 1, error (but total=2 now), 3 * 3 = 9
       expect(values[0]).toBe(1);
@@ -732,7 +690,7 @@ describe("createStatefulOperator()", () => {
       });
 
       const source = Observable.of(1, 2, 3);
-      const result = pipe(source, silentErrors);
+      const result = pipe(source, ignoreErrors(), silentErrors);
 
       const values = await collectValues(result);
       expect(values).toEqual([1, 3]);

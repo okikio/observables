@@ -265,6 +265,8 @@ export function switchMap<T, R>(
   return createStatefulOperator<T | ObservableError, R | ObservableError, {
     // State for tracking inner subscription
     currentController: AbortController | null;
+    currentTask: Promise<void> | null;
+    currentTaskToken: object | null;
     sourceCompleted: boolean;
     index: number;
   }>({
@@ -273,6 +275,8 @@ export function switchMap<T, R>(
     // Initialize state
     createState: () => ({
       currentController: null,
+      currentTask: null,
+      currentTaskToken: null,
       sourceCompleted: false,
       index: 0
     }),
@@ -307,7 +311,24 @@ export function switchMap<T, R>(
       state.currentController = abortController;
 
       // Subscribe to the new inner Observable
-      (async () => {
+      const currentTaskToken = {};
+      let currentTask: Promise<void>;
+      currentTask = (async () => {
+        const enqueueIfActive = (value: R | ObservableError): void => {
+          if (
+            abortController.signal.aborted ||
+            state.currentController !== abortController
+          ) {
+            return;
+          }
+
+          try {
+            controller.enqueue(value as R);
+          } catch {
+            abortController.abort();
+          }
+        };
+
         try {
           const iterator = pull(innerObservable, { throwError: false })[Symbol.asyncIterator]();
 
@@ -318,13 +339,20 @@ export function switchMap<T, R>(
             if (abortController.signal.aborted || done) break;
 
             // Forward the value
-            controller.enqueue(value);
+            enqueueIfActive(value);
           }
         } catch (err) {
           if (!abortController.signal.aborted) {
-            controller.enqueue(ObservableError.from(err, "operator:stateful:switchMap:innerObservable", chunk) as R);
+            enqueueIfActive(
+              ObservableError.from(err, "operator:stateful:switchMap:innerObservable", chunk),
+            );
           }
         } finally {
+          if (state.currentTaskToken === currentTaskToken) {
+            state.currentTask = null;
+            state.currentTaskToken = null;
+          }
+
           // Only handle completion if this is still the current controller
           if (state.currentController === abortController) {
             state.currentController = null;
@@ -334,16 +362,19 @@ export function switchMap<T, R>(
           }
         }
       })();
+
+      state.currentTask = currentTask;
+      state.currentTaskToken = currentTaskToken;
     },
 
     // Handle the end of the source stream
-    flush(state) {
+    async flush(state) {
       // Mark the source as completed
       state.sourceCompleted = true;
 
-      // If there's no active inner subscription, we're done
-      // Stream will close naturally
-      // Otherwise, let the active inner subscription complete
+      if (state.currentTask) {
+        await state.currentTask;
+      }
     },
 
     // Handle cancellation
@@ -353,6 +384,8 @@ export function switchMap<T, R>(
         state.currentController.abort();
         state.currentController = null;
       }
+      state.currentTask = null;
+      state.currentTaskToken = null;
     }
   });
 }

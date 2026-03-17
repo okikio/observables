@@ -392,32 +392,79 @@ export function pipe<T, A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S>
     throw new TypeError('pipe: source must be an Observable');
   }
 
-  // Convert the source Observable to a ReadableStream
-  let result: ReadableStream<unknown> = toStream(pull(source, { throwError: false }));
+  return new Observable((observer) => {
+    let result: ReadableStream<unknown> = toStream(pull(source, { throwError: false }));
 
-  const errorPrefix = 'pipe:operator';
-  if (op1) result = applyOperator(result, op1, { message: errorPrefix + `[1]` });
-  if (op2) result = applyOperator(result, op2, { message: errorPrefix + `[2]` });
-  if (op3) result = applyOperator(result, op3, { message: errorPrefix + `[3]` });
-  if (op4) result = applyOperator(result, op4, { message: errorPrefix + `[4]` });
-  if (op5) result = applyOperator(result, op5, { message: errorPrefix + `[5]` });
-  if (op6) result = applyOperator(result, op6, { message: errorPrefix + `[6]` });
-  if (op7) result = applyOperator(result, op7, { message: errorPrefix + `[7]` });
-  if (op8) result = applyOperator(result, op8, { message: errorPrefix + `[8]` });
-  if (op9) result = applyOperator(result, op9, { message: errorPrefix + `[9]` });
-  if (op10) result = applyOperator(result, op10, { message: errorPrefix + `[10]` });
-  if (op11) result = applyOperator(result, op11, { message: errorPrefix + `[11]` });
-  if (op12) result = applyOperator(result, op12, { message: errorPrefix + `[12]` });
-  if (op13) result = applyOperator(result, op13, { message: errorPrefix + `[13]` });
-  if (op14) result = applyOperator(result, op14, { message: errorPrefix + `[14]` });
-  if (op15) result = applyOperator(result, op15, { message: errorPrefix + `[15]` });
-  if (op16) result = applyOperator(result, op16, { message: errorPrefix + `[16]` });
-  if (op17) result = applyOperator(result, op17, { message: errorPrefix + `[17]` });
-  if (op18) result = applyOperator(result, op18, { message: errorPrefix + `[18]` });
-  if (op19) result = applyOperator(result, op19, { message: errorPrefix + `[19]` });
+    const errorPrefix = 'pipe:operator';
+    if (op1) result = applyOperator(result, op1, { message: errorPrefix + `[1]` });
+    if (op2) result = applyOperator(result, op2, { message: errorPrefix + `[2]` });
+    if (op3) result = applyOperator(result, op3, { message: errorPrefix + `[3]` });
+    if (op4) result = applyOperator(result, op4, { message: errorPrefix + `[4]` });
+    if (op5) result = applyOperator(result, op5, { message: errorPrefix + `[5]` });
+    if (op6) result = applyOperator(result, op6, { message: errorPrefix + `[6]` });
+    if (op7) result = applyOperator(result, op7, { message: errorPrefix + `[7]` });
+    if (op8) result = applyOperator(result, op8, { message: errorPrefix + `[8]` });
+    if (op9) result = applyOperator(result, op9, { message: errorPrefix + `[9]` });
+    if (op10) result = applyOperator(result, op10, { message: errorPrefix + `[10]` });
+    if (op11) result = applyOperator(result, op11, { message: errorPrefix + `[11]` });
+    if (op12) result = applyOperator(result, op12, { message: errorPrefix + `[12]` });
+    if (op13) result = applyOperator(result, op13, { message: errorPrefix + `[13]` });
+    if (op14) result = applyOperator(result, op14, { message: errorPrefix + `[14]` });
+    if (op15) result = applyOperator(result, op15, { message: errorPrefix + `[15]` });
+    if (op16) result = applyOperator(result, op16, { message: errorPrefix + `[16]` });
+    if (op17) result = applyOperator(result, op17, { message: errorPrefix + `[17]` });
+    if (op18) result = applyOperator(result, op18, { message: errorPrefix + `[18]` });
+    if (op19) result = applyOperator(result, op19, { message: errorPrefix + `[19]` });
 
-  // Convert the resulting ReadableStream back to an Observable
-  return Observable.from(result) as Observable<
+    const reader = result.getReader();
+    let cancelled = false;
+
+    (async () => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          observer.next(value as never);
+
+          if (observer.closed) {
+            cancelled = true;
+            try {
+              await reader.cancel();
+            } catch {
+              // Ignore cancellation failures while the subscription is closing.
+            }
+            break;
+          }
+        }
+
+        if (!cancelled) {
+          cancelled = true;
+          observer.complete();
+        }
+      } catch (err) {
+        if (!cancelled) {
+          cancelled = true;
+          observer.error(err);
+          try {
+            await reader.cancel(err);
+          } catch {
+            // Ignore cancellation failures while surfacing the original error.
+          }
+        }
+      } finally {
+        try {
+          reader.releaseLock();
+        } catch {
+          // Ignore release failures during cancellation.
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      void reader.cancel();
+    };
+  }) as Observable<
     typeof op19 extends Operator<R, S> ? S :
     typeof op18 extends Operator<Q, R> ? R :
     typeof op17 extends Operator<P, Q> ? Q :

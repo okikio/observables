@@ -10,8 +10,8 @@
  * on event (supports AbortSignal cancellation).
  */
 
-import { describe, it, beforeEach, afterEach } from "@std/testing/bdd";
-import { expect } from "@std/expect";
+import { describe, it } from '@std/testing/bdd';
+import { expect } from '@std/expect';
 
 import { 
   EventBus,
@@ -19,10 +19,8 @@ import {
   waitForEvent,
   withReplay,
   type EventMap,
-  type EventDispatcher,
-  type ReplayOptions
-} from "../../events.ts";
-import { Observable } from "../../observable.ts";
+} from '../events.ts';
+import { Observable } from '../observable.ts';
 
 /**
  * Collects values from an Observable.
@@ -44,7 +42,7 @@ async function collectWithTimeout<T>(
   timeoutMs: number = 1000,
   count?: number
 ): Promise<T[]> {
-  return Promise.race([
+  return await Promise.race([
     collectValues(obs, count),
     new Promise<T[]>((_, reject) =>
       setTimeout(() => reject(new Error('Timeout')), timeoutMs)
@@ -65,7 +63,7 @@ describe("EventBus", () => {
       const received: string[] = [];
 
       bus.events.subscribe({
-        next: (value) => received.push(value)
+        next: (value: string) => received.push(value)
       });
 
       bus.emit('hello');
@@ -79,8 +77,8 @@ describe("EventBus", () => {
       const received1: number[] = [];
       const received2: number[] = [];
 
-      bus.events.subscribe({ next: (v) => received1.push(v) });
-      bus.events.subscribe({ next: (v) => received2.push(v) });
+      bus.events.subscribe({ next: (v: number) => received1.push(v) });
+      bus.events.subscribe({ next: (v: number) => received2.push(v) });
 
       bus.emit(1);
       bus.emit(2);
@@ -94,7 +92,7 @@ describe("EventBus", () => {
       const received: string[] = [];
 
       const subscription = bus.events.subscribe({
-        next: (value) => received.push(value)
+        next: (value: string) => received.push(value)
       });
 
       bus.emit('before');
@@ -113,9 +111,9 @@ describe("EventBus", () => {
       let objectValue: { id: number; name: string } | undefined;
       let arrayValue: number[] | undefined;
 
-      stringBus.events.subscribe({ next: (v) => stringValue = v });
-      objectBus.events.subscribe({ next: (v) => objectValue = v });
-      arrayBus.events.subscribe({ next: (v) => arrayValue = v });
+      stringBus.events.subscribe({ next: (v: string) => stringValue = v });
+      objectBus.events.subscribe({ next: (v: { id: number; name: string }) => objectValue = v });
+      arrayBus.events.subscribe({ next: (v: number[]) => arrayValue = v });
 
       stringBus.emit('test');
       objectBus.emit({ id: 1, name: 'Alice' });
@@ -145,7 +143,7 @@ describe("EventBus", () => {
       const bus = new EventBus<string>();
       const received: string[] = [];
 
-      bus.events.subscribe({ next: (v) => received.push(v) });
+      bus.events.subscribe({ next: (v: string) => received.push(v) });
 
       bus.emit('before');
       bus.close();
@@ -202,30 +200,29 @@ describe("EventBus", () => {
     it("should support async using syntax", async () => {
       let completed = false;
 
-      {
-        await using bus = new EventBus<number>();
-        bus.events.subscribe({
-          complete: () => { completed = true; }
-        });
+      const bus = new EventBus<number>();
+      bus.events.subscribe({
+        complete: () => { completed = true; }
+      });
 
-        bus.emit(1);
-      } // Automatically calls asyncDispose
+      bus.emit(1);
+      await bus[Symbol.asyncDispose]();
 
       expect(completed).toBe(true);
     });
 
-    it("should clean up subscribers on close", () => {
+    it("should close subscriptions when the bus closes", () => {
       const bus = new EventBus<number>();
       
-      bus.events.subscribe({ next: () => {} });
-      bus.events.subscribe({ next: () => {} });
-      bus.events.subscribe({ next: () => {} });
+      const sub1 = bus.events.subscribe({ next: () => {} });
+      const sub2 = bus.events.subscribe({ next: () => {} });
+      const sub3 = bus.events.subscribe({ next: () => {} });
 
       bus.close();
 
-      // Internal subscribers set should be cleared
-      // This prevents memory leaks
-      expect(bus['#subscribers']?.size ?? 0).toBe(0);
+      expect(sub1.closed).toBe(true);
+      expect(sub2.closed).toBe(true);
+      expect(sub3.closed).toBe(true);
     });
   });
 
@@ -235,7 +232,7 @@ describe("EventBus", () => {
       const received: number[] = [];
 
       for (let i = 0; i < 100; i++) {
-        bus.events.subscribe({ next: (v) => received.push(v) });
+        bus.events.subscribe({ next: (v: number) => received.push(v) });
         bus.emit(i);
       }
 
@@ -248,7 +245,7 @@ describe("EventBus", () => {
       const bus = new EventBus<number | null | undefined>();
       const received: Array<number | null | undefined> = [];
 
-      bus.events.subscribe({ next: (v) => received.push(v) });
+      bus.events.subscribe({ next: (v: number | null | undefined) => received.push(v) });
 
       bus.emit(undefined);
       bus.emit(null);
@@ -269,7 +266,7 @@ describe("EventBus", () => {
 
       // Second subscriber should still work
       bus.events.subscribe({
-        next: (v) => received.push(v)
+        next: (v: number) => received.push(v)
       });
 
       bus.emit(1);
@@ -303,10 +300,10 @@ describe("EventBus", () => {
       const early: number[] = [];
       const late: number[] = [];
 
-      bus.events.subscribe({ next: (v) => early.push(v) });
+      bus.events.subscribe({ next: (v: number) => early.push(v) });
       bus.emit(1);
 
-      bus.events.subscribe({ next: (v) => late.push(v) });
+      bus.events.subscribe({ next: (v: number) => late.push(v) });
       bus.emit(2);
 
       expect(early).toEqual([1, 2]);
@@ -337,7 +334,7 @@ describe("EventDispatcher (Type-Safe Event Bus)", () => {
       const dispatcher = createEventDispatcher<TestEvents>();
       let received: { text: string; priority: number } | undefined;
 
-      dispatcher.on('message', (payload) => {
+      dispatcher.on('message', (payload: { text: string; priority: number }) => {
         received = payload;
       });
 
@@ -367,8 +364,8 @@ describe("EventDispatcher (Type-Safe Event Bus)", () => {
       const listener1: string[] = [];
       const listener2: string[] = [];
 
-      dispatcher.on('simple', (text) => listener1.push(text));
-      dispatcher.on('simple', (text) => listener2.push(text));
+      dispatcher.on('simple', (text: string) => listener1.push(text));
+      dispatcher.on('simple', (text: string) => listener2.push(text));
 
       dispatcher.emit('simple', 'test');
 
@@ -395,7 +392,7 @@ describe("EventDispatcher (Type-Safe Event Bus)", () => {
       const dispatcher = createEventDispatcher<TestEvents>();
       const received: string[] = [];
 
-      const subscription = dispatcher.on('simple', (text) => {
+      const subscription = dispatcher.on('simple', (text: string) => {
         received.push(text);
       });
 
@@ -411,8 +408,8 @@ describe("EventDispatcher (Type-Safe Event Bus)", () => {
       const first: string[] = [];
       const second: string[] = [];
 
-      const sub1 = dispatcher.on('simple', (text) => first.push(text));
-      const sub2 = dispatcher.on('simple', (text) => second.push(text));
+      const sub1 = dispatcher.on('simple', (text: string) => first.push(text));
+      const sub2 = dispatcher.on('simple', (text: string) => second.push(text));
 
       dispatcher.emit('simple', '1');
       sub1.unsubscribe();
@@ -424,19 +421,13 @@ describe("EventDispatcher (Type-Safe Event Bus)", () => {
   });
 
   describe("Closing the Dispatcher", () => {
-    it("should close underlying bus", () => {
+    it("should close subscriptions returned by on()", () => {
       const dispatcher = createEventDispatcher<TestEvents>();
-      let completed = false;
-
-      dispatcher.on('message', () => {}).addEventListener('complete', () => {
-        completed = true;
-      });
+      const subscription = dispatcher.on('message', () => {});
 
       dispatcher.close();
 
-      // Note: The subscription is to the filtered stream,
-      // so it completes when the underlying bus completes
-      expect(completed).toBe(false); // May need adjustment based on implementation
+      expect(subscription.closed).toBe(true);
     });
 
     it("should support using syntax", () => {
@@ -447,10 +438,9 @@ describe("EventDispatcher (Type-Safe Event Bus)", () => {
     });
 
     it("should support async using syntax", async () => {
-      {
-        await using dispatcher = createEventDispatcher<TestEvents>();
-        dispatcher.emit('simple', 'test');
-      } // Automatically disposed
+      const dispatcher = createEventDispatcher<TestEvents>();
+      dispatcher.emit('simple', 'test');
+      await dispatcher[Symbol.asyncDispose]();
     });
   });
 
@@ -473,13 +463,13 @@ describe("EventDispatcher (Type-Safe Event Bus)", () => {
     it("should provide correct types to handlers", () => {
       const dispatcher = createEventDispatcher<TestEvents>();
 
-      dispatcher.on('message', (payload) => {
+      dispatcher.on('message', (payload: { text: string; priority: number }) => {
         // TypeScript knows payload is { text: string; priority: number }
         expect(typeof payload.text).toBe('string');
         expect(typeof payload.priority).toBe('number');
       });
 
-      dispatcher.on('status', (payload) => {
+      dispatcher.on('status', (payload: { code: number; message: string }) => {
         // TypeScript knows payload is { code: number; message: string }
         expect(typeof payload.code).toBe('number');
         expect(typeof payload.message).toBe('string');
@@ -502,11 +492,11 @@ describe("EventDispatcher (Type-Safe Event Bus)", () => {
       const loginLog: string[] = [];
       const updateLog: string[] = [];
 
-      events.on('userLogin', ({ userId }) => {
+      events.on('userLogin', ({ userId }: { userId: string; timestamp: number }) => {
         loginLog.push(userId);
       });
 
-      events.on('dataUpdated', ({ collection, count }) => {
+      events.on('dataUpdated', ({ collection, count }: { collection: string; count: number }) => {
         updateLog.push(`${collection}: ${count}`);
       });
 
@@ -529,13 +519,13 @@ describe("EventDispatcher (Type-Safe Event Bus)", () => {
       const errors: string[] = [];
       const warnings: string[] = [];
 
-      events.on('error', ({ code, severity }) => {
+      events.on('error', ({ code, severity }: { code: string; message: string; severity: 'low' | 'high' }) => {
         if (severity === 'high') {
           errors.push(code);
         }
       });
 
-      events.on('warning', ({ message }) => {
+      events.on('warning', ({ message }: { message: string }) => {
         warnings.push(message);
       });
 
@@ -688,21 +678,14 @@ describe("waitForEvent()", () => {
 
   describe("Error Handling", () => {
     it("should reject when the stream errors", async () => {
-      // Create a custom bus that can error
-      const bus = new EventBus<{ type: string; payload: any }>();
       const testError = new Error('Stream error');
+      const bus = {
+        events: new Observable<{ type: keyof TestEvents; payload: TestEvents[keyof TestEvents] }>((observer) => {
+          observer.error(testError);
+        }),
+      };
 
-      const promise = waitForEvent({ events: bus.events }, 'ready');
-
-      setTimeout(() => {
-        // Manually trigger error by subscribing with error callback
-        bus.events.subscribe({
-          error: () => {}
-        });
-      }, 10);
-
-      // Since EventBus doesn't have a direct error method,
-      // this test demonstrates the pattern
+      await expect(waitForEvent(bus, 'ready')).rejects.toThrow('Stream error');
     });
   });
 
@@ -783,7 +766,7 @@ describe("waitForEvent()", () => {
 describe("withReplay() - Basic Smoke Tests", () => {
   describe("Basic Replay", () => {
     it("should replay last value to new subscribers", async () => {
-      const source = new Observable<number>((observer) => {
+      const source = new Observable<number>((observer: { next: (value: number) => void; complete: () => void }) => {
         observer.next(1);
         observer.next(2);
         observer.next(3);
@@ -798,14 +781,14 @@ describe("withReplay() - Basic Smoke Tests", () => {
       // New subscriber should get last 2 values
       const received: number[] = [];
       replayed.subscribe({
-        next: (v) => received.push(v)
+        next: (v: number) => received.push(v)
       });
 
       expect(received).toEqual([2, 3]);
     });
 
     it("should multicast to multiple subscribers", () => {
-      const source = new Observable<number>((observer) => {
+      const source = new Observable<number>((observer: { next: (value: number) => void }) => {
         observer.next(1);
         observer.next(2);
       });
@@ -815,8 +798,8 @@ describe("withReplay() - Basic Smoke Tests", () => {
       const received1: number[] = [];
       const received2: number[] = [];
 
-      replayed.subscribe({ next: (v) => received1.push(v) });
-      replayed.subscribe({ next: (v) => received2.push(v) });
+      replayed.subscribe({ next: (v: number) => received1.push(v) });
+      replayed.subscribe({ next: (v: number) => received2.push(v) });
 
       expect(received1.length).toBeGreaterThan(0);
       expect(received2.length).toBeGreaterThan(0);

@@ -439,7 +439,7 @@ export function handleTransform<T, O, S = never>(
     case "throw":
       return async function (chunk: T, controller: TransformStreamDefaultController<O>) {
         if (isObservableError(chunk)) {
-          return controller.error(ObservableError.from(chunk, operatorName, chunk));
+          throw ObservableError.from(chunk, operatorName, chunk);
         }
         
         try {
@@ -450,7 +450,7 @@ export function handleTransform<T, O, S = never>(
 
           await (transform as TransformFunctionOptions<T, O>['transform'])(chunk, controller);
         } catch (err) {
-          return controller.error(ObservableError.from(err, operatorName, chunk));
+          throw ObservableError.from(err, operatorName, chunk);
         }
       };
       
