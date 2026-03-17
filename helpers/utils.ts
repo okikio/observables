@@ -114,10 +114,19 @@ export function toStream<T>(
           }
         }
 
-        controller.close();
+        try {
+          controller.close();
+        } catch {
+          // Downstream may already be closed or errored.
+        }
       } catch (err) {
-        controller.enqueue(ObservableError.from(err, "toStream"));
-        controller.close();
+        try {
+          controller.enqueue(ObservableError.from(err, 'toStream'));
+          controller.close();
+        } catch {
+          // If downstream is already unavailable, the original failure has
+          // already decided the stream outcome. Do not surface a second error.
+        }
       }
     }
   });
