@@ -356,7 +356,7 @@ export function throttle<T>(
     hasNextValue: boolean;
     timeoutId: ReturnType<typeof setTimeout> | null;
   }>({
-    name: "throtle",
+    name: "throttle",
     errorMode: "pass-through",
     createState: () => ({
       lastEmitTime: 0,
@@ -432,8 +432,15 @@ export function throttle<T>(
 /**
  * Errors if an item takes too long to be processed.
  *
- * This operator wraps each item in a race against a timer. If the item isn't
- * passed through to the next stage before the timer finishes, it emits an error.
+ * This operator passes normal synchronous values through immediately, but when
+ * an upstream operator emits a promise-like chunk it waits for that chunk to
+ * settle and races it against a timer. If the promise-like chunk does not
+ * resolve before the timer finishes, it emits an `ObservableError` instead.
+ *
+ * The implementation uses an async transform so Web Streams backpressure keeps
+ * later chunks from overtaking the timed chunk. In practice that means operator
+ * chains still stay ordered: each promise-like chunk either resolves to a value
+ * or times out before the next chunk is processed.
  *
  * @example
  * ```ts
@@ -467,22 +474,53 @@ export function throttle<T>(
  */
 export function timeout<T>(
   ms: number,
-): Operator<T | ObservableError, T | ObservableError> {
-  return createOperator<T | ObservableError, T | ObservableError>({
+): Operator<T | PromiseLike<T> | ObservableError, T | ObservableError> {
+  return createOperator<
+    T | PromiseLike<T> | ObservableError,
+    T | ObservableError
+  >({
     name: "timeout",
     errorMode: "pass-through",
-    transform(chunk, controller) {
+    async transform(chunk, controller) {
       // If the chunk is an error, we can immediately emit it
-      const timeoutId = setTimeout(() => {
-        controller.enqueue(ObservableError.from(
-          new Error(`Operation timed out after ${ms}ms`),
-          "operator:timeout",
-          { timeoutMs: ms, chunk },
-        ));
-      }, ms);
+      if (isObservableError(chunk)) {
+        controller.enqueue(chunk);
+        return;
+      }
 
-      Promise.resolve().then(() => clearTimeout(timeoutId));
-      controller.enqueue(chunk);
+      if (
+        chunk !== null &&
+        (typeof chunk === "object" || typeof chunk === "function") &&
+        "then" in chunk &&
+        typeof chunk.then === "function"
+      ) {
+        const timeoutResult = Symbol("timeout");
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        const result = await Promise.race([
+          chunk,
+          new Promise<typeof timeoutResult>((resolve) => {
+            timeoutId = setTimeout(() => resolve(timeoutResult), ms);
+          }),
+        ]);
+
+        if (timeoutId !== undefined) {
+          clearTimeout(timeoutId);
+        }
+
+        if (result === timeoutResult) {
+          controller.enqueue(ObservableError.from(
+            new Error(`Operation timed out after ${ms}ms`),
+            "operator:timeout",
+            { timeoutMs: ms, chunk },
+          ));
+          return;
+        }
+
+        controller.enqueue(result as T);
+        return;
+      }
+
+      controller.enqueue(chunk as T);
     },
   });
 }

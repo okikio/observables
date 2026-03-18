@@ -490,6 +490,37 @@ test("waitForEvent utility - Immediate abort", async () => {
   dispatcher.close();
 });
 
+test("waitForEvent utility - Does not miss aborts during listener registration", async () => {
+  interface AsyncTestEvents extends EventMap {
+    data: { value: number };
+  }
+
+  const dispatcher = createEventDispatcher<AsyncTestEvents>();
+
+  const signal = {
+    aborted: false,
+    reason: new Error("Aborted during registration"),
+    addEventListener(
+      _type: string,
+      handler: EventListenerOrEventListenerObject,
+    ) {
+      const abort_handler = typeof handler === "function"
+        ? () => handler(new Event("abort"))
+        : () => handler.handleEvent(new Event("abort"));
+      signal.aborted = true;
+      abort_handler();
+    },
+    removeEventListener() {},
+  };
+
+  await expect(
+    waitForEvent(dispatcher, "data", { signal: signal as unknown as AbortSignal }),
+  ).rejects.toThrow("Aborted during registration");
+
+  dispatcher.emit("data", { value: 1 });
+  dispatcher.close();
+});
+
 test("withReplay utility - Replays last N emissions to new subscribers", () => {
   // Arrange
   const bus = new EventBus<number>();

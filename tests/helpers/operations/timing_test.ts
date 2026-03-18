@@ -1,12 +1,16 @@
 // deno-lint-ignore-file no-import-prefix
+import type { ObservableError } from "../../../error.ts";
 import { expect, test } from "jsr:@libs/testing@^5";
 import { delay as stdDelay } from "jsr:@std/async@^1";
 
-import { Observable } from "../../../observable.ts";
+import { isObservableError } from "../../../error.ts";
+import { createOperator } from "../../../helpers/operators.ts";
+import { Observable, pull } from "../../../observable.ts";
 import {
   debounce,
   delay,
   throttle,
+  timeout,
 } from "../../../helpers/operations/timing.ts";
 import { ignoreErrors } from "../../../helpers/operations/errors.ts";
 import { pipe } from "../../../helpers/pipe.ts";
@@ -15,6 +19,16 @@ import { pipe } from "../../../helpers/pipe.ts";
 async function collectValues<T>(obs: Observable<T>): Promise<T[]> {
   const values: T[] = [];
   for await (const value of obs) {
+    values.push(value);
+  }
+  return values;
+}
+
+async function collectValuesAllowErrors<T>(
+  obs: Observable<T>,
+): Promise<Array<T | ObservableError>> {
+  const values: Array<T | ObservableError> = [];
+  for await (const value of pull(obs, { throwError: false })) {
     values.push(value);
   }
   return values;
@@ -34,6 +48,9 @@ function measureTime<T>(
 // -----------------------------------------------------------------------------
 // delay() operator tests
 // -----------------------------------------------------------------------------
+
+const SLOW_PROMISE_DELAY_MS = 50;
+const LEAK_SETTLE_BUFFER_MS = 10;
 
 test("delay postpones emission by specified time", async () => {
   const source = Observable.of(1, 2, 3);
@@ -104,4 +121,60 @@ test("throttle limits emission rate", async () => {
   // Should throttle to fewer values than input
   expect(values.length).toBeLessThanOrEqual(3);
   expect(values[0]).toBe(1); // First value should always pass through
+});
+
+test("timeout resolves promise-like chunks before the deadline", async () => {
+  const source = Observable.of(1);
+  const resolveQuickly = createOperator<
+    number | ObservableError,
+    Promise<number> | ObservableError
+  >({
+    name: "resolveQuickly",
+    transform(chunk, controller) {
+      if (isObservableError(chunk)) {
+        controller.enqueue(chunk);
+        return;
+      }
+      controller.enqueue(Promise.resolve(chunk));
+    },
+  });
+  const result = pipe(source, resolveQuickly, timeout<number>(50));
+  const values = await collectValues(result);
+
+  expect(values).toEqual([1]);
+});
+
+test("timeout emits an ObservableError when a promise-like chunk is too slow", async () => {
+  const source = Observable.of(1);
+  const resolveSlowly = createOperator<
+    number | ObservableError,
+    Promise<number> | ObservableError
+  >({
+    name: "resolveSlowly",
+    transform(chunk, controller) {
+      if (isObservableError(chunk)) {
+        controller.enqueue(chunk);
+        return;
+      }
+      controller.enqueue(
+        new Promise<number>((resolve) =>
+          setTimeout(() => resolve(chunk), SLOW_PROMISE_DELAY_MS)
+        ),
+      );
+    },
+  });
+  const result = pipe(source, resolveSlowly, timeout<number>(10));
+  const values = await collectValuesAllowErrors(result);
+
+  expect(values).toHaveLength(1);
+  expect(isObservableError(values[0])).toBe(true);
+
+  if (isObservableError(values[0])) {
+    expect(values[0].operator).toBe("operator:timeout");
+    expect(values[0].message).toContain("timed out");
+  }
+
+  // Let the intentionally slow upstream promise finish so --trace-leaks does
+  // not report its still-pending timer after timeout() has already emitted.
+  await stdDelay(SLOW_PROMISE_DELAY_MS + LEAK_SETTLE_BUFFER_MS);
 });
