@@ -1,0 +1,51 @@
+#
+# One-time setup before this workflow can publish:
+# - Link `okikio/observables` in the JSR package settings so `deno publish`
+#   can exchange GitHub OIDC credentials for a short-lived publish token.
+# - Configure npm trusted publishing for the `publish.yml` workflow so
+#   `npm publish` can authenticate without a long-lived npm token.
+name: Publish
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish-jsr:
+    name: Publish to JSR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: denoland/setup-deno@v2
+
+      - name: Publish to JSR
+        run: deno publish
+
+  publish-npm:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: denoland/setup-deno@v2
+
+      - name: Build npm package
+        run: deno task build:npm
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish to npm
+        # npm trusted publishing uses the GitHub OIDC token minted from
+        # `id-token: write`, so no NODE_AUTH_TOKEN secret is required here.
+        run: |
+          cd npm
+          npm publish
