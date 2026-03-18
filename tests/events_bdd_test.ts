@@ -22,34 +22,6 @@ import {
 } from '../events.ts';
 import { Observable } from '../observable.ts';
 
-/**
- * Collects values from an Observable.
- */
-async function collectValues<T>(obs: Observable<T>, count?: number): Promise<T[]> {
-  const values: T[] = [];
-  for await (const value of obs) {
-    values.push(value);
-    if (count && values.length >= count) break;
-  }
-  return values;
-}
-
-/**
- * Collects values with timeout to prevent hanging tests.
- */
-async function collectWithTimeout<T>(
-  obs: Observable<T>,
-  timeoutMs: number = 1000,
-  count?: number
-): Promise<T[]> {
-  return await Promise.race([
-    collectValues(obs, count),
-    new Promise<T[]>((_, reject) =>
-      setTimeout(() => reject(new Error('Timeout')), timeoutMs)
-    )
-  ]);
-}
-
 describe("EventBus", () => {
   describe("Basic Operations", () => {
     it("should create an empty event bus", () => {
