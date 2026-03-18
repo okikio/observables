@@ -199,6 +199,9 @@ jobs:
       - resolve-release
     if: always() && needs.resolve-release.outputs.should_publish == 'true' && needs.resolve-release.outputs.publish_jsr == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v6
         with:
@@ -215,6 +218,9 @@ jobs:
       - resolve-release
     if: always() && needs.resolve-release.outputs.should_publish == 'true' && needs.resolve-release.outputs.publish_npm == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v6
         with:
