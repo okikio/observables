@@ -2,8 +2,12 @@
 # One-time setup before this workflow can release or publish:
 # - Link `okikio/observables` in the JSR package settings so `deno publish`
 #   can exchange GitHub OIDC credentials for a short-lived publish token.
-# - Configure npm trusted publishing for the `publish.yml` workflow so
-#   `npm publish` can authenticate without a long-lived npm token.
+# - Add an npm automation or granular publish token as the `NPM_TOKEN`
+#   repository secret for the very first npm publish, because npm only exposes
+#   trusted publisher settings after the package exists.
+# - After the first npm publish succeeds, configure npm trusted publishing for
+#   the `publish.yml` workflow and delete `NPM_TOKEN` if you no longer want the
+#   bootstrap fallback to be available.
 #
 # Release flow:
 #   push to main or manual release-and-publish dispatch
@@ -47,6 +51,15 @@ on:
           - both
           - jsr
           - npm
+      npm_auth:
+        description: "Authentication mode for npm publish-only retries."
+        required: true
+        type: choice
+        default: auto
+        options:
+          - auto
+          - trusted
+          - token
 
 permissions:
   contents: write
@@ -129,6 +142,7 @@ jobs:
       tag: ${{ steps.resolve.outputs.tag }}
       publish_jsr: ${{ steps.resolve.outputs.publish_jsr }}
       publish_npm: ${{ steps.resolve.outputs.publish_npm }}
+      npm_auth: ${{ steps.resolve.outputs.npm_auth }}
     steps:
       - name: Select the release tag to publish
         id: resolve
@@ -138,15 +152,18 @@ jobs:
           DISPATCH_ACTION: ${{ inputs.action }}
           DISPATCH_TAG: ${{ inputs.tag }}
           DISPATCH_TARGET: ${{ inputs.target }}
+          DISPATCH_NPM_AUTH: ${{ inputs.npm_auth }}
         run: |
           TAG=""
           TARGET="both"
+          NPM_AUTH="auto"
 
           if [ "$EVENT_NAME" = "release" ]; then
             TAG="$RELEASE_TAG"
           elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$DISPATCH_ACTION" = "publish-only" ]; then
             TAG="$DISPATCH_TAG"
             TARGET="$DISPATCH_TARGET"
+            NPM_AUTH="$DISPATCH_NPM_AUTH"
           fi
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$DISPATCH_ACTION" = "publish-only" ] && [ -z "$TAG" ]; then
@@ -162,6 +179,7 @@ jobs:
           echo "should_publish=true" >> "$GITHUB_OUTPUT"
           echo "ref=$TAG" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "npm_auth=$NPM_AUTH" >> "$GITHUB_OUTPUT"
 
           if [ "$TARGET" = "both" ] || [ "$TARGET" = "jsr" ]; then
             echo "publish_jsr=true" >> "$GITHUB_OUTPUT"
@@ -212,9 +230,55 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Publish to npm
-        # npm trusted publishing uses the GitHub OIDC token minted from
-        # `id-token: write`, so no NODE_AUTH_TOKEN secret is required here.
+      - name: Detect whether the npm package already exists
+        id: package
+        run: |
+          PACKAGE_NAME=$(node -p "require('./npm/package.json').name")
+          if npm view "$PACKAGE_NAME" version > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Select npm authentication mode
+        id: auth
+        env:
+          PACKAGE_EXISTS: ${{ steps.package.outputs.exists }}
+          REQUESTED_NPM_AUTH: ${{ needs.resolve-release.outputs.npm_auth }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          AUTH="$REQUESTED_NPM_AUTH"
+
+          if [ "$AUTH" = "auto" ]; then
+            if [ "$PACKAGE_EXISTS" = "true" ]; then
+              AUTH="trusted"
+            else
+              AUTH="token"
+            fi
+          fi
+
+          if [ "$AUTH" = "token" ] && [ -z "$NPM_TOKEN" ]; then
+            echo "NPM token publishing was selected, but the NPM_TOKEN secret is not configured." >&2
+            exit 1
+          fi
+
+          echo "mode=$AUTH" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to npm with token bootstrap
+        if: steps.auth.outputs.mode == 'token'
+        # Bootstrap publishes still use `--provenance --access public`, but they
+        # authenticate with an npm token because npm trusted publishers can only
+        # be configured after the package already exists.
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd npm
+          npm publish --provenance --access public
+
+      - name: Publish to npm with trusted publishing
+        if: steps.auth.outputs.mode == 'trusted'
+        # The steady-state path uses the GitHub OIDC token minted from
+        # `id-token: write`, so NODE_AUTH_TOKEN stays unset here.
         run: |
           cd npm
           npm publish --provenance --access public
