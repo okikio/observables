@@ -1,4 +1,15 @@
 // @filename: _types.ts
+/**
+ * Public observer and subscription types for the Observable entrypoints.
+ *
+ * @module
+ *
+ * This module collects the runtime-facing interfaces that show up whenever you
+ * subscribe to an Observable. It defines the enhanced `Observer<T>` and
+ * `Subscription` shapes used by this package, then re-exports the lower-level
+ * spec types from `./_spec.ts` for callers that need proposal-aligned building
+ * blocks.
+ */
 import type { SpecObserver, SpecSubscription } from "./_spec.ts";
 import type { Symbol } from "./symbol.ts";
 
