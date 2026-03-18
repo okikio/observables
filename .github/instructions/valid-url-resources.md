@@ -17,7 +17,7 @@ When performing web searches or accessing documentation, use only these trusted 
 ## Language & Runtime Documentation
 - deno.com, deno.land
 - nodejs.org
-- typescript lang.org
+- typescriptlang.org
 - developer.mozilla.org (MDN)
 - jsr.io (JavaScript registry)
 - npmjs.com
