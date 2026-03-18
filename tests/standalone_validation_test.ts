@@ -422,6 +422,3 @@ test("MEMORY: Observable cleanup prevents leaks", () => {
     "All subscriptions properly closed"
   );
 });
-
-console.log("\n✅ All macro/micro intent validation tests passed!");
-console.log("Library behavioral consistency: VALIDATED ✓");

@@ -697,8 +697,7 @@ describe("Advanced Operations", () => {
       enqueue(queue, 5);
       enqueue(queue, 6);
       
-      // Internal state: [5, 6, 3, 4] with head=2, tail=2
-      // toArray reads in order: starting from head (index 2), we get 3, 4, 5, 6
+      // After wrapping, toArray should still expose FIFO order to callers.
       expect(toArray(queue)).toEqual([3, 4, 5, 6]);
     });
 

@@ -37,10 +37,6 @@ type MinimalObserver<T> = {
 
 const range1000 = Array.from({ length: 1000 }, (_, index) => index);
 
-console.log(
-  "Note: WICG Observable is currently WPT/spec oriented, so this file benchmarks runnable libraries and leaves WICG comparison to spec-style tests.",
-);
-
 bench("Compare: create single-value observable - okikio", () => {
   do_not_optimize(OkObservable.of(1));
 });
