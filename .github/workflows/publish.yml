@@ -183,7 +183,7 @@ jobs:
     name: Publish to JSR
     needs:
       - resolve-release
-    if: needs.resolve-release.outputs.should_publish == 'true' && needs.resolve-release.outputs.publish_jsr == 'true'
+    if: always() && needs.resolve-release.outputs.should_publish == 'true' && needs.resolve-release.outputs.publish_jsr == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -199,7 +199,7 @@ jobs:
     name: Publish to npm
     needs:
       - resolve-release
-    if: needs.resolve-release.outputs.should_publish == 'true' && needs.resolve-release.outputs.publish_npm == 'true'
+    if: always() && needs.resolve-release.outputs.should_publish == 'true' && needs.resolve-release.outputs.publish_npm == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

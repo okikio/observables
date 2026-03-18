@@ -51,10 +51,10 @@ describe("publishing setup", () => {
       "publish_npm: ${{ steps.resolve.outputs.publish_npm }}",
     );
     expect(publish_workflow).toContain(
-      "needs.resolve-release.outputs.publish_jsr == 'true'",
+      "always() && needs.resolve-release.outputs.publish_jsr == 'true'",
     );
     expect(publish_workflow).toContain(
-      "needs.resolve-release.outputs.publish_npm == 'true'",
+      "always() && needs.resolve-release.outputs.publish_npm == 'true'",
     );
   });
 
