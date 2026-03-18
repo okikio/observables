@@ -24,6 +24,9 @@ jobs:
       - name: Type check
         run: deno check **/*.ts
 
+      - name: Doc lint
+        run: deno doc --lint mod.ts
+
       - name: Test
         run: deno task test
 

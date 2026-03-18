@@ -40,9 +40,15 @@ import { createStatefulOperator } from "../operators.ts";
  * @param predicate - Function to test each value
  * @returns A stream operator that tests all values
  */
-export function every<T>(predicate: (value: ExcludeError<T>, index: number) => boolean): Operator<T | ObservableError, boolean | ObservableError> {
-  return createStatefulOperator<T | ObservableError, boolean, { index: number, finished: boolean }>({
-    name: 'every',
+export function every<T>(
+  predicate: (value: ExcludeError<T>, index: number) => boolean,
+): Operator<T | ObservableError, boolean | ObservableError> {
+  return createStatefulOperator<
+    T | ObservableError,
+    boolean,
+    { index: number; finished: boolean }
+  >({
+    name: "every",
     createState: () => ({ index: 0, finished: false }),
     transform(chunk, state, controller) {
       if (state.finished) return;
@@ -61,7 +67,7 @@ export function every<T>(predicate: (value: ExcludeError<T>, index: number) => b
       if (!state.finished) {
         controller.enqueue(true);
       }
-    }
+    },
   });
 }
 
@@ -102,9 +108,15 @@ export function every<T>(predicate: (value: ExcludeError<T>, index: number) => b
  * @param predicate - Function to test each value
  * @returns A stream operator that tests for any matching value
  */
-export function some<T>(predicate: (value: ExcludeError<T>, index: number) => boolean): Operator<T | ObservableError, boolean | ObservableError> {
-  return createStatefulOperator<T | ObservableError, boolean, { index: number, finished: boolean }>({
-    name: 'some',
+export function some<T>(
+  predicate: (value: ExcludeError<T>, index: number) => boolean,
+): Operator<T | ObservableError, boolean | ObservableError> {
+  return createStatefulOperator<
+    T | ObservableError,
+    boolean,
+    { index: number; finished: boolean }
+  >({
+    name: "some",
     createState: () => ({ index: 0, finished: false }),
     transform(chunk, state, controller) {
       if (state.finished) return;
@@ -123,7 +135,7 @@ export function some<T>(predicate: (value: ExcludeError<T>, index: number) => bo
       if (!state.finished) {
         controller.enqueue(false);
       }
-    }
+    },
   });
 }
 
@@ -160,9 +172,11 @@ export function some<T>(predicate: (value: ExcludeError<T>, index: number) => bo
  * @param predicate - Function to test each value
  * @returns A stream operator that finds the first matching value
  */
-export function find<T>(predicate: (value: ExcludeError<T>, index: number) => boolean): Operator<T | ObservableError, T | ObservableError> {
+export function find<T>(
+  predicate: (value: ExcludeError<T>, index: number) => boolean,
+): Operator<T | ObservableError, T | ObservableError> {
   return createStatefulOperator<T | ObservableError, T, { index: number }>({
-    name: 'find',
+    name: "find",
     createState: () => ({ index: 0 }),
     transform(chunk, state, controller) {
       const result = predicate(chunk as ExcludeError<T>, state.index++);
@@ -172,7 +186,7 @@ export function find<T>(predicate: (value: ExcludeError<T>, index: number) => bo
         controller.enqueue(chunk);
         controller.terminate();
       }
-    }
+    },
   });
 }
 
@@ -216,12 +230,16 @@ export function find<T>(predicate: (value: ExcludeError<T>, index: number) => bo
  * @returns An operator that filters out duplicate values.
  */
 export function unique<T, K = T>(
-  keySelector?: (value: ExcludeError<T>) => K
+  keySelector?: (value: ExcludeError<T>) => K,
 ): Operator<T | ObservableError, ExcludeError<T> | ObservableError> {
-  return createStatefulOperator<T | ObservableError, ExcludeError<T> | ObservableError, {
-    seen: Set<K>
-  }>({
-    name: 'unique',
+  return createStatefulOperator<
+    T | ObservableError,
+    ExcludeError<T> | ObservableError,
+    {
+      seen: Set<K>;
+    }
+  >({
+    name: "unique",
     createState: () => ({ seen: new Set() }),
     transform(chunk, state, controller) {
       const key = keySelector
@@ -232,10 +250,9 @@ export function unique<T, K = T>(
         state.seen.add(key);
         controller.enqueue(chunk as ExcludeError<T>);
       }
-    }
+    },
   });
 }
-
 
 /**
  * Emits an item only if it is different from the previous one.

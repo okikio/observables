@@ -1,4 +1,4 @@
-import { test, expect } from "@libs/testing";
+import { expect, test } from "@libs/testing";
 
 import { Observable } from "../../../observable.ts";
 
@@ -22,9 +22,9 @@ test("Observable handles simple values", async () => {
 });
 
 test("Observable handles empty stream", async () => {
-  const source = new Observable<number>(observer => {
+  const source = new Observable<number>((observer) => {
     observer.complete();
-    return () => { };
+    return () => {};
   });
 
   const values = await collectValues(source);

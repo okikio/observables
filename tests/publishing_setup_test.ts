@@ -15,11 +15,11 @@ describe("publishing setup", () => {
     expect(deno_config).toContain(
       '"build:npm": "deno run -A scripts/build_npm.ts"',
     );
-		expect(deno_config).toContain('"publish": {');
-		expect(deno_config).toContain('"npm/"');
-		expect(deno_config).toContain('"scripts/"');
-		expect(deno_config).toContain('"exclude": [');
-	});
+    expect(deno_config).toContain('"publish": {');
+    expect(deno_config).toContain('"npm/"');
+    expect(deno_config).toContain('"scripts/"');
+    expect(deno_config).toContain('"exclude": [');
+  });
 
   it("stores publishing files in their expected repository locations", () => {
     for (

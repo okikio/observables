@@ -1,4 +1,4 @@
-import { test, expect } from "@libs/testing";
+import { expect, test } from "@libs/testing";
 
 import { Observable } from "../../observable.ts";
 import { Symbol } from "../../symbol.ts";
@@ -17,7 +17,7 @@ test("Observable.from with an iterable object", () => {
     },
     complete() {
       results.push("done");
-    }
+    },
   });
 
   expect(results).toEqual(["mercury", "venus", "earth", "done"]);
@@ -27,7 +27,7 @@ test("Observable.from with Symbol.observable object", () => {
   const results: string[] = [];
   const observable = {
     [Symbol.observable]() {
-      return new Observable<string>(observer => {
+      return new Observable<string>((observer) => {
         // Simulate async behavior
         setTimeout(() => {
           observer.next("hello");
@@ -37,7 +37,7 @@ test("Observable.from with Symbol.observable object", () => {
 
         return () => results.push("cleaned up");
       });
-    }
+    },
   };
 
   Observable.from(observable).subscribe({
@@ -46,14 +46,14 @@ test("Observable.from with Symbol.observable object", () => {
     },
     complete() {
       results.push("done");
-    }
+    },
   });
 
   // Initially empty due to setTimeout
   expect(results).toEqual([]);
 
   // Wait for setTimeout to complete
-  return new Promise<void>(resolve => {
+  return new Promise<void>((resolve) => {
     setTimeout(() => {
       expect(results).toEqual(["hello", "world", "done", "cleaned up"]);
       resolve();
@@ -62,7 +62,7 @@ test("Observable.from with Symbol.observable object", () => {
 });
 
 test("Observable.from returns the same Observable if passed an Observable", () => {
-  const original = new Observable(_ => { });
+  const original = new Observable((_) => {});
   const result = Observable.from(original);
 
   expect(result).toBe(original);
@@ -96,13 +96,13 @@ test("slow consumer with fast producer using pull strategy", async () => {
   const timestamps: number[] = [];
 
   // Fast producer
-  const fastNumbers = new Observable<number>(observer => {
+  const fastNumbers = new Observable<number>((observer) => {
     (async () => {
       for (let i = 0; i < 100; i++) {
         if (observer.closed) break;
         observer.next(i);
         produced.push(i);
-        await new Promise(r => setTimeout(r, 5)); // Emit every 5ms
+        await new Promise((r) => setTimeout(r, 5)); // Emit every 5ms
       }
       observer.complete();
     })();
@@ -110,10 +110,12 @@ test("slow consumer with fast producer using pull strategy", async () => {
 
   // Slow consumer with backpressure via pull
   const startTime = Date.now();
-  for await (const num of fastNumbers.pull({ strategy: { highWaterMark: 5 } })) {
+  for await (
+    const num of fastNumbers.pull({ strategy: { highWaterMark: 5 } })
+  ) {
     consumed.push(num);
     timestamps.push(Date.now() - startTime);
-    await new Promise(r => setTimeout(r, 50)); // Process every 50ms (10x slower)
+    await new Promise((r) => setTimeout(r, 50)); // Process every 50ms (10x slower)
   }
 
   // Should have processed all items without memory issues
@@ -127,7 +129,7 @@ test("slow consumer with fast producer using pull strategy", async () => {
   }
 
   // Should see some larger gaps (where production paused)
-  const pauseCount = productionGaps.filter(gap => gap > 40).length;
+  const pauseCount = productionGaps.filter((gap) => gap > 40).length;
   expect(pauseCount).toBeGreaterThan(0);
 });
 
@@ -135,7 +137,7 @@ test("breaking out of for-await loop triggers cleanup", async () => {
   const resources = { active: false };
   let iterationCount = 0;
 
-  const infinite = new Observable(observer => {
+  const infinite = new Observable((observer) => {
     resources.active = true;
     const id = setInterval(() => observer.next(Date.now()), 10);
 
@@ -157,18 +159,20 @@ test("breaking out of for-await loop triggers cleanup", async () => {
 });
 
 test("pull with error during async iteration", async () => {
-  const errorObs = new Observable<number>(observer => {
+  const errorObs = new Observable<number>((observer) => {
     observer.next(1);
     observer.next(2);
     observer.error(new Error("stream error"));
-    return () => { };
+    return () => {};
   });
 
   const results: number[] = [];
   let caughtError: Error | null = null;
 
   try {
-    for await (const value of errorObs.pull({ strategy: { highWaterMark: 10 } })) {
+    for await (
+      const value of errorObs.pull({ strategy: { highWaterMark: 10 } })
+    ) {
       results.push(value);
     }
   } catch (err) {
@@ -181,7 +185,7 @@ test("pull with error during async iteration", async () => {
 });
 
 test("multiple iterators with concurrent operations", async () => {
-  const shared = new Observable<number>(observer => {
+  const shared = new Observable<number>((observer) => {
     let counter = 0;
     const id = setInterval(() => {
       observer.next(counter++);
@@ -201,14 +205,14 @@ test("multiple iterators with concurrent operations", async () => {
   const iterator1 = (async () => {
     for await (const value of shared.pull({ strategy: { highWaterMark: 2 } })) {
       results1.push(value);
-      await new Promise(r => setTimeout(r, 5)); // Fast consumer
+      await new Promise((r) => setTimeout(r, 5)); // Fast consumer
     }
   })();
 
   const iterator2 = (async () => {
     for await (const value of shared.pull({ strategy: { highWaterMark: 3 } })) {
       results2.push(value);
-      await new Promise(r => setTimeout(r, 25)); // Slow consumer
+      await new Promise((r) => setTimeout(r, 25)); // Slow consumer
     }
   })();
 
@@ -230,17 +234,17 @@ test("transferring to ReadableStream and back", async () => {
   const stream = new ReadableStream({
     start(controller) {
       const subscription = source.subscribe({
-        next: value => controller.enqueue(value),
+        next: (value) => controller.enqueue(value),
         complete: () => controller.close(),
-        error: err => controller.error(err)
+        error: (err) => controller.error(err),
       });
 
       return () => subscription.unsubscribe();
-    }
+    },
   });
 
   // Convert back to Observable
-  const roundTrip = new Observable(observer => {
+  const roundTrip = new Observable((observer) => {
     const reader = stream.getReader();
 
     (async () => {
@@ -275,8 +279,8 @@ test("transferring to ReadableStream and back", async () => {
 
 test("SharedArrayBuffer coordination between workers", async () => {
   // Skip if SharedArrayBuffer not available
-  if (typeof SharedArrayBuffer === 'undefined') {
-    console.log('SharedArrayBuffer not available, skipping test');
+  if (typeof SharedArrayBuffer === "undefined") {
+    console.log("SharedArrayBuffer not available, skipping test");
     return;
   }
 
@@ -285,7 +289,7 @@ test("SharedArrayBuffer coordination between workers", async () => {
   const view = new Int32Array(buffer);
 
   // Observable that increments the shared value
-  const counter = new Observable<number>(observer => {
+  const counter = new Observable<number>((observer) => {
     let count = 0;
     const id = setInterval(() => {
       if (count >= 10) {
@@ -335,11 +339,14 @@ test("React-like hook with AsyncIterator", async () => {
   // Mock React with state and effect hooks
   function useObservableState(observable: Observable<number>) {
     let state = null;
-    const setState = (val: number) => { state = val; events.push(`setState:${val}`); };
+    const setState = (val: number) => {
+      state = val;
+      events.push(`setState:${val}`);
+    };
 
     // Mock effect hook
     (async () => {
-      events.push('effect started');
+      events.push("effect started");
 
       try {
         for await (const value of observable) {
@@ -351,7 +358,7 @@ test("React-like hook with AsyncIterator", async () => {
 
       return () => {
         _cleanupCalled = true;
-        events.push('effect cleanup');
+        events.push("effect cleanup");
       };
     })();
 
@@ -359,13 +366,13 @@ test("React-like hook with AsyncIterator", async () => {
   }
 
   // Observable that emits values then errors
-  const source = new Observable<number>(observer => {
+  const source = new Observable<number>((observer) => {
     observer.next(1);
     observer.next(2);
-    setTimeout(() => observer.error(new Error('test error')), 10);
+    setTimeout(() => observer.error(new Error("test error")), 10);
 
     return () => {
-      events.push('observable cleanup');
+      events.push("observable cleanup");
     };
   });
 
@@ -373,14 +380,14 @@ test("React-like hook with AsyncIterator", async () => {
   useObservableState(source);
 
   // Wait for async operations
-  await new Promise(r => setTimeout(r, 50));
+  await new Promise((r) => setTimeout(r, 50));
 
   // Verify correct sequence
-  expect(events).toContain('effect started');
-  expect(events).toContain('setState:1');
-  expect(events).toContain('setState:2');
-  expect(events).toContain('error:test error');
-  expect(events).toContain('observable cleanup');
+  expect(events).toContain("effect started");
+  expect(events).toContain("setState:1");
+  expect(events).toContain("setState:2");
+  expect(events).toContain("error:test error");
+  expect(events).toContain("observable cleanup");
 });
 
 test("combining multiple AsyncIterables with resource management", async () => {
@@ -388,29 +395,33 @@ test("combining multiple AsyncIterables with resource management", async () => {
   const results = [];
 
   // Two sources with tracked resources
-  const sourceA = new Observable<string>(observer => {
+  const sourceA = new Observable<string>((observer) => {
     resources.a = true;
-    observer.next('a1');
-    observer.next('a2');
+    observer.next("a1");
+    observer.next("a2");
     observer.complete();
 
-    return () => { resources.a = false; };
+    return () => {
+      resources.a = false;
+    };
   });
 
-  const sourceB = new Observable<string>(observer => {
+  const sourceB = new Observable<string>((observer) => {
     resources.b = true;
-    observer.next('b1');
-    observer.next('b2');
+    observer.next("b1");
+    observer.next("b2");
     observer.complete();
 
-    return () => { resources.b = false; };
+    return () => {
+      resources.b = false;
+    };
   });
 
   // Helper to merge AsyncIterables
   async function* merge<T>(...iterables: AsyncIterable<T>[]) {
-    const iterators = iterables.map(i => i[Symbol.asyncIterator]());
+    const iterators = iterables.map((i) => i[Symbol.asyncIterator]());
     const pending = iterators.map((iterator, index) =>
-      iterator.next().then(result => ({ result, index }))
+      iterator.next().then((result) => ({ result, index }))
     );
 
     try {
@@ -427,14 +438,14 @@ test("combining multiple AsyncIterables with resource management", async () => {
         // Replace this promise
         if (iterators[index]) {
           pending[index] = iterators[index].next()
-            .then(result => ({ result, index }));
+            .then((result) => ({ result, index }));
         }
 
         yield result.value;
       }
     } finally {
       // Ensure all iterators are properly closed
-      await Promise.all(iterators.map(i => i.return?.()));
+      await Promise.all(iterators.map((i) => i.return?.()));
     }
   }
 
@@ -454,15 +465,17 @@ test("combining multiple AsyncIterables with resource management", async () => {
 test("pull with varying buffer sizes and producer speeds", async () => {
   const timestamps: number[] = [];
   const bufferSizes = [1, 10, 100];
-  const results: { value: number, time: number, bufferSize: number }[] = [];
+  const results: { value: number; time: number; bufferSize: number }[] = [];
 
   for (const bufferSize of bufferSizes) {
     // Fast producer that tracks emission time
-    const fastProducer = new Observable<{ value: number, time: number, bufferSize: number }>(observer => {
+    const fastProducer = new Observable<
+      { value: number; time: number; bufferSize: number }
+    >((observer) => {
       (async () => {
         for (let i = 0; i < 10; i++) {
           observer.next({ value: i, time: Date.now(), bufferSize });
-          await new Promise(r => setTimeout(r, 5));
+          await new Promise((r) => setTimeout(r, 5));
         }
         observer.complete();
       })();
@@ -470,22 +483,30 @@ test("pull with varying buffer sizes and producer speeds", async () => {
 
     // Slow consumer
     const start = Date.now();
-    for await (const item of fastProducer.pull({
-      strategy: { highWaterMark: bufferSize }
-    })) {
+    for await (
+      const item of fastProducer.pull({
+        strategy: { highWaterMark: bufferSize },
+      })
+    ) {
       timestamps.push(Date.now() - start);
       results.push(item);
-      await new Promise(r => setTimeout(r, 20)); // Process slower than production
+      await new Promise((r) => setTimeout(r, 20)); // Process slower than production
     }
   }
 
   // Different buffer sizes should show different backpressure behavior
   // Group results by buffer size
-  const byBufferSize = results.reduce((acc, item) => {
-    acc[item.bufferSize] = acc[item.bufferSize] || [];
-    acc[item.bufferSize].push(item);
-    return acc;
-  }, {} as Record<number, ({ value: number, time: number, bufferSize: number })[]>);
+  const byBufferSize = results.reduce(
+    (acc, item) => {
+      acc[item.bufferSize] = acc[item.bufferSize] || [];
+      acc[item.bufferSize].push(item);
+      return acc;
+    },
+    {} as Record<
+      number,
+      ({ value: number; time: number; bufferSize: number })[]
+    >,
+  );
 
   // Verify all values received for each buffer size
   expect(Object.keys(byBufferSize).length).toBe(bufferSizes.length);
@@ -500,7 +521,7 @@ test("pull with varying buffer sizes and producer speeds", async () => {
 test("Symbol.asyncIterator early termination with try/finally", async () => {
   const cleanup = { called: false };
 
-  const source = new Observable(observer => {
+  const source = new Observable((observer) => {
     let i = 0;
     const id = setInterval(() => observer.next(i++), 10);
 

@@ -32,7 +32,8 @@ applyTo: "**/*.ts,**/*.tsx"
 ## API and type design
 
 - Prefer explicit, narrow return types at module boundaries.
-- Prefer `Iterable` and `AsyncIterable` in public APIs over arrays unless arrays are clearly the better fit.
+- Prefer `Iterable` and `AsyncIterable` in public APIs over arrays unless arrays
+  are clearly the better fit.
 - Avoid `any`. Prefer unions, generics, discriminated unions, and narrowing.
 - Keep public keys stable unless an explicit migration is approved.
 
@@ -45,6 +46,7 @@ applyTo: "**/*.ts,**/*.tsx"
 - Builder functions use lower camel case nouns.
 
 Examples:
+
 - `error_context`
 - `ObservableError`
 - `CompleteEvent`
@@ -60,13 +62,19 @@ Examples:
 
 For every exported function, interface, type alias, and constant:
 
-- Write TSDoc in familiar language that a reasonably experienced JavaScript or TypeScript developer would understand without pausing.
+- Write TSDoc in familiar language that a reasonably experienced JavaScript or
+  TypeScript developer would understand without pausing.
 - Explain why it exists, not just what it is.
-- Ground the explanation in the problem being solved, the approach taken, and the assumptions or edge cases.
-- If you need a technical term, explain the concrete behavior first, then introduce the term if it is still useful.
-- When using technical or abstract terms, define them in concrete language the reader can picture in this codebase.
-- Tie abstractions to a real behavior, cost, failure mode, or downstream benefit.
-- Every field of an exported interface or public type needs its own JSDoc comment.
+- Ground the explanation in the problem being solved, the approach taken, and
+  the assumptions or edge cases.
+- If you need a technical term, explain the concrete behavior first, then
+  introduce the term if it is still useful.
+- When using technical or abstract terms, define them in concrete language the
+  reader can picture in this codebase.
+- Tie abstractions to a real behavior, cost, failure mode, or downstream
+  benefit.
+- Every field of an exported interface or public type needs its own JSDoc
+  comment.
 - Any type referenced in a public signature must itself be exported.
 
 For non-trivial public APIs:
@@ -78,24 +86,26 @@ For non-trivial public APIs:
 Every `@example` block must have a descriptive name.
 
 Good:
-```ts
+
+````ts
 /**
  * @example Aligning a multi-line value at its insertion column
  * ```ts
  * align('hello');
  * ```
  */
-```
+````
 
 Bad:
-```ts
+
+````ts
 /**
  * @example
  * ```ts
  * align('hello');
  * ```
  */
-```
+````
 
 ## Complex logic
 
@@ -103,24 +113,24 @@ When logic is non-obvious, explain it clearly in code comments or TSDoc.
 
 This especially applies to:
 
-* regex-heavy code
-* bitwise or binary logic
-* tricky branching
-* performance-sensitive code
+- regex-heavy code
+- bitwise or binary logic
+- tricky branching
+- performance-sensitive code
 
 When needed, include:
 
-* a short explanation of intent
-* the key assumptions
-* a step-by-step walkthrough
-* clarification of abstract codes or markers
-* a grounded explanation of technical terms
-* an ASCII diagram if it materially improves understanding
+- a short explanation of intent
+- the key assumptions
+- a step-by-step walkthrough
+- clarification of abstract codes or markers
+- a grounded explanation of technical terms
+- an ASCII diagram if it materially improves understanding
 
 ## Error handling
 
-* Prefer typed errors or discriminated union results where appropriate.
-* At system boundaries, validate inputs explicitly.
+- Prefer typed errors or discriminated union results where appropriate.
+- At system boundaries, validate inputs explicitly.
 
 ## Validation
 

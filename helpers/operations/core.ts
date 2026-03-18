@@ -69,9 +69,13 @@ import { createOperator, createStatefulOperator } from "../operators.ts";
  * @param project - Function that transforms each data item
  */
 export function map<T, R>(
-  project: (value: ExcludeError<T>, index: number) => R
+  project: (value: ExcludeError<T>, index: number) => R,
 ): Operator<T | ObservableError, R | ObservableError> {
-  return createStatefulOperator<T | ObservableError, R | ObservableError, { index: number }>({
+  return createStatefulOperator<
+    T | ObservableError,
+    R | ObservableError,
+    { index: number }
+  >({
     name: "map",
     createState: () => ({ index: 0 }),
     transform(chunk, state, controller) {
@@ -110,7 +114,11 @@ export function map<T, R>(
 export function filter<T>(
   predicate: (value: ExcludeError<T>, index: number) => boolean,
 ): Operator<T | ObservableError, ExcludeError<T> | ObservableError> {
-  return createStatefulOperator<T | ObservableError, ExcludeError<T> | ObservableError, { index: number }>({
+  return createStatefulOperator<
+    T | ObservableError,
+    ExcludeError<T> | ObservableError,
+    { index: number }
+  >({
     name: "filter",
     createState: () => ({ index: 0 }),
     transform(chunk, state, controller) {

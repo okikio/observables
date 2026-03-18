@@ -1,7 +1,10 @@
-import { test, expect } from "@libs/testing";
+import { expect, test } from "@libs/testing";
 
 import { Observable } from "../../observable.ts";
-import { createOperator, createStatefulOperator } from "../../helpers/operators.ts";
+import {
+  createOperator,
+  createStatefulOperator,
+} from "../../helpers/operators.ts";
 import { pipe } from "../../helpers/pipe.ts";
 import { ignoreErrors } from "../../helpers/operations/errors.ts";
 
@@ -21,10 +24,10 @@ async function collectValues<T>(obs: Observable<T>): Promise<T[]> {
 test("createOperator creates a working transform operator", async () => {
   // Create a simple doubling operator
   const double = createOperator<number, number>({
-    name: 'double',
+    name: "double",
     transform(chunk, controller) {
       controller.enqueue(chunk * 2);
-    }
+    },
   });
 
   const source = Observable.of(1, 2, 3);
@@ -37,32 +40,33 @@ test("createOperator creates a working transform operator", async () => {
 test("createOperator with existing TransformStream", async () => {
   // Create operator using an existing TransformStream
   const stringify = createOperator<number, string>({
-    name: 'stringify',
-    stream: () => new TransformStream({
-      transform(chunk: number, controller) {
-        controller.enqueue(String(chunk));
-      }
-    })
+    name: "stringify",
+    stream: () =>
+      new TransformStream({
+        transform(chunk: number, controller) {
+          controller.enqueue(String(chunk));
+        },
+      }),
   });
 
   const source = Observable.of(1, 2, 3);
   const result = pipe(source, ignoreErrors(), stringify);
 
   const values = await collectValues(result);
-  expect(values).toEqual(['1', '2', '3']);
+  expect(values).toEqual(["1", "2", "3"]);
 });
 
 test("createOperator handles errors in transform function", async () => {
   // Create an operator that throws on certain values
   const errorOnTwo = createOperator<unknown, number>({
-    name: 'errorOnTwo',
-    errorMode: 'ignore',
+    name: "errorOnTwo",
+    errorMode: "ignore",
     transform(chunk, controller) {
       if (chunk === 2) {
-        throw new Error('Cannot process 2');
+        throw new Error("Cannot process 2");
       }
       controller.enqueue(chunk as number);
-    }
+    },
   });
 
   const source = Observable.of(1, 2, 3);
@@ -80,12 +84,12 @@ test("createOperator handles errors in transform function", async () => {
 test("createStatefulOperator maintains state across transforms", async () => {
   // Create a running sum operator
   const runningSum = createStatefulOperator<number, number, { sum: number }>({
-    name: 'runningSum',
+    name: "runningSum",
     createState: () => ({ sum: 0 }),
     transform(chunk, state, controller) {
       state.sum += chunk;
       controller.enqueue(state.sum);
-    }
+    },
   });
 
   const source = Observable.of(1, 2, 3, 4);
@@ -98,34 +102,38 @@ test("createStatefulOperator maintains state across transforms", async () => {
 test("createStatefulOperator with index tracking", async () => {
   // Create an operator that adds index to each value
   const withIndex = createStatefulOperator<string, string, { index: number }>({
-    name: 'withIndex',
+    name: "withIndex",
     createState: () => ({ index: 0 }),
     transform(chunk, state, controller) {
       controller.enqueue(`${state.index}:${chunk}`);
       state.index++;
-    }
+    },
   });
 
-  const source = Observable.of('a', 'b', 'c');
+  const source = Observable.of("a", "b", "c");
   const result = pipe(source, ignoreErrors(), withIndex);
 
   const values = await collectValues(result);
-  expect(values).toEqual(['0:a', '1:b', '2:c']);
+  expect(values).toEqual(["0:a", "1:b", "2:c"]);
 });
 
 test("createStatefulOperator handles errors in transform function", async () => {
   // Create a stateful operator that errors on certain conditions
-  const errorOnSecond = createStatefulOperator<number, number, { count: number }>({
-    name: 'errorOnSecond',
+  const errorOnSecond = createStatefulOperator<
+    number,
+    number,
+    { count: number }
+  >({
+    name: "errorOnSecond",
     createState: () => ({ count: 0 }),
-    errorMode: 'ignore',
+    errorMode: "ignore",
     transform(chunk, state, controller) {
       state.count++;
       if (state.count === 2) {
-        throw new Error('Error on second item');
+        throw new Error("Error on second item");
       }
       controller.enqueue(chunk);
-    }
+    },
   });
 
   const source = Observable.of(1, 2, 3);
@@ -143,10 +151,10 @@ test("createStatefulOperator handles errors in transform function", async () => 
 test("operators work with simple composition", async () => {
   // Create a simple operator
   const addOne = createOperator<number, number>({
-    name: 'addOne',
+    name: "addOne",
     transform(chunk, controller) {
       controller.enqueue(chunk + 1);
-    }
+    },
   });
 
   const source = Observable.of(1, 2, 3);

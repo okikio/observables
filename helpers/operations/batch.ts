@@ -47,7 +47,10 @@ import { createStatefulOperator } from "../operators.ts";
  * @typeParam T - Type of values from the source stream
  * @returns A stream operator that collects values into an array
  */
-export function toArray<T>(): Operator<T | ObservableError, T[] | ObservableError> {
+export function toArray<T>(): Operator<
+  T | ObservableError,
+  T[] | ObservableError
+> {
   return createStatefulOperator<T | ObservableError, T[], T[]>({
     name: "toArray",
     createState: () => [],
@@ -106,13 +109,15 @@ export function toArray<T>(): Operator<T | ObservableError, T[] | ObservableErro
  * @param size - The size of each batch
  * @returns A stream operator that batches values
  */
-export function batch<T>(size: number): Operator<T | ObservableError, T[] | ObservableError> {
+export function batch<T>(
+  size: number,
+): Operator<T | ObservableError, T[] | ObservableError> {
   if (size <= 0) {
-    throw new Error('batch: size must be greater than 0');
+    throw new Error("batch: size must be greater than 0");
   }
 
   return createStatefulOperator<T | ObservableError, T[], T[]>({
-    name: 'batch',
+    name: "batch",
     createState: () => [],
     transform(chunk, buffer, controller) {
       // If chunk is an error, we should not push it to the buffer
@@ -127,6 +132,6 @@ export function batch<T>(size: number): Operator<T | ObservableError, T[] | Obse
       if (buffer.length > 0) {
         controller.enqueue(Array.from(buffer));
       }
-    }
+    },
   });
 }

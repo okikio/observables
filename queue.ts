@@ -14,10 +14,10 @@
  * const taskQueue = createQueue<string>(100);  // capacity of 100
  * enqueue(taskQueue, 'process-order-123');     // add task
  * enqueue(taskQueue, 'send-email-456');        // add another
- * 
+ *
  * console.log(peek(taskQueue));                // 'process-order-123' (doesn't remove)
  * console.log(dequeue(taskQueue));             // 'process-order-123' (removes and returns)
- * 
+ *
  * clear(taskQueue);                            // empty the queue instantly
  * ```
  */
@@ -28,7 +28,7 @@
 
 /**
  * Represents a circular buffer-based queue for efficient FIFO operations.
- * 
+ *
  * @template T - The type of elements stored in the queue
  */
 export interface Queue<T> {
@@ -62,14 +62,14 @@ function advanceIndex(index: number, capacity: number): number {
 
 /**
  * Creates a new empty queue with the specified capacity.
- * 
+ *
  * The queue uses a circular buffer internally, which means operations
- * like enqueue and dequeue run in constant O(1) time regardless of 
+ * like enqueue and dequeue run in constant O(1) time regardless of
  * queue size.
  *
  * @param capacity - Maximum number of elements the queue can hold (default: 1000)
  * @returns A new empty queue ready for use
- * 
+ *
  * @example
  * ```
  * const messageQueue = createQueue<string>(50);   // for messages
@@ -82,7 +82,7 @@ export function createQueue<T>(capacity: number = 1000): Queue<T> {
     head: 0,
     tail: 0,
     size: 0,
-    capacity
+    capacity,
   };
 }
 
@@ -97,7 +97,7 @@ export function createQueue<T>(capacity: number = 1000): Queue<T> {
  * @param queue - The target queue
  * @param item - Element to add to the queue
  * @throws Error if the queue is at capacity
- * 
+ *
  * @example
  * ```
  * enqueue(userQueue, { id: 123, name: 'Alice' });
@@ -106,9 +106,11 @@ export function createQueue<T>(capacity: number = 1000): Queue<T> {
  */
 export function enqueue<T>(queue: Queue<T>, item: T): void {
   if (isFull(queue)) {
-    throw new Error(`Queue overflow: cannot add item, capacity ${queue.capacity} reached`);
+    throw new Error(
+      `Queue overflow: cannot add item, capacity ${queue.capacity} reached`,
+    );
   }
-  
+
   queue.items[queue.tail] = item;
   queue.tail = advanceIndex(queue.tail, queue.capacity);
   queue.size++;
@@ -118,9 +120,9 @@ export function enqueue<T>(queue: Queue<T>, item: T): void {
  * Removes and returns the front element from the queue (FIFO: first in, first out).
  * Runs in O(1) constant time.
  *
- * @param queue - The target queue  
+ * @param queue - The target queue
  * @returns The front element, or undefined if queue is empty
- * 
+ *
  * @example
  * ```
  * const nextTask = dequeue(taskQueue);
@@ -133,12 +135,12 @@ export function dequeue<T>(queue: Queue<T>): T | undefined {
   if (isEmpty(queue)) {
     return undefined;
   }
-  
+
   const item = queue.items[queue.head];
-  queue.items[queue.head] = undefined as unknown as T;  // help garbage collector
+  queue.items[queue.head] = undefined as unknown as T; // help garbage collector
   queue.head = advanceIndex(queue.head, queue.capacity);
   queue.size--;
-  
+
   return item;
 }
 
@@ -149,7 +151,7 @@ export function dequeue<T>(queue: Queue<T>): T | undefined {
  *
  * @param queue - The target queue
  * @returns The front element, or undefined if queue is empty
- * 
+ *
  * @example
  * ```
  * const nextInLine = peek(queue);
@@ -169,7 +171,7 @@ export function peek<T>(queue: Queue<T>): T | undefined {
 
 /**
  * Checks if the queue contains no elements.
- * 
+ *
  * @param queue - The target queue
  * @returns true if the queue is empty, false otherwise
  */
@@ -179,7 +181,7 @@ export function isEmpty<T>(queue: Queue<T>): boolean {
 
 /**
  * Checks if the queue has reached its maximum capacity.
- * 
+ *
  * @param queue - The target queue
  * @returns true if the queue is full, false otherwise
  */
@@ -189,7 +191,7 @@ export function isFull<T>(queue: Queue<T>): boolean {
 
 /**
  * Returns the current number of elements in the queue.
- * 
+ *
  * @param queue - The target queue
  * @returns Current queue size (0 to capacity)
  */
@@ -199,10 +201,10 @@ export function getSize<T>(queue: Queue<T>): number {
 
 /**
  * Returns how many more elements can be added before hitting capacity.
- * 
- * @param queue - The target queue  
+ *
+ * @param queue - The target queue
  * @returns Number of available slots
- * 
+ *
  * @example
  * ```
  * if (remainingSpace(queue) < 10) {
@@ -222,11 +224,11 @@ export function remainingSpace<T>(queue: Queue<T>): number {
  * Empties the queue instantly using the `.length = 0` optimization[87][90].
  * This immediately releases all object references for garbage collection,
  * making it much faster than dequeuing items one by one.
- * 
+ *
  * Runs in O(1) constant time regardless of queue size.
  *
  * @param queue - The target queue
- * 
+ *
  * @example
  * ```
  * // Instead of: while (!isEmpty(queue)) dequeue(queue);  // O(n)
@@ -236,8 +238,8 @@ export function remainingSpace<T>(queue: Queue<T>): number {
 export function clear<T>(queue: Queue<T>): void {
   // Fast array truncation - instantly releases references for GC[87][90]
   queue.items.length = 0;
-  queue.items.length = queue.capacity;  // restore original capacity
-  
+  queue.items.length = queue.capacity; // restore original capacity
+
   // Reset pointers
   queue.head = 0;
   queue.tail = 0;
@@ -247,17 +249,17 @@ export function clear<T>(queue: Queue<T>): void {
 /**
  * Creates a new array containing all queue elements in order (front to back).
  * Useful for debugging, logging, or when you need array methods.
- * 
+ *
  * Note: This is O(n) operation - use sparingly in performance-critical code.
  *
  * @param queue - The source queue
  * @returns New array with queue elements in FIFO order
- * 
+ *
  * @example
  * ```
  * const queueSnapshot = toArray(queue);
  * console.log('Current queue:', queueSnapshot.join(' -> '));
- * 
+ *
  * // Process without modifying original queue
  * const urgentItems = queueSnapshot.filter(item => item.priority === 'urgent');
  * ```
@@ -266,7 +268,7 @@ export function toArray<T>(queue: Queue<T>): T[] {
   if (isEmpty(queue)) {
     return [];
   }
-  
+
   const result = new Array<T>(queue.size);
   let index = queue.head;
 
@@ -281,10 +283,10 @@ export function toArray<T>(queue: Queue<T>): T[] {
 /**
  * Applies a function to each element in the queue without modifying it.
  * Elements are visited in FIFO order (front to back).
- * 
+ *
  * @param queue - The target queue
  * @param callback - Function to call for each element
- * 
+ *
  * @example
  * ```
  * // Log all pending tasks
@@ -293,7 +295,10 @@ export function toArray<T>(queue: Queue<T>): T[] {
  * });
  * ```
  */
-export function forEach<T>(queue: Queue<T>, callback: (item: T, index: number) => void): void {
+export function forEach<T>(
+  queue: Queue<T>,
+  callback: (item: T, index: number) => void,
+): void {
   let index = queue.head;
 
   for (let i = 0; i < queue.size; i++) {

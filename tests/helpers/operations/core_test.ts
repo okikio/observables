@@ -1,7 +1,14 @@
-import { test, expect } from "@libs/testing";
+import { expect, test } from "@libs/testing";
 
 import { Observable } from "../../../observable.ts";
-import { map, filter, take, drop, tap, scan } from "../../../helpers/operations/core.ts";
+import {
+  drop,
+  filter,
+  map,
+  scan,
+  take,
+  tap,
+} from "../../../helpers/operations/core.ts";
 import { pipe } from "../../../helpers/pipe.ts";
 
 // Helper to collect all values from an observable
@@ -27,11 +34,11 @@ test("map transforms each value", async () => {
 });
 
 test("map provides index parameter", async () => {
-  const source = Observable.of('a', 'b', 'c');
+  const source = Observable.of("a", "b", "c");
   const result = pipe(source, map((x, i) => `${x}${i}`));
 
   const values = await collectValues(result);
-  expect(values).toEqual(['a0', 'b1', 'c2']);
+  expect(values).toEqual(["a0", "b1", "c2"]);
 });
 
 // -----------------------------------------------------------------------------
@@ -47,11 +54,11 @@ test("filter keeps only matching values", async () => {
 });
 
 test("filter provides index parameter", async () => {
-  const source = Observable.of('a', 'b', 'c', 'd');
+  const source = Observable.of("a", "b", "c", "d");
   const result = pipe(source, filter((_x, i) => i % 2 === 0));
 
   const values = await collectValues(result);
-  expect(values).toEqual(['a', 'c']);
+  expect(values).toEqual(["a", "c"]);
 });
 
 // -----------------------------------------------------------------------------
@@ -117,9 +124,12 @@ test("drop more than available emits no values", async () => {
 test("tap executes side effect without changing values", async () => {
   const sideEffects: number[] = [];
   const source = Observable.of(1, 2, 3);
-  const result = pipe(source, tap((x) => {
-    sideEffects.push(x * 10);
-  }));
+  const result = pipe(
+    source,
+    tap((x) => {
+      sideEffects.push(x * 10);
+    }),
+  );
 
   const values = await collectValues(result);
 
@@ -133,7 +143,7 @@ test("tap executes side effect without changing values", async () => {
 
 test("mapValue transforms only non-error values", async () => {
   const source = Observable.of(1, 2, 3);
-  const result = pipe(source, map(x => x * 2));
+  const result = pipe(source, map((x) => x * 2));
 
   const values = await collectValues(result);
   expect(values).toEqual([2, 4, 6]);
@@ -182,9 +192,12 @@ test("dropValue skips only non-error values", async () => {
 test("tapValue executes side effects only on non-error values", async () => {
   const sideEffects: number[] = [];
   const source = Observable.of(1, 2, 3);
-  const result = pipe(source, tap(x => {
-    sideEffects.push(x * 10);
-  }));
+  const result = pipe(
+    source,
+    tap((x) => {
+      sideEffects.push(x * 10);
+    }),
+  );
 
   const values = await collectValues(result);
 
