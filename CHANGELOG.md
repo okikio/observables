@@ -1,3 +1,12 @@
+## [1.0.2](https://github.com/okikio/observables/compare/v1.0.1...v1.0.2) (2026-03-18)
+
+
+### Bug Fixes
+
+* **release:** bootstrap first npm publish with token fallback ([ddc6fe2](https://github.com/okikio/observables/commit/ddc6fe28ee53713d043a49455206c031f75a63cd))
+* **release:** publish from release events without npm token ([301341a](https://github.com/okikio/observables/commit/301341ab231059f364fbe968043c1579601aa8c9))
+* **release:** run publish jobs after skipped release job ([0839544](https://github.com/okikio/observables/commit/08395449584aa697c15e315e8755986efa602d4a))
+
 ## [1.0.1](https://github.com/okikio/observables/compare/v1.0.0...v1.0.1) (2026-03-18)
 
 ### Bug Fixes
