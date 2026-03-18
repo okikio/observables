@@ -21,7 +21,6 @@
   "tasks": {
     "test": "deno test --allow-read --allow-net --coverage --trace-leaks",
     "test:watch": "deno test --allow-read --allow-net --watch",
-    "test:docs": "deno test --allow-read --allow-net --doc",
     "bench": "deno run --allow-read --allow-env --allow-sys bench/run.ts",
     "bench:compare": "deno run --allow-read --allow-env --allow-sys bench/compare.ts",
     "coverage": "deno coverage --html",

@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-import-prefix
 /**
  * Cross-library comparison benchmarks for equivalent observable scenarios.
  *
