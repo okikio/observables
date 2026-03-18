@@ -8,7 +8,7 @@
 # Release flow:
 #   push to main or manual release-and-publish dispatch
 #     -> semantic-release creates the GitHub Release
-#     -> this same workflow publishes the tagged commit to JSR and npm
+#     -> the published release event publishes the tagged commit to JSR and npm
 #
 # Publish-only flow:
 #   published GitHub Release or manual publish-only dispatch
@@ -138,8 +138,6 @@ jobs:
           DISPATCH_ACTION: ${{ inputs.action }}
           DISPATCH_TAG: ${{ inputs.tag }}
           DISPATCH_TARGET: ${{ inputs.target }}
-          RELEASED: ${{ needs.release.outputs.released }}
-          RELEASE_JOB_TAG: ${{ needs.release.outputs.tag }}
         run: |
           TAG=""
           TARGET="both"
@@ -149,8 +147,6 @@ jobs:
           elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$DISPATCH_ACTION" = "publish-only" ]; then
             TAG="$DISPATCH_TAG"
             TARGET="$DISPATCH_TARGET"
-          elif [ "$RELEASED" = "true" ]; then
-            TAG="$RELEASE_JOB_TAG"
           fi
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$DISPATCH_ACTION" = "publish-only" ] && [ -z "$TAG" ]; then
@@ -222,5 +218,3 @@ jobs:
         run: |
           cd npm
           npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

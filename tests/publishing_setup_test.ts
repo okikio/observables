@@ -51,11 +51,36 @@ describe("publishing setup", () => {
       "publish_npm: ${{ steps.resolve.outputs.publish_npm }}",
     );
     expect(publish_workflow).toContain(
-      "always() && needs.resolve-release.outputs.publish_jsr == 'true'",
+      "always() && needs.resolve-release.outputs.should_publish == 'true' && needs.resolve-release.outputs.publish_jsr == 'true'",
     );
     expect(publish_workflow).toContain(
-      "always() && needs.resolve-release.outputs.publish_npm == 'true'",
+      "always() && needs.resolve-release.outputs.should_publish == 'true' && needs.resolve-release.outputs.publish_npm == 'true'",
     );
+  });
+
+  it("publishes only from release events or explicit publish-only retries", () => {
+    const publish_workflow = readRepoFile(".github/workflows/publish.yml");
+
+    expect(publish_workflow).toContain(
+      "the published release event publishes the tagged commit to JSR and npm",
+    );
+    expect(publish_workflow).not.toContain(
+      "RELEASED: ${{ needs.release.outputs.released }}",
+    );
+    expect(publish_workflow).not.toContain("RELEASE_JOB_TAG");
+    expect(publish_workflow).not.toContain('elif [ "$RELEASED" = "true" ]');
+  });
+
+  it("uses npm trusted publishing without requiring a token secret", () => {
+    const publish_workflow = readRepoFile(".github/workflows/publish.yml");
+
+    expect(publish_workflow).toContain(
+      "npm publish --provenance --access public",
+    );
+    expect(publish_workflow).toContain(
+      "no NODE_AUTH_TOKEN secret is required here.",
+    );
+    expect(publish_workflow).not.toContain("NODE_AUTH_TOKEN:");
   });
 
   it("pins publishing-script JSR imports to explicit versions", () => {
