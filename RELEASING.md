@@ -66,8 +66,8 @@ working.
 ### `release-please`
 
 Good option if you want a reviewable release PR. It updates changelogs and
-versions reliably, but its release-PR model is still close to the Forge flow you
-said you do not like.
+versions reliably, but its release-PR model adds the same PR-based ceremony this
+repo aims to avoid.
 
 ### `changesets`
 
@@ -84,7 +84,8 @@ version from commit history and to keep `deno.jsonc` in sync.
 ### JSR and Deno-native options
 
 - `@roka/forge`: best fit for Deno workspaces, but the bump-PR plus
-  draft-release flow is more hands-on than this repo wants
+  draft-release flow is more hands-on than needed for this single-package
+  library
 - `@deno/bump-workspaces`: promising for Deno workspaces, but it is
   workspace-first and centered on pull-request driven bumps
 - `@eser/codebase/release`: Deno-native and capable of version bump + changelog
