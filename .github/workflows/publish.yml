@@ -194,4 +194,6 @@ jobs:
         # `id-token: write`, so no NODE_AUTH_TOKEN secret is required here.
         run: |
           cd npm
-          npm publish
+          npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
