@@ -3,6 +3,12 @@ import { expect, test } from "jsr:@libs/testing@^5";
 
 import { Observable } from "../../observable.ts";
 
+/**
+ * Test-only view of the proposal-facing `SubscriptionObserver` surface.
+ *
+ * This keeps the assertions focused on public observer behavior that upstream
+ * suites care about, without coupling the tests to the concrete local class.
+ */
 type TC39SubscriptionObserver = {
   next: (...args: unknown[]) => unknown;
   complete: (...args: unknown[]) => unknown;
