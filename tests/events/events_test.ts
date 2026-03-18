@@ -21,7 +21,7 @@ import {
   waitForEvent,
   withReplay,
 } from "../../events.ts";
-import { expect, runtime, test } from "@libs/testing";
+import { expect, runtime, test } from "jsr:@libs/testing@^5";
 import { spy } from "jsr:@std/testing@^1/mock";
 
 // Import the modules under test
