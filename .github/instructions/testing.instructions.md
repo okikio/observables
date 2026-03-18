@@ -8,15 +8,15 @@ applyTo: "**/*_test.ts,**/*.test.ts"
 ## Tools
 
 Use:
-- `jsr:@std/testing/bdd` for `describe` and `it`
-- `jsr:@std/expect` for assertions
+- `@std/testing/bdd` for `describe` and `it`
+- `@std/expect` for assertions
 - `npm:fast-check` for property-based tests
 
 Imports should follow this pattern:
 
 ```ts
-import { describe, it } from 'jsr:@std/testing/bdd';
-import { expect } from 'jsr:@std/expect';
+import { describe, it } from '@std/testing/bdd';
+import { expect } from '@std/expect';
 import * as fc from 'npm:fast-check';
 ```
 
