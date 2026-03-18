@@ -111,26 +111,35 @@ Or
 deno add jsr:@okikio/observables
 ```
 
-### Node.js
+### Node.js and Bun
+
+```bash
+npm install @okikio/observables
+# pnpm add @okikio/observables
+# yarn add @okikio/observables
+# bun add @okikio/observables
+```
+
+If you prefer to install through the JSR bridge instead of the npm registry:
 
 ```bash
 npx jsr add @okikio/observables
-```
-
-Or
-
-```bash
-pnpm install jsr:@okikio/observables
 ```
 
 <details>
     <summary>Others</summary>
 
 ```bash
-yarn add @okikio/observables@jsr:latest
+pnpm add jsr:@okikio/observables
 ```
 
 Or 
+
+```bash
+yarn add @okikio/observables@jsr:latest
+```
+
+Or
 
 ```bash
 bunx jsr add @okikio/observables
