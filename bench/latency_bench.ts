@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-import-prefix
 /**
  * Low-latency benchmarks for primitive operations.
  *
@@ -6,26 +7,26 @@
  * single-value operator hop.
  */
 
-import { bench, do_not_optimize, run } from 'npm:mitata';
+import { bench, do_not_optimize, run } from "npm:mitata@^1.0.34";
 
-import { EventBus } from '../events.ts';
-import { isObservableError } from '../error.ts';
-import { Observable } from '../observable.ts';
-import { pipe } from '../helpers/pipe.ts';
-import { filter, map } from '../helpers/operations/core.ts';
+import { EventBus } from "../events.ts";
+import { isObservableError } from "../error.ts";
+import { Observable } from "../observable.ts";
+import { pipe } from "../helpers/pipe.ts";
+import { filter, map } from "../helpers/operations/core.ts";
 
 const noEmissionObservable = new Observable<number>(() => {
   return () => {};
 });
 
-bench('Latency: subscribe + unsubscribe (no emissions)', () => {
+bench("Latency: subscribe + unsubscribe (no emissions)", () => {
   const subscription = noEmissionObservable.subscribe(() => {});
   subscription.unsubscribe();
   do_not_optimize(subscription);
   do_not_optimize(subscription.closed);
 });
 
-bench('Latency: Observable.of(1) -> subscribe', () => {
+bench("Latency: Observable.of(1) -> subscribe", () => {
   let lastValue = 0;
   const subscription = Observable.of(1).subscribe((value) => {
     lastValue = value;
@@ -35,7 +36,7 @@ bench('Latency: Observable.of(1) -> subscribe', () => {
   subscription.unsubscribe();
 });
 
-bench('Latency: single value through map', () => {
+bench("Latency: single value through map", () => {
   let lastValue = 0;
   const result = pipe(
     Observable.of(1),
@@ -52,7 +53,7 @@ bench('Latency: single value through map', () => {
   subscription.unsubscribe();
 });
 
-bench('Latency: single value through map + filter', () => {
+bench("Latency: single value through map + filter", () => {
   let lastValue = 0;
   const result = pipe(
     Observable.of(1),
@@ -80,7 +81,7 @@ const warmPathSub = warmPathBus.subscribe((value) => {
   latestEventBusValue = value;
 });
 
-bench('Latency: EventBus emit -> 1 subscriber', () => {
+bench("Latency: EventBus emit -> 1 subscriber", () => {
   warmPathBus.emit(7);
   do_not_optimize(latestEventBusValue);
 });
