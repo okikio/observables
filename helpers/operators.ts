@@ -439,7 +439,8 @@ export function handleTransform<T, O, S = never>(
     case "throw":
       return async function (chunk: T, controller: TransformStreamDefaultController<O>) {
         if (isObservableError(chunk)) {
-          throw ObservableError.from(chunk, operatorName, chunk);
+          controller.error(ObservableError.from(chunk, operatorName, chunk));
+          return;
         }
         
         try {
@@ -450,7 +451,7 @@ export function handleTransform<T, O, S = never>(
 
           await (transform as TransformFunctionOptions<T, O>['transform'])(chunk, controller);
         } catch (err) {
-          throw ObservableError.from(err, operatorName, chunk);
+          controller.error(ObservableError.from(err, operatorName, chunk));
         }
       };
       
@@ -532,7 +533,8 @@ export function handleStart<T, O, S extends unknown = undefined>(
           controller.terminate();
           break;
         case "throw":
-          throw ObservableError.from(err, `${operatorName}:start`);
+          controller.error(ObservableError.from(err, `${operatorName}:start`));
+          break;
         case "pass-through":
           controller.enqueue(ObservableError.from(err, `${operatorName}:start`) as O);
           controller.terminate();
@@ -612,7 +614,8 @@ export function handleFlush<T, O, S extends unknown = undefined>(
           controller.terminate();
           break;
         case "throw":
-          throw ObservableError.from(err, `${operatorName}:flush`);
+          controller.error(ObservableError.from(err, `${operatorName}:flush`));
+          break;
         case "pass-through":
           controller.enqueue(ObservableError.from(err, `${operatorName}:flush`) as O);
           controller.terminate();
