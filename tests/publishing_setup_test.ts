@@ -34,6 +34,30 @@ describe("publishing setup", () => {
     }
   });
 
+  it("lets publish-only retries target npm or JSR independently", () => {
+    const publish_workflow = readRepoFile(".github/workflows/publish.yml");
+
+    expect(publish_workflow).toContain("default: both");
+    expect(publish_workflow).toContain("- both");
+    expect(publish_workflow).toContain("- jsr");
+    expect(publish_workflow).toContain("- npm");
+    expect(publish_workflow).toContain(
+      "DISPATCH_TARGET: ${{ inputs.target }}",
+    );
+    expect(publish_workflow).toContain(
+      "publish_jsr: ${{ steps.resolve.outputs.publish_jsr }}",
+    );
+    expect(publish_workflow).toContain(
+      "publish_npm: ${{ steps.resolve.outputs.publish_npm }}",
+    );
+    expect(publish_workflow).toContain(
+      "needs.resolve-release.outputs.publish_jsr == 'true'",
+    );
+    expect(publish_workflow).toContain(
+      "needs.resolve-release.outputs.publish_npm == 'true'",
+    );
+  });
+
   it("pins publishing-script JSR imports to explicit versions", () => {
     const build_script = readRepoFile("scripts/build_npm.ts");
 
