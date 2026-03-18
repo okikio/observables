@@ -1,27 +1,24 @@
 // @filename: helpers/mod.ts
 /**
- * Observable Operators Library
+ * High-level operator entrypoint for composing Observable pipelines.
  *
- * @module
+ * This is the ergonomic "import most things from one place" surface for the
+ * package. It re-exports the pipe/compose helpers, operator builders, utility
+ * helpers, and the built-in operator families so callers can build an entire
+ * pipeline without remembering which category module each operator lives in.
  *
- * This library provides a collection of operators for working with Observables.
- * It enables functional composition of Observable transformations using the `pipe` and
- * `compose` functions, with each operator implemented using Web Streams for efficiency.
+ * The exports here fall into a few broad groups:
+ * - core transformation operators such as `map`, `filter`, `take`, and `scan`
+ * - timing operators such as `debounce`, `delay`, `throttle`, and `timeout`
+ * - combination operators such as `mergeMap`, `concatMap`, and `switchMap`
+ * - batching and error operators for collecting values or recovering from
+ *   failures in a stream
  *
- * ## Core Features
- *
- * - **Observable-based API**: Clean, familiar API that works with Observables
- * - **Stream-based implementation**: Uses Web Streams internally for efficiency and backpressure
- * - **Functional**: Pure functions for easy composition
- * - **Type-safe**: Full TypeScript support with proper type inference
- * - **Tree-shakable**: Import only what you need
- *
- * ## Architecture
- *
- * This library uses a hybrid approach:
- * - The public API (`pipe` function, creation functions, etc.) works with Observables
- * - Internally, it converts Observables to Web Streams, applies transformations, then converts back
- * - This allows for the efficiency of streams while maintaining a familiar Observable API
+ * Everything shares the same Web Streams-based runtime, so backpressure,
+ * teardown, and error-mode behavior stay consistent from one operator to the
+ * next. Import from `./operations/*` only when you want a narrower entrypoint
+ * for discovery or tree-shaken docs. Import from this module when you want the
+ * familiar "just give me the operator toolbox" experience.
  *
  * ## Basic Usage
  *
@@ -82,6 +79,8 @@
  * - Each pipeline is limited to 9 operators due to TypeScript's recursion limits
  * - Use `compose` to group operators when you need more than 9
  * - Composed operator groups are also limited to 9 operators
+ *
+ * @module
  */
 
 // Re-export all operators from their respective modules

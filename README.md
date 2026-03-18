@@ -1,24 +1,70 @@
 # @okikio/observables
 
-[![Open Bundle](https://bundlejs.com/badge-light.svg)](https://bundlejs.com/?q=@okikio/observables&bundle "Check the total bundle size of @okikio/observables")
+[![CI](https://github.com/okikio/observables/actions/workflows/ci.yml/badge.svg)](https://github.com/okikio/observables/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/%40okikio%2Fobservables?logo=npm&label=npm)](https://www.npmjs.com/package/@okikio/observables)
+[![Bundle Size](https://deno.bundlejs.com/badge?q=@okikio/observables&treeshake=[{+Observable,+pipe,+map,+filter+}]&style=flat)](https://bundlejs.com/?q=@okikio/observables&treeshake=[{+Observable,+pipe,+map,+filter+}])
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
-[NPM](https://www.npmjs.com/package/@okikio/observables)
-<span style="padding-inline: 1rem">|</span>
-[GitHub](https://github.com/okikio/observables#readme)
-<span style="padding-inline: 1rem">|</span>
-[JSR](https://jsr.io/@okikio/observables)
-<span style="padding-inline: 1rem">|</span> [Licence](./LICENSE)
+[Documentation](https://jsr.io/@okikio/observables) •
+[npm](https://www.npmjs.com/package/@okikio/observables) •
+[GitHub](https://github.com/okikio/observables#readme) • [License](./LICENSE)
 
 A **spec-faithful** yet ergonomic TC39-inspired Observable implementation that
 gives you one consistent way to handle all async data in JavaScript.
+
+Built for Deno v2+, Node, Bun, and modern browsers, `@okikio/observables` keeps
+the TC39 Observable proposal's mental model while adding the parts that make
+day-to-day app code easier to write:
+
+- **Observable pipelines that feel familiar** if you already know `Array.map()`
+  and `Array.filter()`
+- **Web Streams-powered backpressure** so fast producers do not silently bloat
+  memory
+- **Deterministic cleanup** via `unsubscribe()`, `using`, and `Symbol.dispose`
+- **Built-in event primitives** for pub/sub and type-safe event dispatch
+- **Four error modes** so you can choose between recovery, filtering, and
+  fail-fast behavior
+
+**Start here:** [Installation](#installation) • [Quick Start](#quick-start) •
+[API](#api) • [Advanced Usage](#advanced-usage) • [FAQ](#faq) •
+[Contributing](#contributing)
+
+## Start Here
+
+Install with the package manager that matches your runtime:
+
+```bash
+# Deno / JSR
+deno add jsr:@okikio/observables
+
+# npm-compatible runtimes
+npm install @okikio/observables
+# pnpm add @okikio/observables
+# yarn add @okikio/observables
+# bun add @okikio/observables
+```
+
+Then build a small pipeline:
+
+```ts
+import { filter, map, Observable, pipe } from "@okikio/observables";
+
+const values = pipe(
+  Observable.of(1, 2, 3, 4),
+  filter((value) => value % 2 === 0),
+  map((value) => value * 10),
+);
+
+values.subscribe((value) => console.log(value));
+// 20
+// 40
+```
 
 **Observables** are a **push‑based stream abstraction** for events, data, and
 long‑running operations. Think of them as a **multi‑value Promise** that keeps
 sending values until you tell it to stop, where a Promise gives you one value
 eventually, an Observable can give you many values over time: mouse clicks,
 search results, chat messages, sensor readings.
-
-[![Bundle Size](https://deno.bundlejs.com/badge?q=@okikio/observables&treeshake=[{+Observable,+pipe,+map,+filter+}]&style=flat)](https://bundlejs.com/?q=@okikio/observables&treeshake=[{+Observable,+pipe,+map,+filter+}])
 
 If you've ever built a web app, you know this all too well: user clicks, API
 responses, WebSocket messages, timers, file uploads, they all arrive at
@@ -483,40 +529,48 @@ battle-tested across browsers and runtimes.
 
 ## Contributing
 
-I encourage you to use [deno](https://deno.com/) to contribute to this repo, to
-setup deno you can install it via [mise](https://mise.jdx.dev/) or
-[manually](https://deno.land/manual/getting_started/installation).
+Contributions are welcome. This project targets Deno v2+ and keeps a tight
+feedback loop around formatting, linting, docs, tests, and npm packaging, so a
+good contribution usually starts by getting the local validation commands
+working first.
 
-Setup Mise:
+Install Deno with [mise](https://mise.jdx.dev/) or by following the
+[manual installation guide](https://deno.land/manual/getting_started/installation).
+
+### Setup with Mise
 
 ```bash
 curl https://mise.run | sh
 echo 'eval "$(~/.local/bin/mise activate bash)"' >> ~/.bashrc
 ```
 
-Install Deno:
+Then install the toolchain:
 
 ```bash
 mise install
 ```
 
-Then run tests:
+### Validate your change
 
 ```bash
+deno fmt
+deno lint
+deno check **/*.ts
+deno doc --lint mod.ts
 deno task test
+deno task build:npm
 ```
 
-Run benchmarks:
+If your change is performance-sensitive, also run:
 
 ```bash
 deno task bench
 ```
 
-> **Note**: This project uses
-> [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/)
-> standard for commits, so please format your commits using the rules it sets
-> out.
+This repository uses
+[Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), so
+please format commit messages accordingly.
 
-## Licence
+## License
 
 See the [LICENSE](./LICENSE) file for license rights and limitations (MIT).

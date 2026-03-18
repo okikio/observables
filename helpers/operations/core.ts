@@ -4,41 +4,19 @@ import type { ObservableError } from "../../error.ts";
 import { createOperator, createStatefulOperator } from "../operators.ts";
 
 /**
- * @module operations/core
+ * Core transformation and terminal operators for everyday stream work.
  *
- * **Core Stream Operators - Like Array Methods, But Error-Aware**
+ * This module is the closest match to familiar array helpers. It exports the
+ * operators you reach for first when you want to transform values, filter them,
+ * accumulate state, or stop after a condition has been met. In practice, this
+ * is where most pipelines start before you add timing or concurrency behavior.
  *
- * These operators work just like Array methods you already know, but automatically handle errors:
+ * The important difference from arrays is error handling. These operators are
+ * designed to work with the library's pass-through model, so your callbacks see
+ * clean data values while `ObservableError` instances continue downstream
+ * unchanged until a dedicated error-handling step decides what to do with them.
  *
- * ```ts
- * // Array methods:
- * [1, 2, 3].map(n => n * 2).filter(n => n > 3)  // [4, 6]
- *
- * // Stream operators (same API, error-aware):
- * pipe(
- *   [1, 2, 3],
- *   map(n => n * 2),      // Transforms data, passes errors through
- *   filter(n => n > 3)    // Filters data, keeps all errors
- * )  // Stream: [4, 6] + any errors
- * ```
- *
- * ## How Error Handling Works
- *
- * - **Data items**: Get processed by your functions normally
- * - **ObservableError items**: Skip processing and flow through unchanged
- * - **Function crashes**: Get wrapped in ObservableError automatically
- *
- * ```ts
- * // Clean code - no manual error checking needed
- * const users = pipe(
- *   userIds,
- *   map(id => fetchUser(id)),        // Some API calls fail → ObservableError
- *   filter(user => user.isActive),   // Only filters real users
- *   take(10)                         // Takes 10 real users, errors flow alongside
- * );
- * ```
- *
- * Your functions only receive clean data, never errors. Errors are preserved for later handling.
+ * @module
  */
 
 /**

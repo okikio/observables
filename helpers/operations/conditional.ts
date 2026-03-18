@@ -1,3 +1,17 @@
+/**
+ * Predicate and decision-oriented operators for Observable streams.
+ *
+ * This entrypoint exports the operators that answer questions about a stream or
+ * gate values based on a condition. These are the Observable equivalents of
+ * array helpers such as `every()`, `some()`, and `find()`, plus utilities that
+ * stop early once a decision has been reached.
+ *
+ * Reach for this module when you care about whether a stream contains a match,
+ * whether every value passes a rule, or when processing should stop as soon as
+ * the answer is known.
+ *
+ * @module
+ */
 import type { ExcludeError, Operator } from "../_types.ts";
 import type { ObservableError } from "../../error.ts";
 

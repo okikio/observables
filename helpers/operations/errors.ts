@@ -1,3 +1,17 @@
+/**
+ * Error-focused operators for recovering from or reshaping stream failures.
+ *
+ * This entrypoint is for pipelines that expect some work to fail and want to
+ * keep going. It exports helpers for dropping wrapped errors, mapping them to
+ * fallback values, logging them, or converting them into a shape that fits the
+ * rest of the pipeline.
+ *
+ * These operators are most useful with the library's pass-through error mode,
+ * where failures travel as `ObservableError` values instead of immediately
+ * terminating the whole stream.
+ *
+ * @module
+ */
 import type { ExcludeError, Operator } from "../_types.ts";
 import { isObservableError, ObservableError } from "../../error.ts";
 import { createOperator, createStatefulOperator } from "../operators.ts";

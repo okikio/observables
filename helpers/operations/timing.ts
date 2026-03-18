@@ -1,3 +1,17 @@
+/**
+ * Time-based operators for spacing, delaying, and expiring stream values.
+ *
+ * This entrypoint groups the operators that make time part of your pipeline's
+ * behavior. Use it for UI patterns such as debouncing search input, throttling
+ * bursty events, delaying retries, or timing out work that takes too long.
+ *
+ * Timing operators do not just change values; they change when work is allowed
+ * to move downstream. That makes them especially important for coordinating
+ * async side effects without piling up stale requests or overwhelming slower
+ * consumers.
+ *
+ * @module
+ */
 import type { ExcludeError, Operator } from "../_types.ts";
 import { createOperator, createStatefulOperator } from "../operators.ts";
 import { isObservableError, ObservableError } from "../../error.ts";
