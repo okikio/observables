@@ -9,6 +9,9 @@
 [npm](https://www.npmjs.com/package/@okikio/observables) •
 [GitHub](https://github.com/okikio/observables#readme) • [License](./LICENSE)
 
+
+<!-- [![Open Bundle](https://bundlejs.com/badge-light.svg)](https://bundlejs.com/?q=@okikio/observables&bundle "Check the total bundle size of @okikio/observables") -->
+
 A **spec-faithful** yet ergonomic TC39-inspired Observable implementation that
 gives you one consistent way to handle all async data in JavaScript.
 
