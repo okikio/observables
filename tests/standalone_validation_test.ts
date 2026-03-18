@@ -9,18 +9,15 @@
 import { expect, test } from "jsr:@libs/testing@^5";
 
 function assertEquals<T>(actual: T, expected: T, msg?: string): void {
-  void msg;
-  expect(actual).toBe(expected);
+  expect(actual, msg).toBe(expected);
 }
 
 function assertArrayEquals<T>(actual: T[], expected: T[], msg?: string): void {
-  void msg;
-  expect(actual).toEqual(expected);
+  expect(actual, msg).toEqual(expected);
 }
 
 function assertTrue(value: boolean, msg?: string): void {
-  void msg;
-  expect(value).toBe(true);
+  expect(value, msg).toBe(true);
 }
 
 // Import library modules
