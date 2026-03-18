@@ -47,20 +47,20 @@ async function collectValuesAllowErrors<T>(obs: Observable<T>): Promise<Array<T 
   return values;
 }
 
-/**
- * Collects observable values with a timeout to prevent hanging tests.
- */
-async function collectWithTimeout<T>(
-  obs: Observable<T>, 
-  timeoutMs: number = 5000
-): Promise<T[]> {
-  return Promise.race([
-    collectValues(obs),
-    new Promise<T[]>((_, reject) => 
-      setTimeout(() => reject(new Error(`Test timeout after ${timeoutMs}ms`)), timeoutMs)
-    )
-  ]);
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 describe("createOperator()", () => {
   describe("Basic Transformation", () => {
