@@ -25,13 +25,6 @@ const simpleObservable = new Observable<number>((observer) => {
 
 const rangeObservable = Observable.from(numberGenerator(1000));
 
-const asyncObservable = new Observable<number>((observer) => {
-  const id = setInterval(() => {
-    observer.next(Math.random());
-  }, 10);
-  return () => clearInterval(id);
-});
-
 bench('Observable.of(single value)', () => {
   // Act & Assert
   do_not_optimize(Observable.of(42));

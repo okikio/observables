@@ -40,7 +40,7 @@ function assertTrue(value: boolean, msg?: string): void {
 
 // Import library modules
 import { Observable } from "../observable.ts";
-import { createQueue, enqueue, dequeue, peek, isEmpty, isFull, getSize, clear } from "../queue.ts";
+import { clear, createQueue, dequeue, enqueue, getSize, isEmpty, isFull, peek } from "../queue.ts";
 import { ObservableError, isObservableError } from "../error.ts";
 
 // ============================================================================

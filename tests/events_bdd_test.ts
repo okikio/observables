@@ -381,7 +381,7 @@ describe("EventDispatcher (Type-Safe Event Bus)", () => {
       const second: string[] = [];
 
       const sub1 = dispatcher.on('simple', (text: string) => first.push(text));
-      const sub2 = dispatcher.on('simple', (text: string) => second.push(text));
+      void dispatcher.on('simple', (text: string) => second.push(text));
 
       dispatcher.emit('simple', '1');
       sub1.unsubscribe();

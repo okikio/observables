@@ -23,7 +23,8 @@ import { Observable, pull } from "../../observable.ts";
 import { createOperator, createStatefulOperator } from "../../helpers/operators.ts";
 import { pipe } from "../../helpers/pipe.ts";
 import { ignoreErrors } from "../../helpers/operations/errors.ts";
-import { ObservableError, isObservableError } from "../../error.ts";
+import type { ObservableError } from "../../error.ts";
+import { isObservableError } from "../../error.ts";
 
 /**
  * Collects all observable values into an array using async iteration (for await...of).
@@ -46,21 +47,6 @@ async function collectValuesAllowErrors<T>(obs: Observable<T>): Promise<Array<T 
   }
   return values;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 describe("createOperator()", () => {
   describe("Basic Transformation", () => {
@@ -810,7 +796,7 @@ describe("createStatefulOperator()", () => {
       const counter = createStatefulOperator<number, number, { count: number }>({
         name: 'counter',
         createState: () => ({ count: 0 }),
-        transform(chunk, state, controller) {
+        transform(_chunk, state, controller) {
           state.count++;
           controller.enqueue(state.count);
         }
