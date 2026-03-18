@@ -3,7 +3,7 @@ import { expect, test } from "jsr:@libs/testing@^5";
 
 import { Observable } from "../../observable.ts";
 
-type CompatObserver = {
+type TC39SubscriptionObserver = {
   next: (...args: unknown[]) => unknown;
   complete: (...args: unknown[]) => unknown;
   error: (...args: unknown[]) => unknown;
@@ -11,11 +11,11 @@ type CompatObserver = {
 };
 
 test("SubscriptionObserver.next forwards only the first argument", () => {
-  let observer!: CompatObserver;
+  let observer!: TC39SubscriptionObserver;
   let received: unknown[] = [];
 
   new Observable<number>((subscriptionObserver) => {
-    observer = subscriptionObserver as unknown as CompatObserver;
+    observer = subscriptionObserver as unknown as TC39SubscriptionObserver;
   }).subscribe({
     next(...args: unknown[]) {
       received = args;
@@ -29,11 +29,11 @@ test("SubscriptionObserver.next forwards only the first argument", () => {
 });
 
 test("SubscriptionObserver.complete ignores extra arguments and only runs once", () => {
-  let observer!: CompatObserver;
+  let observer!: TC39SubscriptionObserver;
   const calls: unknown[][] = [];
 
   new Observable<number>((subscriptionObserver) => {
-    observer = subscriptionObserver as unknown as CompatObserver;
+    observer = subscriptionObserver as unknown as TC39SubscriptionObserver;
   }).subscribe({
     complete(...args: unknown[]) {
       calls.push(args);
@@ -48,12 +48,12 @@ test("SubscriptionObserver.complete ignores extra arguments and only runs once",
 });
 
 test("SubscriptionObserver.error closes before invoking the error handler", () => {
-  let observer!: CompatObserver;
+  let observer!: TC39SubscriptionObserver;
   let closedDuringError = false;
   let argsLength = -1;
 
   new Observable<number>((subscriptionObserver) => {
-    observer = subscriptionObserver as unknown as CompatObserver;
+    observer = subscriptionObserver as unknown as TC39SubscriptionObserver;
   }).subscribe({
     error(...args: unknown[]) {
       closedDuringError = observer.closed;
