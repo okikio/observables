@@ -40,6 +40,7 @@ function assertTrue(value: boolean, msg?: string): void {
 
 // Import library modules
 import { Observable } from "../observable.ts";
+import type { Subscription } from "../_types.ts";
 import { createQueue, enqueue, dequeue, peek, isEmpty, isFull, clear } from "../queue.ts";
 import { ObservableError, isObservableError } from "../error.ts";
 
@@ -399,7 +400,7 @@ test("PERFORMANCE: Queue operations are truly O(1)", () => {
 });
 
 test("MEMORY: Observable cleanup prevents leaks", () => {
-  const subscriptions: any[] = [];
+  const subscriptions: Subscription[] = [];
   
   // Create many subscriptions
   for (let i = 0; i < 1000; i++) {

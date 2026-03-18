@@ -25,7 +25,7 @@ const simpleObservable = new Observable<number>((observer) => {
 
 const rangeObservable = Observable.from(numberGenerator(1000));
 
-const asyncObservable = new Observable<number>((observer) => {
+const _asyncObservable = new Observable<number>((observer) => {
   const id = setInterval(() => {
     observer.next(Math.random());
   }, 10);

@@ -885,7 +885,9 @@ if (runtime === "deno") {
 if (runtime === "node") {
 	test("Node.js-specific - Process environment test", () => {
 		// This test only runs on Node.js
-		const global = globalThis as any;  // Fixed: type assertion for Node.js globals
+		const global = globalThis as typeof globalThis & {
+			process?: { versions?: { node?: string } };
+		};
 		expect(typeof global?.process).toBe("object");
 		expect(global?.process?.versions?.node).toBeDefined();
 	});

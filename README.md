@@ -142,7 +142,7 @@ bunx jsr add @okikio/observables
 
 You can also use it via a CDN:
 
-```ts
+```ts ignore
 import { Observable, pipe, map } from "https://esm.sh/jsr/@okikio/observables";
 ```
 

@@ -165,7 +165,7 @@
  *
  * // Observable → async iterator (back‑pressure aware)
  * for await (const chunk of obs) {
- *   …
+ *   console.log(chunk);
  * }
  *
  * // Observable → Promise (first value only)
@@ -2167,7 +2167,7 @@ export function isObservable<T = unknown>(value: unknown): value is Observable<T
  * 
  * ```typescript
  * // Scenario 1: Cross-library compatibility
- * import { Observable as RxObservable } from 'rxjs';
+ * import { Observable as RxObservable } from 'npm:rxjs@7.8.2';
  * import { Observable as OurObservable } from './observable.ts';
  * 
  * function processAnyObservable<T>(source: unknown): Promise<T[]> {
@@ -2267,7 +2267,7 @@ export function isObservable<T = unknown>(value: unknown): value is Observable<T
  * 
  * @example Cross-library compatibility
  * ```typescript
- * import { Observable as RxObservable } from 'rxjs';
+ * import { Observable as RxObservable } from 'npm:rxjs@7.8.2';
  * import { Observable as OurObservable } from './observable.ts';
  * 
  * const sources = [

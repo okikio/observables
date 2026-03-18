@@ -10,7 +10,6 @@ import { Observable } from '../observable.ts';
 import { isObservableError } from '../error.ts';
 import { pipe } from '../helpers/pipe.ts';
 import { map, filter, scan, take, tap } from '../helpers/operations/core.ts';
-import { debounce, delay, throttle } from '../helpers/operations/timing.ts';
 import { batch, toArray } from '../helpers/operations/batch.ts';
 
 function* numberStream(count: number) {

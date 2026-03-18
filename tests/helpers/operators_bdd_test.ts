@@ -16,14 +16,14 @@
  * fast producers), chunk-by-chunk processing (memory efficient), and cross-platform compatibility.
  */
 
-import { describe, it, beforeEach, afterEach } from "@std/testing/bdd";
+import { describe, it } from "@std/testing/bdd";
 import { expect } from "@std/expect";
 
 import { Observable, pull } from "../../observable.ts";
 import { createOperator, createStatefulOperator } from "../../helpers/operators.ts";
 import { pipe } from "../../helpers/pipe.ts";
 import { ignoreErrors } from "../../helpers/operations/errors.ts";
-import { ObservableError, isObservableError } from "../../error.ts";
+import { type ObservableError, isObservableError } from "../../error.ts";
 
 /**
  * Collects all observable values into an array using async iteration (for await...of).
@@ -50,18 +50,6 @@ async function collectValuesAllowErrors<T>(obs: Observable<T>): Promise<Array<T 
 /**
  * Collects observable values with a timeout to prevent hanging tests.
  */
-async function collectWithTimeout<T>(
-  obs: Observable<T>, 
-  timeoutMs: number = 5000
-): Promise<T[]> {
-  return Promise.race([
-    collectValues(obs),
-    new Promise<T[]>((_, reject) => 
-      setTimeout(() => reject(new Error(`Test timeout after ${timeoutMs}ms`)), timeoutMs)
-    )
-  ]);
-}
-
 describe("createOperator()", () => {
   describe("Basic Transformation", () => {
     it("should create an operator that transforms values", async () => {
@@ -810,7 +798,7 @@ describe("createStatefulOperator()", () => {
       const counter = createStatefulOperator<number, number, { count: number }>({
         name: 'counter',
         createState: () => ({ count: 0 }),
-        transform(chunk, state, controller) {
+        transform(_chunk, state, controller) {
           state.count++;
           controller.enqueue(state.count);
         }

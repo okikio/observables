@@ -12,7 +12,6 @@ import {
   dequeue,
   peek,
   isEmpty,
-  isFull,
   clear,
   toArray,
 } from '../queue.ts';

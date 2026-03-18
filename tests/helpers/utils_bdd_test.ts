@@ -10,10 +10,10 @@
  * for cross-platform compatibility without low-level boilerplate.
  */
 
-import { describe, it, beforeEach, afterEach } from "@std/testing/bdd";
+import { describe, it } from "@std/testing/bdd";
 import { expect } from "@std/expect";
 
-import { 
+import {
   isTransformStreamOptions, 
   isTransformFunctionOptions,
   toStream,
@@ -21,10 +21,7 @@ import {
   injectError
 } from "../../helpers/utils.ts";
 import type { CreateOperatorOptions } from "../../helpers/_types.ts";
-import { Observable } from "../../observable.ts";
-import { ObservableError, isObservableError } from "../../error.ts";
-import { pipe } from "../../helpers/pipe.ts";
-import { ignoreErrors } from "../../helpers/operations/errors.ts";
+import { type ObservableError, isObservableError } from "../../error.ts";
 
 /**
  * Collects all values from a ReadableStream using the reader API.
@@ -43,17 +40,6 @@ async function collectStream<T>(stream: ReadableStream<T>): Promise<T[]> {
     reader.releaseLock();
   }
   
-  return values;
-}
-
-/**
- * Collects values from an Observable.
- */
-async function collectValues<T>(obs: Observable<T>): Promise<T[]> {
-  const values: T[] = [];
-  for await (const value of obs) {
-    values.push(value);
-  }
   return values;
 }
 
@@ -514,7 +500,7 @@ describe("Error Injection Utilities", () => {
     it("should wrap non-Error objects", async () => {
       const stream = toStream([1]);
       // Sometimes people throw strings or objects, not Error instances
-      const errorStream = stream.pipeThrough(injectError('string error' as any, 'test'));
+      const errorStream = stream.pipeThrough(injectError('string error', 'test'));
       
       const values = await collectStream(errorStream);
       expect(isObservableError(values[0])).toBe(true);

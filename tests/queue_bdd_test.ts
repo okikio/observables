@@ -27,8 +27,7 @@ import {
   remainingSpace,
   clear,
   toArray,
-  forEach,
-  type Queue
+  forEach
 } from '../queue.ts';
 
 describe("Queue Creation", () => {
@@ -202,7 +201,7 @@ describe("Basic Queue Operations", () => {
       const queue = createQueue<{ data: string }>(5);
       
       enqueue(queue, { data: 'test' });
-      const item = dequeue(queue);
+      dequeue(queue);
       
       // The slot should be cleared (set to undefined)
       // This helps the garbage collector reclaim memory
@@ -997,7 +996,7 @@ describe("Edge Cases and Stress Tests", () => {
       }
       
       const requestQueue = createQueue<Request>(5);
-      const RATE_LIMIT = 5; // Max 5 requests
+      const rateLimit = 5;
       
       // Simulate incoming requests
       for (let i = 0; i < 10; i++) {
@@ -1009,7 +1008,7 @@ describe("Edge Cases and Stress Tests", () => {
       }
       
       // Only first 5 requests made it through
-      expect(getSize(requestQueue)).toBe(5);
+      expect(getSize(requestQueue)).toBe(rateLimit);
     });
   });
 });
