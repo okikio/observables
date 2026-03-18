@@ -1,6 +1,19 @@
-// helpers/combination.ts
-// Operators that combine Observables or transform to new Observables
-// Reimplemented using createStatefulOperator for better compatibility with streaming pipeline
+/**
+ * Operators that turn each source value into another stream and combine the
+ * results.
+ *
+ * This entrypoint covers the "flattening" family of operators such as
+ * `mergeMap`, `concatMap`, and `switchMap`. Use it when one input value needs
+ * to start follow-up async work, for example fetching related records, reading
+ * files, or switching to the latest search request.
+ *
+ * The operators in this module mainly differ in concurrency and cancellation
+ * behavior. `mergeMap` keeps multiple inner streams alive at once, `concatMap`
+ * preserves order by running one at a time, and `switchMap` cancels older work
+ * when a newer source value arrives.
+ *
+ * @module
+ */
 
 import type { SpecObservable } from "../../_spec.ts";
 import type { ExcludeError, Operator } from "../_types.ts";

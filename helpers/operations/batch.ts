@@ -1,3 +1,17 @@
+/**
+ * Operators that collect multiple source values into grouped results.
+ *
+ * This entrypoint contains the batching side of the operator library. Use it
+ * when one output value should summarize several input values, such as turning
+ * a whole stream into a single array with `toArray()` or bundling incoming
+ * items into fixed-size chunks with `batch()`.
+ *
+ * These operators trade immediacy for aggregation. They usually hold on to some
+ * values until a batch fills or the source completes, so they are best for
+ * finite streams or bounded buffers where that extra memory is intentional.
+ *
+ * @module
+ */
 import type { ExcludeError, Operator } from "../_types.ts";
 import type { ObservableError } from "../../error.ts";
 

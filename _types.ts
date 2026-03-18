@@ -2,13 +2,21 @@
 /**
  * Public observer and subscription types for the Observable entrypoints.
  *
- * @module
- *
  * This module collects the runtime-facing interfaces that show up whenever you
  * subscribe to an Observable. It defines the enhanced `Observer<T>` and
  * `Subscription` shapes used by this package, then re-exports the lower-level
  * spec types from `./_spec.ts` for callers that need proposal-aligned building
+ * spec types from `./_spec.ts` for callers that need proposal-aligned building
  * blocks.
+ *
+ * Use this entrypoint when you are writing libraries, adapters, or tests that
+ * need to talk about Observable contracts without importing the full runtime
+ * implementation. In day-to-day app code, you will usually consume these types
+ * indirectly through `Observable`, `EventBus`, or operator helpers. They live
+ * here so the public type surface stays easy to find and stable across
+ * entrypoints.
+ *
+ * @module
  */
 import type { SpecObserver, SpecSubscription } from "./_spec.ts";
 import type { Symbol } from "./symbol.ts";

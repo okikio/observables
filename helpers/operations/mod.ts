@@ -1,12 +1,20 @@
 /**
- * Re-exported operator groups for the `./operations` entrypoint.
+ * Category-level entrypoint for the built-in Observable operations.
+ *
+ * This module gathers every operator category that powers the higher-level
+ * `./operators` entrypoint. It is useful when you want a focused import path
+ * for documentation and discovery, but still want access to the full built-in
+ * operator set from one module.
+ *
+ * The re-exports are grouped by job:
+ * - `./core` covers the array-like transformations and terminal operators
+ * - `./timing` covers time-based coordination such as debounce and timeout
+ * - `./combination` covers flattening and concurrency helpers such as
+ *   `mergeMap`, `concatMap`, and `switchMap`
+ * - `./batch`, `./conditional`, and `./errors` cover collection, predicate, and
+ *   recovery-focused utilities
  *
  * @module
- *
- * This module gives callers one place to import the built-in Observable
- * operations without knowing which submodule each operator lives in. It
- * forwards the batch, combination, conditional, core, error, and timing
- * operator groups that make up the public `./operations` surface.
  */
 export * from "./batch.ts";
 export * from "./combination.ts";

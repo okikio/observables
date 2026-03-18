@@ -1,15 +1,20 @@
 /**
- * A lightweight, high-performance queue that delivers O(1) operations
- * using a circular buffer approach. Designed for readability and ease of use
- * without sacrificing performance.
+ * A lightweight circular-buffer queue for the library's hot paths.
  *
- * Perfect for task queues, message buffers, or any scenario where you need
- * fast FIFO (First-In-First-Out) operations without the performance penalty
- * of Array.shift().
+ * This entrypoint exposes the small FIFO data structure that backs replay,
+ * buffering, and event fan-out inside the Observable runtime. It keeps
+ * enqueue/dequeue work O(1) by moving `head` and `tail` pointers around a fixed
+ * array instead of repeatedly calling `Array.shift()`, which has to move every
+ * remaining element one slot to the left.
+ *
+ * Use this module when you need predictable queue performance and explicit
+ * capacity control. It is especially useful for buffers that grow and shrink
+ * frequently, where repeated array reindexing would turn steady traffic into an
+ * unnecessary O(n) cost.
  *
  * @example
  * ```
- * import { createQueue, enqueue, dequeue, peek } from './simple-queue';
+ * import { createQueue, enqueue, dequeue, peek } from './queue.ts';
  *
  * const taskQueue = createQueue<string>(100);  // capacity of 100
  * enqueue(taskQueue, 'process-order-123');     // add task
@@ -20,6 +25,8 @@
  *
  * clear(taskQueue);                            // empty the queue instantly
  * ```
+ *
+ * @module
  */
 
 ///////////////////////

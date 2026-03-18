@@ -1,5 +1,17 @@
 /**
- * @module EventBus
+ * Multicast event primitives built on top of the Observable runtime.
+ *
+ * This entrypoint is for the hot side of the library: shared event streams that
+ * multiple consumers can listen to at the same time. It exports `EventBus` for
+ * one-to-many pub/sub, `createEventDispatcher` for named and type-safe events,
+ * and helpers such as `withReplay` and `waitForEvent` for common coordination
+ * patterns.
+ *
+ * Use `Observable` when each subscription should start fresh work. Use this
+ * module when one emission should fan out to many listeners, such as UI events,
+ * app-wide notifications, or workflow status updates.
+ *
+ * @module
  */
 
 import type { Observer, Subscription } from "./_types.ts";

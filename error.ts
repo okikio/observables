@@ -1,6 +1,16 @@
 // @filename: error.ts
 /**
- * Error handling utilities for Observable operators
+ * Error primitives and guards for Observable pipelines.
+ *
+ * This entrypoint explains the error values that travel through this library
+ * when an operator uses pass-through error handling. It exports the
+ * `ObservableError` class plus helper functions for narrowing and asserting
+ * those wrapped failures without losing the original error object, stack, or
+ * operator context.
+ *
+ * Reach for this module when you want to inspect failures as data, recover from
+ * an upstream step without throwing away buffered values, or surface richer
+ * debugging information than a plain `Error` can carry on its own.
  *
  * @module
  */
