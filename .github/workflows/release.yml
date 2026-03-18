@@ -1,0 +1,50 @@
+# Requires a `RELEASE_TOKEN` secret with `contents: write`.
+#
+# The default `GITHUB_TOKEN` can create a GitHub Release, but releases created
+# by that token do not trigger downstream workflows. This workflow uses a
+# dedicated token so the existing `publish.yml` release trigger still publishes
+# to JSR and npm automatically.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: denoland/setup-deno@v2
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Configure git author
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Install semantic-release
+        run: |
+          npm install --global \
+            semantic-release \
+            @semantic-release/changelog \
+            @semantic-release/commit-analyzer \
+            @semantic-release/exec \
+            @semantic-release/git \
+            @semantic-release/github \
+            @semantic-release/release-notes-generator
+
+      - name: Create GitHub release
+        run: semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
