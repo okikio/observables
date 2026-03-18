@@ -13,6 +13,7 @@
 # Publish-only flow:
 #   published GitHub Release or manual publish-only dispatch
 #     -> publish the specified release tag to JSR and npm
+#     -> or retry only npm / only JSR after a partial publish failure
 #
 # A dedicated RELEASE_TOKEN is still required for semantic-release because the
 # default GITHUB_TOKEN does not trigger downstream release events reliably.
@@ -37,6 +38,15 @@ on:
         description: "Existing tag to publish when action is publish-only."
         required: false
         type: string
+      target:
+        description: "Registry target for publish-only retries."
+        required: true
+        type: choice
+        default: both
+        options:
+          - both
+          - jsr
+          - npm
 
 permissions:
   contents: write
@@ -117,6 +127,8 @@ jobs:
       should_publish: ${{ steps.resolve.outputs.should_publish }}
       ref: ${{ steps.resolve.outputs.ref }}
       tag: ${{ steps.resolve.outputs.tag }}
+      publish_jsr: ${{ steps.resolve.outputs.publish_jsr }}
+      publish_npm: ${{ steps.resolve.outputs.publish_npm }}
     steps:
       - name: Select the release tag to publish
         id: resolve
@@ -125,15 +137,18 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           DISPATCH_ACTION: ${{ inputs.action }}
           DISPATCH_TAG: ${{ inputs.tag }}
+          DISPATCH_TARGET: ${{ inputs.target }}
           RELEASED: ${{ needs.release.outputs.released }}
           RELEASE_JOB_TAG: ${{ needs.release.outputs.tag }}
         run: |
           TAG=""
+          TARGET="both"
 
           if [ "$EVENT_NAME" = "release" ]; then
             TAG="$RELEASE_TAG"
           elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$DISPATCH_ACTION" = "publish-only" ]; then
             TAG="$DISPATCH_TAG"
+            TARGET="$DISPATCH_TARGET"
           elif [ "$RELEASED" = "true" ]; then
             TAG="$RELEASE_JOB_TAG"
           fi
@@ -152,11 +167,23 @@ jobs:
           echo "ref=$TAG" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
+          if [ "$TARGET" = "both" ] || [ "$TARGET" = "jsr" ]; then
+            echo "publish_jsr=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish_jsr=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$TARGET" = "both" ] || [ "$TARGET" = "npm" ]; then
+            echo "publish_npm=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish_npm=false" >> "$GITHUB_OUTPUT"
+          fi
+
   publish-jsr:
     name: Publish to JSR
     needs:
       - resolve-release
-    if: needs.resolve-release.outputs.should_publish == 'true'
+    if: needs.resolve-release.outputs.should_publish == 'true' && needs.resolve-release.outputs.publish_jsr == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -172,7 +199,7 @@ jobs:
     name: Publish to npm
     needs:
       - resolve-release
-    if: needs.resolve-release.outputs.should_publish == 'true'
+    if: needs.resolve-release.outputs.should_publish == 'true' && needs.resolve-release.outputs.publish_npm == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
