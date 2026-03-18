@@ -118,6 +118,7 @@ test("createStatefulOperator handles errors in transform function", async () => 
   const errorOnSecond = createStatefulOperator<number, number, { count: number }>({
     name: 'errorOnSecond',
     createState: () => ({ count: 0 }),
+    errorMode: 'ignore',
     transform(chunk, state, controller) {
       state.count++;
       if (state.count === 2) {

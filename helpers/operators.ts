@@ -532,7 +532,7 @@ export function handleStart<T, O, S extends unknown = undefined>(
           controller.terminate();
           break;
         case "throw":
-          throw ObservableError.from(err, `${operatorName}:start`);
+          return controller.error(ObservableError.from(err, `${operatorName}:start`));
         case "pass-through":
           controller.enqueue(ObservableError.from(err, `${operatorName}:start`) as O);
           controller.terminate();
@@ -612,7 +612,7 @@ export function handleFlush<T, O, S extends unknown = undefined>(
           controller.terminate();
           break;
         case "throw":
-          throw ObservableError.from(err, `${operatorName}:flush`);
+          return controller.error(ObservableError.from(err, `${operatorName}:flush`));
         case "pass-through":
           controller.enqueue(ObservableError.from(err, `${operatorName}:flush`) as O);
           controller.terminate();

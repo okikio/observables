@@ -348,7 +348,9 @@ export function waitForEvent<
     return promise;
   }
 
-  const subscription: Subscription = bus.events.subscribe({
+  let subscription: Subscription | undefined;
+
+  subscription = bus.events.subscribe({
     next(event) {
       if (event.type === type) {
         cleanup();

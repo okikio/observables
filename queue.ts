@@ -44,6 +44,18 @@ export interface Queue<T> {
   capacity: number;
 }
 
+/**
+ * Advances a circular-buffer index by one slot and wraps back to `0` at the end.
+ *
+ * This keeps the same O(1) behavior as `% capacity`, but avoids paying modulo
+ * cost for arbitrary capacities in the queue hot path. It is private because
+ * it only exists to speed up internal queue pointer movement.
+ */
+function advanceIndex(index: number, capacity: number): number {
+  const next = index + 1;
+  return next === capacity ? 0 : next;
+}
+
 ////////////////////////////
 // Factory & Core Setup   //
 ////////////////////////////
@@ -98,7 +110,7 @@ export function enqueue<T>(queue: Queue<T>, item: T): void {
   }
   
   queue.items[queue.tail] = item;
-  queue.tail = (queue.tail + 1) % queue.capacity;  // wrap around using modulo
+  queue.tail = advanceIndex(queue.tail, queue.capacity);
   queue.size++;
 }
 
@@ -124,7 +136,7 @@ export function dequeue<T>(queue: Queue<T>): T | undefined {
   
   const item = queue.items[queue.head];
   queue.items[queue.head] = undefined as unknown as T;  // help garbage collector
-  queue.head = (queue.head + 1) % queue.capacity;       // wrap around
+  queue.head = advanceIndex(queue.head, queue.capacity);
   queue.size--;
   
   return item;
@@ -255,11 +267,14 @@ export function toArray<T>(queue: Queue<T>): T[] {
     return [];
   }
   
-  const result: T[] = [];
+  const result = new Array<T>(queue.size);
+  let index = queue.head;
+
   for (let i = 0; i < queue.size; i++) {
-    const index = (queue.head + i) % queue.capacity;
-    result.push(queue.items[index]);
+    result[i] = queue.items[index];
+    index = advanceIndex(index, queue.capacity);
   }
+
   return result;
 }
 
@@ -279,8 +294,10 @@ export function toArray<T>(queue: Queue<T>): T[] {
  * ```
  */
 export function forEach<T>(queue: Queue<T>, callback: (item: T, index: number) => void): void {
+  let index = queue.head;
+
   for (let i = 0; i < queue.size; i++) {
-    const index = (queue.head + i) % queue.capacity;
     callback(queue.items[index], i);
+    index = advanceIndex(index, queue.capacity);
   }
 }

@@ -20,6 +20,9 @@ import type { Symbol } from "./symbol.ts";
  * 
  * @example
  * ```ts
+ * import { Observable } from './observable.ts';
+ * import type { Observer, Subscription } from './_types.ts';
+ * 
  * const timerObserver: Observer<number> = {
  *   start(subscription) {
  *     console.log('Timer started');
@@ -65,20 +68,24 @@ export interface Observer<T> extends SpecObserver<T> {
  * 
  * @example
  * ```ts
+ * import { Observable } from './observable.ts';
+ * 
+ * const source = Observable.of(1, 2, 3);
+ * 
  * // Standard usage
- * const sub = observable.subscribe(observer);
+ * const sub = source.subscribe((value) => console.log(value));
  * console.log('Active:', !sub.closed);
  * sub.unsubscribe();
  * 
  * // With using blocks (automatically unsubscribes at block end)
  * {
- *   using sub = observable.subscribe(observer);
+ *   using sub = source.subscribe((value) => console.log(value));
  *   // Use subscription here...
  * } // Subscription cleaned up here
  * 
  * // With async using blocks
  * async function example() {
- *   await using sub = observable.subscribe(observer);
+ *   await using sub = source.subscribe((value) => console.log(value));
  *   // Use subscription here...
  * } // Awaits cleanup here
  * ```
@@ -98,7 +105,10 @@ export interface Subscription extends SpecSubscription, Disposable, AsyncDisposa
    * 
    * @example
    * ```ts
-   * const sub = observable.subscribe(...);
+   * import { Observable } from './observable.ts';
+   * 
+   * const obs = Observable.of(1, 2, 3);
+   * const sub = obs.subscribe(() => {});
    * console.log(sub.closed); // false
    * 
    * sub.unsubscribe();
@@ -115,14 +125,6 @@ export interface Subscription extends SpecSubscription, Disposable, AsyncDisposa
    * providing automatic resource cleanup at block exit. When a subscription
    * is used with `using`, it will be automatically unsubscribed when the
    * block exits, even if an exception occurs.
-   * 
-   * @example
-   * ```ts
-   * {
-   *   using sub = observable.subscribe(...);
-   *   // Code that uses the subscription
-   * } // Subscription automatically unsubscribed here
-   * ```
    */
   [Symbol.dispose](): void;
 
@@ -136,14 +138,6 @@ export interface Subscription extends SpecSubscription, Disposable, AsyncDisposa
    * unsubscribed when the block exits.
    * 
    * @returns A Promise that resolves after unsubscribe completes
-   * 
-   * @example
-   * ```ts
-   * async function example() {
-   *   await using sub = observable.subscribe(...);
-   *   // Async code that uses the subscription
-   * } // Subscription automatically unsubscribed here
-   * ```
    */
   [Symbol.asyncDispose](): Promise<void>;
 

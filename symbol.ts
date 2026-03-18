@@ -71,9 +71,39 @@ export const Symbol: SymbolConstructor = (globalThis.Symbol ??
 /**
  * Adds Symbol.dispose if it doesn't exist natively.
  * 
+ * Symbol.dispose enables automatic resource cleanup using the `using` declaration.
+ * When a variable declared with `using` goes out of scope, its `[Symbol.dispose]()`
+ * method is called automatically, ensuring cleanup happens even if errors occur.
  * 
- * This ensures Symbol.dispose is available for resource management,
- * even in environments that don't support it natively.
+ * @example Basic resource cleanup with using
+ * ```ts
+ * import { Observable } from './observable.ts';
+ * 
+ * {
+ *   using subscription = Observable.of(1, 2, 3).subscribe({
+ *     next: (val) => console.log('Value:', val)
+ *   });
+ *   
+ *   // Use the subscription here
+ *   // ...
+ * } // subscription.unsubscribe() called automatically at block end
+ * ```
+ * 
+ * @example Automatic cleanup on error
+ * ```ts
+ * import { Observable } from './observable.ts';
+ * 
+ * function processData() {
+ *   using sub = Observable.from(dataStream).subscribe({
+ *     next: (data) => processItem(data)
+ *   });
+ *   
+ *   if (invalidCondition) {
+ *     throw new Error('Processing failed');
+ *   }
+ *   // sub.unsubscribe() called even if error thrown
+ * }
+ * ```
  */
 if (
   typeof globalThis.Symbol === "function" &&
@@ -91,9 +121,42 @@ if (
 /**
  * Adds Symbol.asyncDispose if it doesn't exist natively.
  * 
+ * Symbol.asyncDispose enables automatic async resource cleanup using `await using`.
+ * When a variable declared with `await using` goes out of scope, its
+ * `[Symbol.asyncDispose]()` method is called and awaited automatically,
+ * ensuring async cleanup (like closing connections) happens safely.
  * 
- * This ensures Symbol.asyncDispose is available for async resource
- * management, even in environments that don't support it natively.
+ * @example Async resource cleanup with await using
+ * ```ts
+ * import { Observable } from './observable.ts';
+ * 
+ * async function streamData() {
+ *   await using connection = await Observable.from(
+ *     connectToDatabase()
+ *   ).subscribe({
+ *     next: async (data) => await saveData(data)
+ *   });
+ *   
+ *   // Use connection here
+ *   // ...
+ * } // connection cleanup awaited automatically at block end
+ * ```
+ * 
+ * @example Guaranteed async cleanup on error
+ * ```ts
+ * import { Observable } from './observable.ts';
+ * 
+ * async function fetchAndProcess() {
+ *   await using sub = await Observable.from(apiStream).subscribe({
+ *     next: async (item) => await processAsync(item)
+ *   });
+ *   
+ *   if (errorCondition) {
+ *     throw new Error('Failed');
+ *   }
+ *   // Async cleanup guaranteed even if error thrown
+ * }
+ * ```
  */
 if (
   typeof globalThis.Symbol === "function" &&
