@@ -6,7 +6,6 @@
  * subscribe to an Observable. It defines the enhanced `Observer<T>` and
  * `Subscription` shapes used by this package, then re-exports the lower-level
  * spec types from `./_spec.ts` for callers that need proposal-aligned building
- * spec types from `./_spec.ts` for callers that need proposal-aligned building
  * blocks.
  *
  * Use this entrypoint when you are writing libraries, adapters, or tests that
