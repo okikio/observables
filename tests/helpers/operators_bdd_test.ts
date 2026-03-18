@@ -16,7 +16,7 @@
  * fast producers), chunk-by-chunk processing (memory efficient), and cross-platform compatibility.
  */
 
-import { describe, it, beforeEach, afterEach } from "@std/testing/bdd";
+import { describe, it } from "@std/testing/bdd";
 import { expect } from "@std/expect";
 
 import { Observable, pull } from "../../observable.ts";
