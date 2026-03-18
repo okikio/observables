@@ -50,6 +50,15 @@ describe("publishing setup", () => {
     expect(publish_workflow).toContain(
       "publish_npm: ${{ steps.resolve.outputs.publish_npm }}",
     );
+    expect(publish_workflow).toContain("default: auto");
+    expect(publish_workflow).toContain("- trusted");
+    expect(publish_workflow).toContain("- token");
+    expect(publish_workflow).toContain(
+      "DISPATCH_NPM_AUTH: ${{ inputs.npm_auth }}",
+    );
+    expect(publish_workflow).toContain(
+      "npm_auth: ${{ steps.resolve.outputs.npm_auth }}",
+    );
     expect(publish_workflow).toContain(
       "always() && needs.resolve-release.outputs.should_publish == 'true' && needs.resolve-release.outputs.publish_jsr == 'true'",
     );
@@ -75,17 +84,36 @@ describe("publishing setup", () => {
     expect(publish_workflow).not.toContain('elif [ "$RELEASED" = "true" ]');
   });
 
-  it("uses npm trusted publishing without requiring a token secret", () => {
+  it("bootstraps the first npm publish with a token before switching to trusted publishing", () => {
     const publish_workflow = readRepoFile(".github/workflows/publish.yml");
 
     expect(publish_workflow).toContain("id-token: write");
+    expect(publish_workflow).toContain("PACKAGE_NAME=$(node -p");
+    expect(publish_workflow).toContain('if npm view "$PACKAGE_NAME" version');
+    expect(publish_workflow).toContain(
+      'if [ "$PACKAGE_EXISTS" = "true" ]; then',
+    );
+    expect(publish_workflow).toContain(
+      'echo "NPM token publishing was selected, but the NPM_TOKEN secret is not configured." >&2',
+    );
+    expect(publish_workflow).toContain(
+      "Publish to npm with token bootstrap",
+    );
+    expect(publish_workflow).toContain(
+      "NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}",
+    );
     expect(publish_workflow).toContain(
       "npm publish --provenance --access public",
     );
     expect(publish_workflow).toContain(
-      "no NODE_AUTH_TOKEN secret is required here.",
+      "trusted publisher settings after the package exists.",
     );
-    expect(publish_workflow).not.toContain("NODE_AUTH_TOKEN:");
+    expect(publish_workflow).toContain(
+      "Publish to npm with trusted publishing",
+    );
+    expect(publish_workflow).toContain(
+      "NODE_AUTH_TOKEN stays unset here.",
+    );
   });
 
   it("pins publishing-script JSR imports to explicit versions", () => {
