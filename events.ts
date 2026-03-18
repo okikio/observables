@@ -3,12 +3,19 @@
  */
 
 import type { Observer, Subscription } from "./_types.ts";
-import type { SubscriptionObserver } from './observable.ts';
+import type { SubscriptionObserver } from "./observable.ts";
 
-import { Observable } from './observable.ts';
+import { Observable } from "./observable.ts";
 import { Symbol } from "./symbol.ts";
 
-import { createQueue, enqueue, dequeue, isFull, clear, forEach } from './queue.ts';  // Assume path to your queue utils
+import {
+  clear,
+  createQueue,
+  dequeue,
+  enqueue,
+  forEach,
+  isFull,
+} from "./queue.ts"; // Assume path to your queue utils
 
 /**
  * A multicast event bus that extends {@link Observable<T>}, allowing
@@ -17,7 +24,6 @@ import { createQueue, enqueue, dequeue, isFull, clear, forEach } from './queue.t
  *
  * @typeParam T - The type of values emitted by this bus.
  *
- * 
  * - Calling {@link emit} delivers the value to all active subscribers.
  * - Calling {@link close} completes all subscribers and prevents further emissions.
  * - Implements both {@link Symbol.dispose} and {@link Symbol.asyncDispose}
@@ -53,12 +59,11 @@ export class EventBus<T> extends Observable<T> {
   /**
    * Construct a new EventBus instance.
    *
-   * 
    * The base {@link Observable} constructor is invoked with the subscriber
    * registration logic, adding and removing subscribers to the internal set.
    */
   constructor() {
-    super(subscriber => {
+    super((subscriber) => {
       if (this.#closed) {
         subscriber.complete?.();
         return;
@@ -109,7 +114,6 @@ export class EventBus<T> extends Observable<T> {
   /**
    * Synchronous disposal method (for `using` syntax).
    *
-   * 
    * Alias for {@link close}.
    */
   [Symbol.dispose](): void {
@@ -119,7 +123,6 @@ export class EventBus<T> extends Observable<T> {
   /**
    * Asynchronous disposal method.
    *
-   * 
    * Alias for {@link close}.
    */
   async [Symbol.asyncDispose](): Promise<void> {
@@ -138,7 +141,7 @@ export class EventBus<T> extends Observable<T> {
  * }
  * ```
  */
-export type EventMap = {};
+export type EventMap = object;
 
 /**
  * The return type of {@link createEventDispatcher}.
@@ -163,7 +166,7 @@ export interface EventDispatcher<E extends EventMap> {
    */
   on<Name extends keyof E>(
     name: Name,
-    handler: (payload: E[Name]) => void
+    handler: (payload: E[Name]) => void,
   ): Subscription;
 
   /**
@@ -222,7 +225,9 @@ export interface EventDispatcher<E extends EventMap> {
  * bus.close();
  * ```
  */
-export function createEventDispatcher<E extends EventMap>(): EventDispatcher<E> {
+export function createEventDispatcher<E extends EventMap>(): EventDispatcher<
+  E
+> {
   // Internal bus carries a union of all event types and payloads
   const bus = new EventBus<{ type: keyof E; payload: E[keyof E] }>();
 
@@ -245,14 +250,14 @@ export function createEventDispatcher<E extends EventMap>(): EventDispatcher<E> 
      */
     on<Name extends keyof E>(
       name: Name,
-      handler: (payload: E[Name]) => void
+      handler: (payload: E[Name]) => void,
     ) {
       return bus.events.subscribe({
         next(event) {
           if (event.type === name) {
             handler(event.payload as E[Name]);
           }
-        }
+        },
       });
     },
 
@@ -282,7 +287,7 @@ export function createEventDispatcher<E extends EventMap>(): EventDispatcher<E> 
      */
     close(): void {
       bus.close();
-    }
+    },
   };
 }
 
@@ -334,13 +339,15 @@ export interface WaitForEventOptions {
  */
 export function waitForEvent<
   E extends EventMap,
-  K extends keyof E
+  K extends keyof E,
 >(
   bus: { events: Observable<{ type: keyof E; payload: E[keyof E] }> },
   type: K,
-  { signal, throwOnClose = false }: WaitForEventOptions = {}
+  { signal, throwOnClose = false }: WaitForEventOptions = {},
 ): Promise<E[K] | undefined> {
-  const { resolve, reject, promise } = Promise.withResolvers<E[K] | undefined>();
+  const { resolve, reject, promise } = Promise.withResolvers<
+    E[K] | undefined
+  >();
 
   // Immediate abort
   if (signal?.aborted) {
@@ -348,13 +355,13 @@ export function waitForEvent<
     return promise;
   }
 
-  let subscription: Subscription | undefined;
+  const subscription_ref: { current?: Subscription } = {};
 
-  subscription = bus.events.subscribe({
+  subscription_ref.current = bus.events.subscribe({
     next(event) {
       if (event.type === type) {
         cleanup();
-        
+
         // cast payload to the correct type
         resolve(event.payload as E[K]);
       }
@@ -375,8 +382,8 @@ export function waitForEvent<
   });
 
   function cleanup() {
-    subscription?.unsubscribe?.();
-    signal?.removeEventListener?.('abort', onAbort);
+    subscription_ref.current?.unsubscribe?.();
+    signal?.removeEventListener?.("abort", onAbort);
   }
 
   function onAbort() {
@@ -384,11 +391,10 @@ export function waitForEvent<
     reject(signal!.reason);
   }
 
-  signal?.addEventListener?.('abort', onAbort, { once: true });
+  signal?.addEventListener?.("abort", onAbort, { once: true });
 
   return promise;
 }
-
 
 /**
  * Controls when the replay buffer connects to the source Observable.
@@ -401,7 +407,7 @@ export function waitForEvent<
  * Choose 'eager' for system-critical events you never want to miss.
  * Choose 'lazy' for expensive operations that shouldn't run without consumers.
  */
-export type ReplayMode = 'eager' | 'lazy';
+export type ReplayMode = "eager" | "lazy";
 
 /**
  * Configuration options for replay behavior.
@@ -410,14 +416,14 @@ export interface ReplayOptions {
   /**
    * Maximum number of values to buffer.
    * When the buffer is full, the oldest value is discarded (FIFO).
-   * 
+   *
    * @default Infinity (unlimited buffer, use with caution)
    */
   count?: number;
 
   /**
    * Determines when to connect to the source Observable.
-   * 
+   *
    * @default 'lazy' (resource-efficient, connects on-demand)
    */
   mode?: ReplayMode;
@@ -426,28 +432,28 @@ export interface ReplayOptions {
 /**
  * Adds replay capability to an Observable, multicasting values to multiple subscribers
  * while maintaining a buffer of recent emissions.
- * 
+ *
  * Without replay, each new subscriber triggers a fresh execution of the source Observable:
  * ```ts
  * const apiCall = new Observable(subscriber => {
  *   console.log('Making expensive API call...');
  *   fetch('/api/data').then(response => subscriber.next(response));
  * });
- * 
+ *
  * apiCall.subscribe(data1 => {}); // Triggers API call #1
  * apiCall.subscribe(data2 => {}); // Triggers API call #2 (duplicate!)
  * ```
- * 
+ *
  * With replay, the source executes once and shares results:
  * ```ts
  * const sharedApi = withReplay(apiCall, { count: 1, mode: 'lazy' });
- * 
+ *
  * sharedApi.subscribe(data1 => {}); // Triggers API call
  * sharedApi.subscribe(data2 => {}); // Gets cached result, no new call!
  * ```
- * 
+ *
  * ## Memory Considerations
- * 
+ *
  * - Buffer size directly impacts memory usage: `count * sizeof(T)`
  * - 'eager' mode holds references even with no subscribers (potential memory leak)
  * - 'lazy' mode clears buffer when all subscribers disconnect (automatic cleanup)
@@ -456,49 +462,49 @@ export interface ReplayOptions {
  * > **Note**: Infinite buffers are by default capped at 1000 items to prevent memory issues.
  * > The primary reason for this cap is because some runtimes such as Deno and Node.js
  * > litereally crash when you try to allocate Ininity-sized arrays.
- * 
+ *
  * ## Performance Characteristics
- * 
+ *
  * - Enqueue/Dequeue: O(1) constant time
  * - New subscriber replay: O(n) where n = buffer size
  * - Memory overhead: One queue + subscriber set + source subscription
- * 
+ *
  * ## Edge Cases & Gotchas
- * 
+ *
  * 1. **Late subscribers in eager mode**: May receive very old values if the source
  *    emitted long ago and no cleanup occurred.
- * 
+ *
  * 2. **Infinite buffers**: Without a count limit, buffers grow indefinitely.
  *    Always set a reasonable count for production use.
- * 
+ *
  * 3. **Error handling**: Errors are multicast to all subscribers but don't clear
  *    the buffer. New subscribers still get the replay before the error.
- * 
+ *
  * 4. **Completion**: The source completion is multicast, but the replay buffer
  *    remains accessible to new subscribers (they get replay + completion).
- * 
+ *
  * @param source The source Observable to add replay behavior to
  * @param options Configuration for replay behavior
  * @returns A new Observable with replay capability
- * 
+ *
  * @example
  * ```ts
  * // Lazy mode - only buffers when subscribers are present
- * const shared = withReplay(expensive, { 
- *   count: 5, 
+ * const shared = withReplay(expensive, {
+ *   count: 5,
  *   mode: 'lazy'  // Only run expensive when needed
  * });
- * 
+ *
  * // Eager mode - always buffering, like a flight recorder
- * const eventLog = withReplay(systemEvents, { 
- *   count: 100, 
+ * const eventLog = withReplay(systemEvents, {
+ *   count: 100,
  *   mode: 'eager'  // Capture events even if no one's listening
  * });
  * ```
  */
 export function withReplay<T>(
   source: Observable<T>,
-  { count = Infinity, mode = "lazy" }: ReplayOptions = {}
+  { count = Infinity, mode = "lazy" }: ReplayOptions = {},
 ): Observable<T> {
   // Validate inputs
   if (count <= 0) {
@@ -514,7 +520,7 @@ export function withReplay<T>(
     next(value) {
       // Manage buffer capacity
       if (count !== Infinity && isFull(buffer)) {
-        dequeue(buffer);  // Remove oldest
+        dequeue(buffer); // Remove oldest
       }
       enqueue(buffer, value);
 
@@ -532,7 +538,7 @@ export function withReplay<T>(
       for (const sub of subscribers) {
         sub.complete();
       }
-    }
+    },
   };
 
   const isEager = mode === "eager";
@@ -541,9 +547,9 @@ export function withReplay<T>(
   /**
    * Creates the replay Observable that new subscribers will receive.
    */
-  return new Observable(subscriber => {
+  return new Observable((subscriber) => {
     // Step 1: Replay buffered values to the new subscriber
-    forEach(buffer, item => subscriber.next(item));
+    forEach(buffer, (item) => subscriber.next(item));
 
     // Step 2: Add to active subscribers for future emissions
     subscribers.add(subscriber);
@@ -561,7 +567,7 @@ export function withReplay<T>(
       if (!isEager && subscribers.size === 0 && shared) {
         shared.unsubscribe();
         shared = null;
-        clear(buffer);  // Clear shared buffer when fully disconnected
+        clear(buffer); // Clear shared buffer when fully disconnected
       }
       // In eager mode, we keep the connection alive regardless
     };

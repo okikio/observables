@@ -6,7 +6,7 @@ import type { SpecObservable } from "../../_spec.ts";
 import type { ExcludeError, Operator } from "../_types.ts";
 
 import { createStatefulOperator } from "../operators.ts";
-import { ObservableError, isObservableError } from "../../error.ts";
+import { isObservableError, ObservableError } from "../../error.ts";
 import { pull } from "../../observable.ts";
 
 /**
@@ -56,7 +56,7 @@ import { pull } from "../../observable.ts";
  */
 export function mergeMap<T, R>(
   project: (value: ExcludeError<T>, index: number) => SpecObservable<R>,
-  concurrent: number = Infinity
+  concurrent: number = Infinity,
 ): Operator<T | ObservableError, R | ObservableError> {
   return createStatefulOperator<T | ObservableError, R, {
     // State for tracking active subscriptions and buffer
@@ -74,7 +74,7 @@ export function mergeMap<T, R>(
       buffer: [],
       sourceCompleted: false,
       index: 0,
-      activeCount: 0
+      activeCount: 0,
     }),
 
     // Process each incoming chunk
@@ -96,7 +96,13 @@ export function mergeMap<T, R>(
           innerObservable = project(value as ExcludeError<T>, innerIndex);
         } catch (err) {
           // Forward any errors from the projection function
-          controller.enqueue(ObservableError.from(err, "operator:stateful:mergeMap:project", value) as R);
+          controller.enqueue(
+            ObservableError.from(
+              err,
+              "operator:stateful:mergeMap:project",
+              value,
+            ) as R,
+          );
           return;
         }
 
@@ -104,11 +110,19 @@ export function mergeMap<T, R>(
 
         // Use pull to iterate asynchronously
         try {
-          for await (const innerValue of pull(innerObservable, { throwError: false })) {
+          for await (
+            const innerValue of pull(innerObservable, { throwError: false })
+          ) {
             controller.enqueue(innerValue as R | ObservableError);
           }
         } catch (err) {
-          controller.enqueue(ObservableError.from(err, "operator:stateful:mergeMap:innerObservable", value) as R);
+          controller.enqueue(
+            ObservableError.from(
+              err,
+              "operator:stateful:mergeMap:innerObservable",
+              value,
+            ) as R,
+          );
         } finally {
           // Clean up after inner Observable completes
           state.activeSubscriptions.delete(innerIndex);
@@ -155,7 +169,7 @@ export function mergeMap<T, R>(
       state.buffer.length = 0;
       state.activeSubscriptions.clear();
       state.activeCount = 0;
-    }
+    },
   });
 }
 
@@ -209,7 +223,7 @@ export function mergeMap<T, R>(
  * @returns An operator function that maps and concatenates values
  */
 export function concatMap<T, R>(
-  project: (value: ExcludeError<T>, index: number) => SpecObservable<R>
+  project: (value: ExcludeError<T>, index: number) => SpecObservable<R>,
 ): Operator<T | ObservableError, R | ObservableError> {
   // concatMap is just mergeMap with concurrency = 1
   return mergeMap(project, 1);
@@ -260,7 +274,7 @@ export function concatMap<T, R>(
  * @returns An operator function that maps and switches between values
  */
 export function switchMap<T, R>(
-  project: (value: ExcludeError<T>, index: number) => SpecObservable<R>
+  project: (value: ExcludeError<T>, index: number) => SpecObservable<R>,
 ): Operator<T | ObservableError, R | ObservableError> {
   return createStatefulOperator<T | ObservableError, R | ObservableError, {
     // State for tracking inner subscription
@@ -278,7 +292,7 @@ export function switchMap<T, R>(
       currentTask: null,
       currentTaskToken: null,
       sourceCompleted: false,
-      index: 0
+      index: 0,
     }),
 
     // Process each incoming chunk
@@ -302,7 +316,13 @@ export function switchMap<T, R>(
         innerObservable = project(chunk as ExcludeError<T>, state.index++);
       } catch (err) {
         // Forward any errors from the projection function
-        controller.enqueue(ObservableError.from(err, "operator:stateful:switchMap:project", chunk) as R);
+        controller.enqueue(
+          ObservableError.from(
+            err,
+            "operator:stateful:switchMap:project",
+            chunk,
+          ) as R,
+        );
         return;
       }
 
@@ -312,8 +332,7 @@ export function switchMap<T, R>(
 
       // Subscribe to the new inner Observable
       const currentTaskToken = {};
-      let currentTask: Promise<void>;
-      currentTask = (async () => {
+      const currentTask: Promise<void> = (async () => {
         const enqueueIfActive = (value: R | ObservableError): void => {
           if (
             abortController.signal.aborted ||
@@ -330,7 +349,8 @@ export function switchMap<T, R>(
         };
 
         try {
-          const iterator = pull(innerObservable, { throwError: false })[Symbol.asyncIterator]();
+          const iterator = pull(innerObservable, { throwError: false })
+            [Symbol.asyncIterator]();
 
           while (!abortController.signal.aborted) {
             const { value, done } = await iterator.next();
@@ -344,7 +364,11 @@ export function switchMap<T, R>(
         } catch (err) {
           if (!abortController.signal.aborted) {
             enqueueIfActive(
-              ObservableError.from(err, "operator:stateful:switchMap:innerObservable", chunk),
+              ObservableError.from(
+                err,
+                "operator:stateful:switchMap:innerObservable",
+                chunk,
+              ),
             );
           }
         } finally {
@@ -386,6 +410,6 @@ export function switchMap<T, R>(
       }
       state.currentTask = null;
       state.currentTaskToken = null;
-    }
+    },
   });
 }

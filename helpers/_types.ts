@@ -6,49 +6,69 @@ import type { Observable } from "../observable.ts";
  * Type representing a stream operator function
  * Transforms a ReadableStream of type In to a ReadableStream of type Out
  */
-export type Operator<In, Out> = (stream: ReadableStream<In>) => ReadableStream<Out>;
+export type Operator<In, Out> = (
+  stream: ReadableStream<In>,
+) => ReadableStream<Out>;
+
+/**
+ * Removes `ObservableError` from a type so operators can describe
+ * error-filtered output channels.
+ */
 export type ExcludeError<T> = Exclude<T, ObservableError>;
 
-// Combines Operator and SafeOperator.
-// Why: Supports mixed operators. Solves pipeline flexibility.
+/**
+ * Represents an operator slot in a pipeline where the previous operator may
+ * or may not have filtered `ObservableError` values out of the stream.
+ */
 export type OperatorItem<T, R> = Operator<T, R> | Operator<T, ExcludeError<R>>;
 
-// Inference Types
-// Figures out the source type (Observable or Operator).
-// Why: Ensures correct input type. Solves type safety in pipelines.
-export type InferSourceType<TSource extends unknown> = 
-  TSource extends Observable<unknown> ? InferObservableType<TSource> : 
-  TSource extends OperatorItem<unknown, unknown> ? InferOperatorItemOutputType<TSource> : 
-  TSource;
+/**
+ * Infers the item type contributed by either an Observable source or an
+ * operator in a pipe chain.
+ */
+export type InferSourceType<TSource extends unknown> = TSource extends
+  Observable<unknown> ? InferObservableType<TSource>
+  : TSource extends OperatorItem<unknown, unknown>
+    ? InferOperatorItemOutputType<TSource>
+  : TSource;
 
-// Gets the output type of an OperatorItem.
-// Why: Tracks operator output. Solves pipeline type resolution.
-export type InferOperatorItemOutputType<TSource extends OperatorItem<any, any>> = 
-  ReturnType<TSource> extends ReadableStream<infer T> ? T : never;
+/**
+ * Extracts the chunk type emitted by an operator.
+ */
+export type InferOperatorItemOutputType<
+  TSource extends OperatorItem<any, any>,
+> = ReturnType<TSource> extends ReadableStream<infer T> ? T : never;
 
-// Gets the data type an Observable emits.
-// Why: Extracts Observable data type. Solves type-safe data access.
-export type InferObservableType<TSource extends Observable<unknown>> = 
+/**
+ * Extracts the value type emitted by an Observable.
+ */
+export type InferObservableType<TSource extends Observable<unknown>> =
   TSource extends Observable<infer R> ? R : any;
 
-// Utility Types
-// Gets the first item of a tuple.
-// Why: Accesses pipeline start. Solves type extraction.
-export type FirstTupleItem<TTuple extends readonly [unknown, ...unknown[]]> = TTuple[0];
+/**
+ * Returns the first item in a non-empty tuple.
+ */
+export type FirstTupleItem<TTuple extends readonly [unknown, ...unknown[]]> =
+  TTuple[0];
 
-// Gets the last item of a tuple.
-// Why: Finds final operator. Solves pipeline output typing.
-export type GenericLastTupleItem<T extends readonly any[]> = 
-  T extends [...infer _, infer L] ? L : never;
+/**
+ * Returns the last item in any tuple shape.
+ */
+export type GenericLastTupleItem<T extends readonly any[]> = T extends
+  [...infer _, infer L] ? L : never;
 
-// Ensures last tuple item is an OperatorItem.
-// Why: Validates pipeline end. Solves output type safety.
+/**
+ * Returns the last tuple item only when it is a valid operator item.
+ */
 export type LastTupleItem<T extends readonly unknown[]> =
-  GenericLastTupleItem<T> extends OperatorItem<any, any> ? GenericLastTupleItem<T> : never;
+  GenericLastTupleItem<T> extends OperatorItem<any, any>
+    ? GenericLastTupleItem<T>
+    : never;
 
-// Pipeline final type
-// Defines Observable output based on last operator.
-// Why: Sets pipeline result type. Solves type-safe output.
+/**
+ * Computes the Observable type returned by a `pipe()` call from the source and
+ * its final operator.
+ */
 export type ObservableWithPipe<
   TPipe extends readonly [Observable<unknown>, ...OperatorItem<any, unknown>[]],
 > = Observable<InferOperatorItemOutputType<LastTupleItem<TPipe>>>;
@@ -57,7 +77,7 @@ export type ObservableWithPipe<
  * Type representing how to handle errors in operators
  * - "ignore" => errors wrapped in ObservableError will be used as values
  *               and can then be transformed as the operator sees fit
- * - "pass-through" => errors automatically pass through, meaning ObservableError 
+ * - "pass-through" => errors automatically pass through, meaning ObservableError
  *                     will not appear as a value
  * - "throw" => errors will cause the stream to throw and terminate
  * - "manual" => errors are passed to the transform function to handle manually
@@ -96,7 +116,7 @@ export interface TransformFunctionOptions<T, R> extends BaseTransformOptions {
    * How to handle errors in the stream:
    * - "ignore" => errors wrapped in ObservableError will be used as values
    *               and can then be transformed as the operator sees fit
-   * - "pass-through" => errors automatically pass through, meaning ObservableError 
+   * - "pass-through" => errors automatically pass through, meaning ObservableError
    *                     will not appear as a value
    * - "throw" => errors will cause the stream to throw and terminate
    * - "manual" => errors are passed to the transform function to handle manually
@@ -112,7 +132,7 @@ export interface TransformFunctionOptions<T, R> extends BaseTransformOptions {
    */
   transform: (
     chunk: T,
-    controller: TransformStreamDefaultController<R>
+    controller: TransformStreamDefaultController<R>,
   ) => R | undefined | void | null | Promise<R | undefined | void | null>;
 
   /**
@@ -121,7 +141,7 @@ export interface TransformFunctionOptions<T, R> extends BaseTransformOptions {
    * @param controller - The TransformStreamDefaultController
    */
   flush?: (
-    controller: TransformStreamDefaultController<R>
+    controller: TransformStreamDefaultController<R>,
   ) => void | Promise<void>;
 
   /**
@@ -129,7 +149,7 @@ export interface TransformFunctionOptions<T, R> extends BaseTransformOptions {
    * @param controller - The TransformStreamDefaultController
    */
   start?: (
-    controller: TransformStreamDefaultController<R>
+    controller: TransformStreamDefaultController<R>,
   ) => void | Promise<void>;
 
   /**
@@ -152,12 +172,13 @@ export type CreateOperatorOptions<T, R> =
 /**
  * Options for stateful transformation logic
  */
-export interface StatefulTransformFunctionOptions<T, R, S> extends BaseTransformOptions {
+export interface StatefulTransformFunctionOptions<T, R, S>
+  extends BaseTransformOptions {
   /**
    * How to handle errors in the stream:
    * - "ignore" => errors wrapped in ObservableError will be used as values
    *               and can then be transformed as the operator sees fit
-   * - "pass-through" => errors automatically pass through, meaning ObservableError 
+   * - "pass-through" => errors automatically pass through, meaning ObservableError
    *                     will not appear as a value
    * - "throw" => errors will cause the stream to throw and terminate
    * - "manual" => errors are passed to the transform function to handle manually
@@ -180,7 +201,7 @@ export interface StatefulTransformFunctionOptions<T, R, S> extends BaseTransform
   transform: (
     chunk: T,
     state: S,
-    controller: TransformStreamDefaultController<R>
+    controller: TransformStreamDefaultController<R>,
   ) => void | Promise<void>;
 
   /**
@@ -191,7 +212,7 @@ export interface StatefulTransformFunctionOptions<T, R, S> extends BaseTransform
    */
   flush?: (
     state: S,
-    controller: TransformStreamDefaultController<R>
+    controller: TransformStreamDefaultController<R>,
   ) => void | Promise<void>;
 
   /**
@@ -201,7 +222,7 @@ export interface StatefulTransformFunctionOptions<T, R, S> extends BaseTransform
    */
   start?: (
     state: S,
-    controller: TransformStreamDefaultController<R>
+    controller: TransformStreamDefaultController<R>,
   ) => void | Promise<void>;
 
   /**
@@ -210,7 +231,7 @@ export interface StatefulTransformFunctionOptions<T, R, S> extends BaseTransform
    */
   cancel?: (
     state: S,
-    reason?: unknown
+    reason?: unknown,
   ) => void | Promise<void>;
 }
 
@@ -222,7 +243,16 @@ export interface StatefulTransformFunctionOptions<T, R, S> extends BaseTransform
  * @typeParam S - State type (if applicable)
  */
 export interface TransformHandlerContext<S extends unknown = undefined> {
+  /**
+   * Human-readable operator name used in wrapped error messages.
+   */
   operatorName?: string;
+  /**
+   * Indicates that the lifecycle handler should pass shared state through.
+   */
   isStateful?: boolean;
+  /**
+   * Shared operator state for stateful transforms.
+   */
   state?: S;
 }

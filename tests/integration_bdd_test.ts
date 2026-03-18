@@ -2,46 +2,30 @@
  * Integration tests validating operator composition in real-world patterns. Unlike unit tests
  * focused on individual operators, these ensure complete pipelines handle order dependencies,
  * error propagation, state isolation, performance, and memory management correctly.
- * 
+ *
  * Patterns tested: search-as-you-type (debounce + filter + switchMap for request cancellation),
  * ETL pipelines (map + filter + batch), error recovery (catchErrors + fallback), rate limiting
  * (throttle + batch + concurrency), aggregation (scan + moving averages), fan-out/fan-in
  * (mergeMap for parallelism, concatMap for ordering).
  */
 
-import { describe, it } from '@std/testing/bdd';
-import { expect } from '@std/expect';
+// deno-lint-ignore-file no-import-prefix
+import { describe, it } from "jsr:@std/testing@^1/bdd";
+import { expect } from "jsr:@std/expect@^1";
 
-import { Observable } from '../observable.ts';
-import { pipe } from '../helpers/pipe.ts';
-import { 
-  map, 
-  filter, 
-  scan, 
-  tap,
-  take,
-} from '../helpers/operations/core.ts';
-import { 
-  debounce, 
-  throttle 
-} from '../helpers/operations/timing.ts';
-import { 
-  mergeMap, 
-  switchMap, 
-  concatMap 
-} from '../helpers/operations/combination.ts';
-import { 
-  catchErrors, 
-  ignoreErrors,
-} from '../helpers/operations/errors.ts';
-import { 
-  batch, 
-} from '../helpers/operations/batch.ts';
-import { 
-  find,
-  unique
-} from '../helpers/operations/conditional.ts';
-import { ObservableError, isObservableError } from '../error.ts';
+import { Observable } from "../observable.ts";
+import { pipe } from "../helpers/pipe.ts";
+import { filter, map, scan, take, tap } from "../helpers/operations/core.ts";
+import { debounce, throttle } from "../helpers/operations/timing.ts";
+import {
+  concatMap,
+  mergeMap,
+  switchMap,
+} from "../helpers/operations/combination.ts";
+import { catchErrors, ignoreErrors } from "../helpers/operations/errors.ts";
+import { batch } from "../helpers/operations/batch.ts";
+import { find, unique } from "../helpers/operations/conditional.ts";
+import { isObservableError, ObservableError } from "../error.ts";
 
 /**
  * Collects values from an Observable.
@@ -57,14 +41,14 @@ async function collect<T>(obs: Observable<T>): Promise<T[]> {
 /**
  * Creates a delay using setTimeout.
  */
-const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("Integration Tests - Real World Patterns", () => {
   describe("Search-as-you-type Pattern", () => {
     it("should debounce rapid inputs and process only final value", async () => {
       // Simulate rapid typing: "h" -> "he" -> "hel" -> "hello"
-      const inputs = ['h', 'he', 'hel', 'hello'];
-      
+      const inputs = ["h", "he", "hel", "hello"];
+
       // Create observable that emits quickly
       const source = new Observable<string>((observer) => {
         inputs.forEach((input, i) => {
@@ -77,34 +61,34 @@ describe("Integration Tests - Real World Patterns", () => {
         source,
         ignoreErrors(),
         debounce(50), // Wait 50ms after last input
-        map(query => `Search: ${query}`)
+        map((query) => `Search: ${query}`),
       );
 
       const values = await collect(result);
-      
+
       // Should only process the final value after debounce settles
       expect(values).toHaveLength(1);
-      expect(values[0]).toBe('Search: hello');
+      expect(values[0]).toBe("Search: hello");
     });
 
     it("should filter short queries and transform results", async () => {
-      const queries = ['a', 'ab', 'abc', 'abcd'];
-      
+      const queries = ["a", "ab", "abc", "abcd"];
+
       const source = Observable.of(...queries);
 
       const result = pipe(
         source,
         ignoreErrors(),
-        filter(query => query.length >= 3), // Only 3+ chars
-        map(query => query.toUpperCase()),
-        map(query => `Result for: ${query}`)
+        filter((query) => query.length >= 3), // Only 3+ chars
+        map((query) => query.toUpperCase()),
+        map((query) => `Result for: ${query}`),
       );
 
       const values = await collect(result);
-      
+
       expect(values).toEqual([
-        'Result for: ABC',
-        'Result for: ABCD'
+        "Result for: ABC",
+        "Result for: ABCD",
       ]);
     });
   });
@@ -123,10 +107,10 @@ describe("Integration Tests - Real World Patterns", () => {
 
     it("should extract, transform, and load data through pipeline", async () => {
       const rawData: RawData[] = [
-        { id: 1, value: '  hello  ', valid: true },
-        { id: 2, value: 'WORLD', valid: true },
-        { id: 3, value: 'invalid', valid: false },
-        { id: 4, value: '  Test  ', valid: true },
+        { id: 1, value: "  hello  ", valid: true },
+        { id: 2, value: "WORLD", valid: true },
+        { id: 3, value: "invalid", valid: false },
+        { id: 4, value: "  Test  ", valid: true },
       ];
 
       const source = Observable.of(...rawData);
@@ -135,25 +119,25 @@ describe("Integration Tests - Real World Patterns", () => {
         source,
         ignoreErrors(),
         // Extract: filter valid records
-        filter(item => item.valid),
+        filter((item) => item.valid),
         // Transform: normalize data
-        map(item => ({
+        map((item) => ({
           id: item.id,
-          normalized: item.value.trim().toLowerCase()
+          normalized: item.value.trim().toLowerCase(),
         })),
         // Load: collect in batches
         batch(2),
-        ignoreErrors()
+        ignoreErrors(),
       );
 
       const batches = await collect(result);
-      
+
       expect(batches).toHaveLength(2);
       expect(batches[0]).toHaveLength(2);
       expect(batches[1]).toHaveLength(1);
-      expect(batches[0][0].normalized).toBe('hello');
-      expect(batches[0][1].normalized).toBe('world');
-      expect(batches[1][0].normalized).toBe('test');
+      expect(batches[0][0].normalized).toBe("hello");
+      expect(batches[0][1].normalized).toBe("world");
+      expect(batches[1][0].normalized).toBe("test");
     });
 
     it("should compute running statistics during processing", async () => {
@@ -166,11 +150,11 @@ describe("Integration Tests - Real World Patterns", () => {
         // Running sum
         scan((acc, val) => acc + val, 0),
         // Take every 5th value
-        filter((_, index) => index % 5 === 4)
+        filter((_, index) => index % 5 === 4),
       );
 
       const values = await collect(result);
-      
+
       // scan emits the seed first, so the 5th and 10th emitted running totals
       // are 10 and 45 rather than 15 and 55.
       expect(values).toEqual([10, 45]);
@@ -185,15 +169,15 @@ describe("Integration Tests - Real World Patterns", () => {
         source,
         map((x) => {
           if (x === 3) {
-            throw new Error('Network error');
+            throw new Error("Network error");
           }
           return x * 2;
         }),
-        catchErrors([] as number[]) // Fallback to empty array
+        catchErrors([] as number[]), // Fallback to empty array
       );
 
       const values = await collect(result);
-      
+
       // map uses pass-through error handling, so catchErrors replaces the
       // ObservableError value with the fallback while keeping earlier values.
       expect(values).toContain(2);
@@ -204,7 +188,9 @@ describe("Integration Tests - Real World Patterns", () => {
     it("should isolate errors and continue processing", async () => {
       const operations = [
         () => 10,
-        () => { throw new Error('Failed'); },
+        () => {
+          throw new Error("Failed");
+        },
         () => 20,
         () => 30,
       ];
@@ -213,33 +199,33 @@ describe("Integration Tests - Real World Patterns", () => {
 
       const result = pipe(
         source,
-        map(fn => {
+        map((fn) => {
           try {
             return fn();
           } catch (err) {
-            return ObservableError.from(err, 'map');
+            return ObservableError.from(err, "map");
           }
         }),
-        tap(val => {
+        tap((val) => {
           // Log errors but don't stop
           if (isObservableError(val)) {
-            console.log('Error logged:', val.message);
+            console.log("Error logged:", val.message);
           }
         }),
-        ignoreErrors() // Remove errors from stream
+        ignoreErrors(), // Remove errors from stream
       );
 
       const values = await collect(result);
-      
+
       expect(values).toEqual([10, 20, 30]);
     });
 
     it("should separate errors from successes", async () => {
       const mixed = [
-        { type: 'success', value: 1 },
-        { type: 'error', value: 'Error 1' },
-        { type: 'success', value: 2 },
-        { type: 'error', value: 'Error 2' },
+        { type: "success", value: 1 },
+        { type: "error", value: "Error 1" },
+        { type: "success", value: 2 },
+        { type: "error", value: "Error 2" },
       ];
 
       const source = Observable.of(...mixed);
@@ -247,19 +233,19 @@ describe("Integration Tests - Real World Patterns", () => {
       const successes = pipe(
         source,
         ignoreErrors(),
-        filter(item => item.type === 'success'),
-        map(item => item.value)
+        filter((item) => item.type === "success"),
+        map((item) => item.value),
       );
 
       const errors = pipe(
         source,
         ignoreErrors(),
-        filter(item => item.type === 'error'),
-        map(item => item.value)
+        filter((item) => item.type === "error"),
+        map((item) => item.value),
       );
 
       expect(await collect(successes)).toEqual([1, 2]);
-      expect(await collect(errors)).toEqual(['Error 1', 'Error 2']);
+      expect(await collect(errors)).toEqual(["Error 1", "Error 2"]);
     });
   });
 
@@ -274,20 +260,21 @@ describe("Integration Tests - Real World Patterns", () => {
       const result = pipe(
         source,
         ignoreErrors(),
-        mergeMap((id) => Observable.from((async () => {
-          activeCount++;
-          maxConcurrent = Math.max(maxConcurrent, activeCount);
-          
-          await wait(10); // Simulate async work
-          
-          activeCount--;
-          return `Result ${id}`;
-        })()), 2), // Max 2 concurrent
-        ignoreErrors()
+        mergeMap((id) =>
+          Observable.from((async () => {
+            activeCount++;
+            maxConcurrent = Math.max(maxConcurrent, activeCount);
+
+            await wait(10); // Simulate async work
+
+            activeCount--;
+            return `Result ${id}`;
+          })()), 2), // Max 2 concurrent
+        ignoreErrors(),
       );
 
       const values = await collect(result);
-      
+
       expect(values).toHaveLength(5);
       expect(maxConcurrent).toBeLessThanOrEqual(2);
     });
@@ -299,22 +286,24 @@ describe("Integration Tests - Real World Patterns", () => {
       const result = pipe(
         source,
         ignoreErrors(),
-        concatMap((n) => Observable.from((async () => {
-          await wait(n * 10); // Longer delay for larger numbers
-          return `Item ${n}`;
-        })())),
-        ignoreErrors()
+        concatMap((n) =>
+          Observable.from((async () => {
+            await wait(n * 10); // Longer delay for larger numbers
+            return `Item ${n}`;
+          })())
+        ),
+        ignoreErrors(),
       );
 
       const values = await collect(result);
-      
+
       // concatMap preserves input order, not processing time order
       // Input order was [3, 1, 2], so output is also [3, 1, 2]
-      expect(values).toEqual(['Item 3', 'Item 1', 'Item 2']);
+      expect(values).toEqual(["Item 3", "Item 1", "Item 2"]);
     });
 
     it("should cancel previous requests with switchMap", async () => {
-      const requests = ['req1', 'req2', 'req3'];
+      const requests = ["req1", "req2", "req3"];
       const source = new Observable<string>((observer) => {
         requests.forEach((req, i) => {
           setTimeout(() => observer.next(req), i * 10);
@@ -333,23 +322,25 @@ describe("Integration Tests - Real World Patterns", () => {
       const result = pipe(
         source,
         ignoreErrors(),
-        switchMap((req) => new Observable<string>((observer) => {
-          processedCount++;
-          const id = setTimeout(() => {
-            observer.next(`Result: ${req}`);
-            observer.complete();
-          }, 30);
+        switchMap((req) =>
+          new Observable<string>((observer) => {
+            processedCount++;
+            const id = setTimeout(() => {
+              observer.next(`Result: ${req}`);
+              observer.complete();
+            }, 30);
 
-          return () => clearTimeout(id);
-        })),
-        ignoreErrors()
+            return () => clearTimeout(id);
+          })
+        ),
+        ignoreErrors(),
       );
 
       const values = await collect(result);
-      
+
       // Only the last request should complete
       // Earlier ones are canceled when new ones arrive
-      expect(values).toEqual(['Result: req3']);
+      expect(values).toEqual(["Result: req3"]);
       expect(processedCount).toBe(3);
     });
   });
@@ -369,14 +360,14 @@ describe("Integration Tests - Real World Patterns", () => {
         ignoreErrors(),
         scan((state: AvgState, value) => ({
           sum: state.sum + value,
-          count: state.count + 1
+          count: state.count + 1,
         }), { sum: 0, count: 0 }),
         filter((state) => state.count > 0),
-        map(state => state.sum / state.count)
+        map((state) => state.sum / state.count),
       );
 
       const averages = await collect(result);
-      
+
       // Running averages: 10, 15, 20, 25, 30
       expect(averages).toEqual([10, 15, 20, 25, 30]);
     });
@@ -396,12 +387,12 @@ describe("Integration Tests - Real World Patterns", () => {
           }
           return newWindow;
         }, []),
-        filter(window => window.length === windowSize),
-        map(window => window.reduce((a, b) => a + b, 0) / window.length)
+        filter((window) => window.length === windowSize),
+        map((window) => window.reduce((a, b) => a + b, 0) / window.length),
       );
 
       const movingAvg = await collect(result);
-      
+
       // Windows: [1,2,3]=2, [2,3,4]=3, [3,4,5]=4, etc.
       expect(movingAvg[0]).toBe(2);
       expect(movingAvg[1]).toBe(3);
@@ -415,11 +406,11 @@ describe("Integration Tests - Real World Patterns", () => {
       const result = pipe(
         source,
         ignoreErrors(),
-        unique()
+        unique(),
       );
 
       const uniqueValues = await collect(result);
-      
+
       expect(uniqueValues).toEqual([1, 2, 3, 4, 5]);
     });
   });
@@ -437,11 +428,11 @@ describe("Integration Tests - Real World Patterns", () => {
       const result = pipe(
         source,
         ignoreErrors(),
-        throttle(20) // One event per 20ms max
+        throttle(20), // One event per 20ms max
       );
 
       const values = await collect(result);
-      
+
       // Should significantly reduce event count
       expect(values.length).toBeLessThan(events.length);
     });
@@ -461,17 +452,17 @@ describe("Integration Tests - Real World Patterns", () => {
         throttle(10),
         batch(3),
         ignoreErrors(),
-        map(batch => ({
+        map((batch) => ({
           count: batch.length,
-          sum: batch.reduce((a, b) => a + b, 0)
+          sum: batch.reduce((a, b) => a + b, 0),
         })),
-        ignoreErrors()
+        ignoreErrors(),
       );
 
       const batches = await collect(result);
-      
+
       expect(batches.length).toBeGreaterThan(0);
-      batches.forEach(batch => {
+      batches.forEach((batch) => {
         expect(batch.count).toBeGreaterThan(0);
         expect(batch.count).toBeLessThanOrEqual(3);
       });
@@ -485,15 +476,15 @@ describe("Integration Tests - Real World Patterns", () => {
       const result = pipe(
         source,
         ignoreErrors(),
-        map(x => x * 2),           // Double: 2,4,6,8,10,12,14,16,18,20
-        filter(x => x % 3 === 0),   // Divisible by 3: 6,12,18
-        map(x => x / 3),            // Divide by 3: 2,4,6
+        map((x) => x * 2), // Double: 2,4,6,8,10,12,14,16,18,20
+        filter((x) => x % 3 === 0), // Divisible by 3: 6,12,18
+        map((x) => x / 3), // Divide by 3: 2,4,6
         scan((sum, x) => sum + x, 0), // Running sum with seed: 0,2,6,12
-        take(2)                     // Take first 2 emissions: 0,2
+        take(2), // Take first 2 emissions: 0,2
       );
 
       const values = await collect(result);
-      
+
       expect(values).toEqual([0, 2]);
     });
 
@@ -502,32 +493,32 @@ describe("Integration Tests - Real World Patterns", () => {
 
       const result = pipe(
         source,
-        map(x => {
-          if (x === 3) throw new Error('Three is bad');
+        map((x) => {
+          if (x === 3) throw new Error("Three is bad");
           return x;
         }),
         catchErrors(-1), // Replace errors with -1
-        filter(x => x > 0), // Remove error markers
-        map(x => x * 10)
+        filter((x) => x > 0), // Remove error markers
+        map((x) => x * 10),
       );
 
       const values = await collect(result);
-      
+
       expect(values).toEqual([10, 20, 40, 50]); // Skip the error value
     });
 
     it("should support early termination with find", async () => {
       let processed = 0;
-      
+
       const source = pipe(
         Observable.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
         ignoreErrors(),
         tap(() => processed++),
-        find(x => x > 5)
+        find((x) => x > 5),
       );
 
       const result = await collect(source);
-      
+
       // Should stop after finding first value > 5
       expect(result).toEqual([6]);
       expect(processed).toBeLessThanOrEqual(6);
@@ -546,12 +537,12 @@ describe("Integration Tests - Real World Patterns", () => {
       const result = pipe(
         source,
         ignoreErrors(),
-        filter(x => x % 100 === 0),
-        take(5)
+        filter((x) => x % 100 === 0),
+        take(5),
       );
 
       const values = await collect(result);
-      
+
       expect(values).toEqual([0, 100, 200, 300, 400]);
     });
 
@@ -572,14 +563,14 @@ describe("Integration Tests - Real World Patterns", () => {
       const result = pipe(
         source,
         ignoreErrors(),
-        take(5)
+        take(5),
       );
 
       await collect(result);
-      
+
       // Give cleanup time to run
       await wait(50);
-      
+
       expect(cleanedUp).toBe(true);
     });
   });
