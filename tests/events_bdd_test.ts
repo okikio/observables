@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-import-prefix
 /**
  * Tests for Observable-based event patterns: EventBus (simple multicast), EventDispatcher
  * (type-safe routing), withReplay (buffer for late subscribers), and waitForEvent (Promise-based

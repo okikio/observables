@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-import-prefix
 /**
  * Low-latency benchmarks for primitive operations.
  *

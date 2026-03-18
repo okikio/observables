@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-import-prefix
 /**
  * Tests for stream utilities that connect the Observable and operator ecosystem - type guards
  * for distinguishing operator option types, stream conversion from arrays/iterables/async iterables,

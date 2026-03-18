@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-import-prefix
 /**
  * Tests for `createOperator` and `createStatefulOperator` - the core functions for building
  * custom Observable operators that wrap Web Streams with ergonomic error handling.

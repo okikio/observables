@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-import-prefix
 /**
  * Memory allocation and GC pressure benchmarks.
  *
