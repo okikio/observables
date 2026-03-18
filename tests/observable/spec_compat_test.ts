@@ -97,51 +97,6 @@ test("Reusing the same observer object does not tear down an existing subscripti
   expect(teardownCount).toBe(1);
 });
 
-test("Detached SubscriptionObserver methods stay bound to the subscription observer", () => {
-  let completeObserver!: TC39SubscriptionObserver;
-  let errorObserver!: TC39SubscriptionObserver;
-  const values: number[] = [];
-  const errors: unknown[] = [];
-  let completeCalls = 0;
-  const completeToken = Symbol("complete");
-
-  new Observable<number>((subscriptionObserver) => {
-    completeObserver =
-      subscriptionObserver as unknown as TC39SubscriptionObserver;
-  }).subscribe({
-    next(value) {
-      values.push(value);
-      return completeToken;
-    },
-    complete() {
-      completeCalls++;
-      return completeToken;
-    },
-  });
-
-  new Observable<number>((subscriptionObserver) => {
-    errorObserver = subscriptionObserver as unknown as TC39SubscriptionObserver;
-  }).subscribe({
-    error(error) {
-      errors.push(error);
-      return completeToken;
-    },
-  });
-
-  const { next, complete } = completeObserver;
-  const { error } = errorObserver;
-
-  expect(next(1)).toBe(undefined);
-  expect(values).toEqual([1]);
-
-  expect(complete()).toBe(undefined);
-  expect(completeCalls).toBe(1);
-
-  const expectedError = new Error("detached error");
-  expect(error(expectedError)).toBe(undefined);
-  expect(errors).toEqual([expectedError]);
-});
-
 test("SubscriptionObserver methods are no-ops after explicit unsubscribe", () => {
   let observer!: TC39SubscriptionObserver;
   let nextCalls = 0;

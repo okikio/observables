@@ -626,31 +626,6 @@ export class SubscriptionObserver<T> {
    * @param subscription - The subscription that created this observer
    */
   constructor(subscription?: Subscription | null) {
-    // TC39-style observable tests expect detached methods like
-    // `const { next } = observer; next(value);` to keep working.
-    // We bind once up front so the public observer contract matches that
-    // behavior, even though it adds three small per-instance allocations.
-    Object.defineProperties(this, {
-      next: {
-        value: this.next.bind(this),
-        writable: true,
-        configurable: true,
-        enumerable: true,
-      },
-      error: {
-        value: this.error.bind(this),
-        writable: true,
-        configurable: true,
-        enumerable: true,
-      },
-      complete: {
-        value: this.complete.bind(this),
-        writable: true,
-        configurable: true,
-        enumerable: true,
-      },
-    });
-
     this.#subscription = subscription;
 
     if (subscription) {
