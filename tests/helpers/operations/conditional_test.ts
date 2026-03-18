@@ -1,7 +1,7 @@
-import { test, expect } from "@libs/testing";
+import { expect, test } from "@libs/testing";
 
 import { Observable } from "../../../observable.ts";
-import { every, some, find } from "../../../helpers/operations/conditional.ts";
+import { every, find, some } from "../../../helpers/operations/conditional.ts";
 import { ignoreErrors } from "../../../helpers/operations/errors.ts";
 import { pipe } from "../../../helpers/pipe.ts";
 
@@ -20,7 +20,11 @@ async function collectValues<T>(obs: Observable<T>): Promise<T[]> {
 
 test("every returns true when all values match predicate", async () => {
   const source = Observable.of(2, 4, 6, 8);
-  const result = pipe(source, ignoreErrors(), every((x: number) => x % 2 === 0));
+  const result = pipe(
+    source,
+    ignoreErrors(),
+    every((x: number) => x % 2 === 0),
+  );
 
   const values = await collectValues(result);
 
@@ -29,7 +33,11 @@ test("every returns true when all values match predicate", async () => {
 
 test("every returns false when any value fails predicate", async () => {
   const source = Observable.of(2, 4, 5, 8);
-  const result = pipe(source, ignoreErrors(), every((x: number) => x % 2 === 0));
+  const result = pipe(
+    source,
+    ignoreErrors(),
+    every((x: number) => x % 2 === 0),
+  );
 
   const values = await collectValues(result);
 
@@ -37,9 +45,9 @@ test("every returns false when any value fails predicate", async () => {
 });
 
 test("every returns true for empty stream", async () => {
-  const source = new Observable<number>(observer => {
+  const source = new Observable<number>((observer) => {
     observer.complete();
-    return () => { };
+    return () => {};
   });
 
   const result = pipe(source, ignoreErrors(), every((x: number) => x > 0));
@@ -50,7 +58,11 @@ test("every returns true for empty stream", async () => {
 
 test("every provides index parameter", async () => {
   const source = Observable.of(0, 1, 2, 3);
-  const result = pipe(source, ignoreErrors(), every((x: number, i: number) => x === i));
+  const result = pipe(
+    source,
+    ignoreErrors(),
+    every((x: number, i: number) => x === i),
+  );
 
   const values = await collectValues(result);
 
@@ -80,9 +92,9 @@ test("some returns false when no values match predicate", async () => {
 });
 
 test("some returns false for empty stream", async () => {
-  const source = new Observable<number>(observer => {
+  const source = new Observable<number>((observer) => {
     observer.complete();
-    return () => { };
+    return () => {};
   });
 
   const result = pipe(source, ignoreErrors(), some((x: number) => x > 0));
@@ -93,7 +105,11 @@ test("some returns false for empty stream", async () => {
 
 test("some provides index parameter", async () => {
   const source = Observable.of(5, 5, 2, 5);
-  const result = pipe(source, ignoreErrors(), some((x: number, i: number) => x === i));
+  const result = pipe(
+    source,
+    ignoreErrors(),
+    some((x: number, i: number) => x === i),
+  );
 
   const values = await collectValues(result);
 
@@ -123,9 +139,9 @@ test("find returns no value when nothing matches", async () => {
 });
 
 test("find returns no value for empty stream", async () => {
-  const source = new Observable<number>(observer => {
+  const source = new Observable<number>((observer) => {
     observer.complete();
-    return () => { };
+    return () => {};
   });
 
   const result = pipe(source, ignoreErrors(), find((x: number) => x > 0));
@@ -135,10 +151,14 @@ test("find returns no value for empty stream", async () => {
 });
 
 test("find provides index parameter", async () => {
-  const source = Observable.of('a', 'b', 'c', 'd');
-  const result = pipe(source, ignoreErrors(), find((_x: string, i: number) => i === 2));
+  const source = Observable.of("a", "b", "c", "d");
+  const result = pipe(
+    source,
+    ignoreErrors(),
+    find((_x: string, i: number) => i === 2),
+  );
 
   const values = await collectValues(result);
 
-  expect(values).toEqual(['c']); // Value at index 2
+  expect(values).toEqual(["c"]); // Value at index 2
 });

@@ -1,7 +1,7 @@
-import { test, expect } from "@libs/testing";
+import { expect, test } from "@libs/testing";
 
 import { Observable } from "../../../observable.ts";
-import { toArray, batch } from "../../../helpers/operations/batch.ts";
+import { batch, toArray } from "../../../helpers/operations/batch.ts";
 import { ignoreErrors } from "../../../helpers/operations/errors.ts";
 import { pipe } from "../../../helpers/pipe.ts";
 
@@ -29,9 +29,9 @@ test("toArray collects all values into single array", async () => {
 });
 
 test("toArray handles empty stream", async () => {
-  const source = new Observable<number>(observer => {
+  const source = new Observable<number>((observer) => {
     observer.complete();
-    return () => { };
+    return () => {};
   });
 
   const result = pipe(source, ignoreErrors(), toArray());
@@ -64,17 +64,17 @@ test("batch groups values into fixed-size arrays", async () => {
   expect(values).toEqual([
     [1, 2, 3],
     [4, 5, 6],
-    [7] // Last batch can be smaller
+    [7], // Last batch can be smaller
   ]);
 });
 
 test("batch with size 1 emits individual values as arrays", async () => {
-  const source = Observable.of('a', 'b', 'c');
+  const source = Observable.of("a", "b", "c");
   const result = pipe(source, ignoreErrors(), batch(1));
 
   const values = await collectValues(result);
 
-  expect(values).toEqual([['a'], ['b'], ['c']]);
+  expect(values).toEqual([["a"], ["b"], ["c"]]);
 });
 
 test("batch with size larger than stream emits single batch", async () => {
@@ -88,15 +88,15 @@ test("batch with size larger than stream emits single batch", async () => {
 
 test("batch with zero size emits empty arrays", () => {
   expect(() => {
-    const source = Observable.of(1, 2, 3); 
+    const source = Observable.of(1, 2, 3);
     pipe(source, batch(0));
   }).toThrow("batch: size must be greater than 0");
 });
 
 test("batch handles empty stream", async () => {
-  const source = new Observable<number>(observer => {
+  const source = new Observable<number>((observer) => {
     observer.complete();
-    return () => { };
+    return () => {};
   });
 
   const result = pipe(source, ignoreErrors(), batch(3));

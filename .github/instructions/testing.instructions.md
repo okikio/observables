@@ -8,6 +8,7 @@ applyTo: "**/*_test.ts,**/*.test.ts"
 ## Tools
 
 Use:
+
 - `@std/testing/bdd` for `describe` and `it`
 - `@std/expect` for assertions
 - `npm:fast-check` for property-based tests
@@ -15,9 +16,9 @@ Use:
 Imports should follow this pattern:
 
 ```ts
-import { describe, it } from '@std/testing/bdd';
-import { expect } from '@std/expect';
-import * as fc from 'npm:fast-check';
+import { describe, it } from "@std/testing/bdd";
+import { expect } from "@std/expect";
+import * as fc from "npm:fast-check";
 ```
 
 Run tests with:
@@ -30,24 +31,26 @@ deno task test
 
 Test behavior, not implementation.
 
-Treat each module as a black box. Call the public API and assert on observable results.
+Treat each module as a black box. Call the public API and assert on observable
+results.
 
-Do not assert on private state, internal helpers, or incidental implementation details.
+Do not assert on private state, internal helpers, or incidental implementation
+details.
 
 For the parser, prefer testing through:
 
-* `parse()`
-* `events()`
-* `outlineEvents()`
-* `stringify()`
-* `tokens()`
+- `parse()`
+- `events()`
+- `outlineEvents()`
+- `stringify()`
+- `tokens()`
 
 ## Determinism and independence
 
-* No shared mutable state between tests.
-* No ordering dependencies.
-* No wall-clock or environment dependence unless explicitly isolated.
-* One logical behavior per test.
+- No shared mutable state between tests.
+- No ordering dependencies.
+- No wall-clock or environment dependence unless explicitly isolated.
+- One logical behavior per test.
 
 If a test description needs the word `and`, it is probably two tests.
 
@@ -59,17 +62,17 @@ Prefer straightforward setup over clever helper layers that hide intent.
 
 Use the AAA pattern:
 
-* Arrange
-* Act
-* Assert
+- Arrange
+- Act
+- Assert
 
 Example:
 
 ```ts
-const input = '== Heading ==';
+const input = "== Heading ==";
 const tree = parse(input);
 
-expect(tree.children[0].type).toBe('heading');
+expect(tree.children[0].type).toBe("heading");
 expect(tree.children[0].depth).toBe(2);
 ```
 
@@ -82,12 +85,12 @@ Use `fast-check` for invariants.
 
 High-value parser properties include:
 
-* never-throw
-* round-trip stability
-* event well-formedness
-* content preservation where applicable
-* idempotence where applicable
-* oracle comparison where a trustworthy baseline exists
+- never-throw
+- round-trip stability
+- event well-formedness
+- content preservation where applicable
+- idempotence where applicable
+- oracle comparison where a trustworthy baseline exists
 
 Example:
 
@@ -95,37 +98,39 @@ Example:
 fc.assert(
   fc.property(fc.string(), (s) => {
     const tree = parse(s);
-    expect(tree.type).toBe('root');
+    expect(tree.type).toBe("root");
   }),
 );
 ```
 
 ## Edge cases to always cover
 
-* empty input
-* single-character input
-* single newline
-* pure `\r` line endings
-* mixed line endings
-* null bytes
-* astral Unicode characters
-* CJK and RTL text
-* unclosed markup
-* malformed tables
-* unusual apostrophe runs
-* nested templates and links
-* behavior switches
-* signatures
-* redirects
-* nowiki and pre regions
-* extremely long lines
+- empty input
+- single-character input
+- single newline
+- pure `\r` line endings
+- mixed line endings
+- null bytes
+- astral Unicode characters
+- CJK and RTL text
+- unclosed markup
+- malformed tables
+- unusual apostrophe runs
+- nested templates and links
+- behavior switches
+- signatures
+- redirects
+- nowiki and pre regions
+- extremely long lines
 
-For repeated structures such as list items, rows, or arguments, test counts of 0, 1, and 2 to catch off-by-one errors.
+For repeated structures such as list items, rows, or arguments, test counts of
+0, 1, and 2 to catch off-by-one errors.
 
 ## Anti-patterns
 
-* Do not assert giant multi-line strings when a structural assertion is more robust.
-* Do not run a code path without asserting anything meaningful about the result.
-* Do not over-abstract test helpers.
-* Do not rely on timing assertions in normal unit tests.
-* Do not test internals when public behavior is available.
+- Do not assert giant multi-line strings when a structural assertion is more
+  robust.
+- Do not run a code path without asserting anything meaningful about the result.
+- Do not over-abstract test helpers.
+- Do not rely on timing assertions in normal unit tests.
+- Do not test internals when public behavior is available.

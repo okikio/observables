@@ -2,9 +2,12 @@
 
 ## What this project is
 
-This repo is `@okikio/observables`, a **spec-faithful TC39 Observable implementation** built on Web Streams for Deno v2+ and modern JavaScript runtimes.
+This repo is `@okikio/observables`, a **spec-faithful TC39 Observable
+implementation** built on Web Streams for Deno v2+ and modern JavaScript
+runtimes.
 
 **Core features:**
+
 - TC39 Observable proposal compliance with ergonomic extensions
 - Web Streams foundation (native backpressure, memory efficiency)
 - 4 error handling modes (pass-through, ignore, throw, manual)
@@ -15,46 +18,63 @@ This repo is `@okikio/observables`, a **spec-faithful TC39 Observable implementa
 - Full TypeScript support
 
 **Architecture:**
-- `observable.ts` - Core Observable implementation with cold semantics and deterministic teardown
+
+- `observable.ts` - Core Observable implementation with cold semantics and
+  deterministic teardown
 - `queue.ts` - Circular buffer queue (O(1) enqueue/dequeue)
 - `events.ts` - EventBus (multicast) and EventDispatcher (type-safe routing)
 - `error.ts` - ObservableError with context preservation
 - `helpers/operators.ts` - createOperator/createStatefulOperator utilities
-- `helpers/operations/` - 19+ composable operators (map, filter, debounce, switchMap, etc.)
+- `helpers/operations/` - 19+ composable operators (map, filter, debounce,
+  switchMap, etc.)
 - `helpers/utils.ts` - Stream conversion and operator application utilities
 - `tests/` - Comprehensive BDD test suite using @std/testing/bdd and @std/expect
 - `bench/` - Performance benchmarks using npm:mitata
 
 **Design principles:**
-- **Memory safety**: No leaks, deterministic cleanup, backpressure prevents bloat
+
+- **Memory safety**: No leaks, deterministic cleanup, backpressure prevents
+  bloat
 - **Performance**: O(1) operations, pre-compiled error modes, minimal allocation
-- **Standards compliance**: TC39 proposal + Web Streams + TypeScript best practices
-- **Developer experience**: Familiar API (like Array.map), clear error messages, progressive documentation
+- **Standards compliance**: TC39 proposal + Web Streams + TypeScript best
+  practices
+- **Developer experience**: Familiar API (like Array.map), clear error messages,
+  progressive documentation
 
 ## Working defaults
 
-- Preserve cold semantics for Observables (each subscription gets independent execution)
+- Preserve cold semantics for Observables (each subscription gets independent
+  execution)
 - Use Web Streams TransformStream as the foundation for operators
 - Keep operators pure and composable
 - Maintain O(1) performance for queue operations
 - Ensure deterministic resource cleanup (teardown callbacks run exactly once)
-- Follow TC39 Observable proposal semantics while adding practical ergonomic improvements
+- Follow TC39 Observable proposal semantics while adding practical ergonomic
+  improvements
 
 ## Writing and explanation style
 
-- Use familiar language that a JavaScript developer with 2-3 years of experience would understand.
+- Use familiar language that a JavaScript developer with 2-3 years of experience
+  would understand.
 - Do not assume deep async/reactive programming background.
-- Ground abstract concepts in concrete behavior first, then introduce technical terms.
-- When explaining Observable/stream concepts, use real-world analogies briefly then return to actual code behavior.
-- Explain non-obvious behaviors: cold vs hot, backpressure, error propagation, resource cleanup.
-- For performance-sensitive code (queue operations, operator chains), explain the O(n) characteristics.
-- Use ASCII diagrams for circular buffer wrapping, event flow, or operator composition when helpful.
+- Ground abstract concepts in concrete behavior first, then introduce technical
+  terms.
+- When explaining Observable/stream concepts, use real-world analogies briefly
+  then return to actual code behavior.
+- Explain non-obvious behaviors: cold vs hot, backpressure, error propagation,
+  resource cleanup.
+- For performance-sensitive code (queue operations, operator chains), explain
+  the O(n) characteristics.
+- Use ASCII diagrams for circular buffer wrapping, event flow, or operator
+  composition when helpful.
 
 Good explanations:
+
 - `Cold semantics means each subscribe() call runs the Observable logic from scratch. If 3 callers subscribe to Observable.of(1,2,3), each gets their own 1,2,3 sequence, not shared state.`
 - `The circular buffer uses head/tail pointers that wrap around. When tail reaches capacity, it jumps to 0, reusing slots. This keeps enqueue O(1) instead of Array.shift()'s O(n).`
 
 Weak explanations:
+
 - `This Observable is cold.` (doesn't explain what that means in practice)
 - `The queue is efficient.` (doesn't explain the O(1) mechanism)
 
@@ -65,9 +85,11 @@ Weak explanations:
 - Do not invent APIs, behavior, or guarantees not visible in the repo.
 - When uncertain, state the assumption and give a verification step.
 - Prefer TC39 Observable proposal semantics and Web Streams patterns.
-- Call out trade-offs when multiple approaches exist (e.g., error mode selection).
+- Call out trade-offs when multiple approaches exist (e.g., error mode
+  selection).
 - Optimize for tree-shakeability (avoid side effects, prefer named exports).
-- Keep memory footprint minimal (important for observables handling large data streams).
+- Keep memory footprint minimal (important for observables handling large data
+  streams).
 
 ## TypeScript and Deno
 
@@ -88,9 +110,12 @@ Weak explanations:
 - One logical behavior per test.
 - No shared mutable state between tests.
 - Cover edge cases: empty input, single value, errors, resource cleanup.
-- For Observable tests, verify: cold semantics, deterministic teardown, backpressure, error propagation.
-- For queue tests, verify: O(1) operations, FIFO order, circular wrapping, capacity limits.
-- Run tests with: `deno task test` (includes --trace-leaks for memory leak detection).
+- For Observable tests, verify: cold semantics, deterministic teardown,
+  backpressure, error propagation.
+- For queue tests, verify: O(1) operations, FIFO order, circular wrapping,
+  capacity limits.
+- Run tests with: `deno task test` (includes --trace-leaks for memory leak
+  detection).
 
 ## Benchmarking standards
 
@@ -126,6 +151,7 @@ Weak explanations:
 ## Public API documentation
 
 For every exported function/interface:
+
 - Explain why it exists and what problem it solves.
 - Provide at least 2 examples (common case + edge case).
 - Name all `@example` blocks descriptively.
@@ -138,7 +164,8 @@ For every exported function/interface:
 - Validate inputs at module boundaries.
 - Preserve type safety through operator chains.
 - Never expose internal state that could break invariants.
-- Document thread-safety assumptions (though Observables are generally single-threaded).
+- Document thread-safety assumptions (though Observables are generally
+  single-threaded).
 - For Web Streams integration, respect backpressure signals.
 
 ## Validation commands
@@ -167,11 +194,14 @@ deno task bench
 
 ## Instruction routing
 
-More specific instructions live under `.github/instructions/` and apply by file pattern or task type.
+More specific instructions live under `.github/instructions/` and apply by file
+pattern or task type.
 
-When a specific instruction file applies, follow that file for scoped tasks and use this file as the fallback base.
+When a specific instruction file applies, follow that file for scoped tasks and
+use this file as the fallback base.
 
 Examples:
+
 - `typescript.instructions.md` for all `.ts` files
 - `tsdoc-comments.instructions.md` for TSDoc and comments
 - `testing.instructions.md` for test files
@@ -187,12 +217,13 @@ Examples:
 ## Common patterns in this codebase
 
 ### Observable creation
+
 ```ts
 const obs = new Observable<T>((observer) => {
   // Emit values
   observer.next(value);
   observer.complete();
-  
+
   // Return cleanup function
   return () => {
     // Cleanup resources
@@ -201,16 +232,18 @@ const obs = new Observable<T>((observer) => {
 ```
 
 ### Operator composition
+
 ```ts
 const result = pipe(
   source,
-  map(x => x * 2),
-  filter(x => x > 10),
-  take(5)
+  map((x) => x * 2),
+  filter((x) => x > 10),
+  take(5),
 );
 ```
 
 ### Resource cleanup
+
 ```ts
 // Automatic cleanup with 'using'
 {
@@ -220,12 +253,13 @@ const result = pipe(
 ```
 
 ### Error handling
+
 ```ts
 const operator = createOperator({
-  errorMode: 'pass-through', // or 'ignore', 'throw', 'manual'
+  errorMode: "pass-through", // or 'ignore', 'throw', 'manual'
   transform(value, controller) {
     controller.enqueue(processValue(value));
-  }
+  },
 });
 ```
 
@@ -234,13 +268,16 @@ const operator = createOperator({
 - **Cold semantics**: Each subscribe() starts fresh; no shared execution state.
 - **Backpressure**: Web Streams handle slow consumers automatically.
 - **O(1) queue**: Circular buffer uses head/tail pointers, no array shifting.
-- **Error modes**: Different strategies for different use cases (recovery vs fail-fast).
-- **Memory safety**: Deterministic teardown prevents leaks; test with --trace-leaks.
+- **Error modes**: Different strategies for different use cases (recovery vs
+  fail-fast).
+- **Memory safety**: Deterministic teardown prevents leaks; test with
+  --trace-leaks.
 - **Type safety**: Full TypeScript support, narrow types at boundaries.
 
 ## What makes this library different
 
 Unlike RxJS (100+ operators, 35KB, steep learning curve), this library provides:
+
 - Essential patterns only (19+ operators)
 - <4KB bundle size
 - TC39 proposal compliance (future-proof)

@@ -9,6 +9,7 @@ Use ASCII diagrams when prose alone would make structure, flow, hierarchy, or
 state harder to understand.
 
 Good uses:
+
 - parser pipelines
 - tree and hierarchy layouts
 - state transitions
@@ -19,6 +20,7 @@ Good uses:
 Do not add diagrams for simple one-step logic or tiny APIs.
 
 Always pair a diagram with prose that explains:
+
 - what the reader is looking at
 - why it matters
 - how to read it

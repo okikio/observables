@@ -1,6 +1,9 @@
-import { test, expect } from "@libs/testing";
+import { expect, test } from "@libs/testing";
 
-import { isTransformStreamOptions, isTransformFunctionOptions } from "../../helpers/utils.ts";
+import {
+  isTransformFunctionOptions,
+  isTransformStreamOptions,
+} from "../../helpers/utils.ts";
 import type { CreateOperatorOptions } from "../../helpers/_types.ts";
 
 // -----------------------------------------------------------------------------
@@ -9,15 +12,15 @@ import type { CreateOperatorOptions } from "../../helpers/_types.ts";
 
 test("isTransformStreamOptions identifies stream options correctly", () => {
   const streamOptions: CreateOperatorOptions<number, string> = {
-    name: 'test',
-    stream: () => new TransformStream()
+    name: "test",
+    stream: () => new TransformStream(),
   };
 
   const functionOptions: CreateOperatorOptions<number, string> = {
-    name: 'test',
+    name: "test",
     transform(chunk, controller) {
       controller.enqueue(String(chunk));
-    }
+    },
   };
 
   expect(isTransformStreamOptions(streamOptions)).toBe(true);
@@ -26,15 +29,15 @@ test("isTransformStreamOptions identifies stream options correctly", () => {
 
 test("isTransformFunctionOptions identifies function options correctly", () => {
   const streamOptions: CreateOperatorOptions<number, string> = {
-    name: 'test',
-    stream: () => new TransformStream()
+    name: "test",
+    stream: () => new TransformStream(),
   };
 
   const functionOptions: CreateOperatorOptions<number, string> = {
-    name: 'test',
+    name: "test",
     transform(chunk, controller) {
       controller.enqueue(String(chunk));
-    }
+    },
   };
 
   expect(isTransformFunctionOptions(functionOptions)).toBe(true);
@@ -43,11 +46,14 @@ test("isTransformFunctionOptions identifies function options correctly", () => {
 
 test("type guards handle options with both properties", () => {
   const optionsWithBoth = {
-    name: 'test',
+    name: "test",
     stream: new TransformStream(),
-    transform(chunk: number, controller: TransformStreamDefaultController<string>) {
+    transform(
+      chunk: number,
+      controller: TransformStreamDefaultController<string>,
+    ) {
       controller.enqueue(String(chunk));
-    }
+    },
   };
 
   // Should identify both

@@ -1,5 +1,5 @@
 import type { ExcludeError, Operator } from "../_types.ts";
-import { ObservableError, isObservableError } from "../../error.ts";
+import { isObservableError, ObservableError } from "../../error.ts";
 import { createOperator, createStatefulOperator } from "../operators.ts";
 
 /**
@@ -35,14 +35,17 @@ import { createOperator, createStatefulOperator } from "../operators.ts";
  * @template T The type of good data in your stream
  * @returns A stream operator that silently removes all errors
  */
-export function ignoreErrors<T>(): Operator<T | ObservableError, ExcludeError<T>> {
+export function ignoreErrors<T>(): Operator<
+  T | ObservableError,
+  ExcludeError<T>
+> {
   return createOperator<T | ObservableError, T>({
-    name: 'ignoreErrors',
+    name: "ignoreErrors",
     errorMode: "ignore",
     transform(chunk, controller) {
       controller.enqueue(chunk as ExcludeError<T>);
       // Errors are silently dropped
-    }
+    },
   });
 }
 
@@ -89,9 +92,11 @@ export function ignoreErrors<T>(): Operator<T | ObservableError, ExcludeError<T>
  * @param fallback The value to use whenever an error occurs.
  * @returns A stream operator that replaces errors with a fallback value.
  */
-export function catchErrors<T, R>(fallback: R): Operator<T | ObservableError, ExcludeError<T> | R> {
+export function catchErrors<T, R>(
+  fallback: R,
+): Operator<T | ObservableError, ExcludeError<T> | R> {
   return createOperator<T | ObservableError, ExcludeError<T> | R>({
-    name: 'catchErrors',
+    name: "catchErrors",
     errorMode: "manual",
     transform(chunk, controller) {
       if (isObservableError(chunk)) {
@@ -99,7 +104,7 @@ export function catchErrors<T, R>(fallback: R): Operator<T | ObservableError, Ex
       } else {
         controller.enqueue(chunk as ExcludeError<T>);
       }
-    }
+    },
   });
 }
 
@@ -148,10 +153,10 @@ export function catchErrors<T, R>(fallback: R): Operator<T | ObservableError, Ex
  * @returns A stream operator that transforms errors.
  */
 export function mapErrors<T, E>(
-  errorMapper: (error: ObservableError) => E
+  errorMapper: (error: ObservableError) => E,
 ): Operator<T | ObservableError, ExcludeError<T> | E> {
   return createOperator<T | ObservableError, ExcludeError<T> | E>({
-    name: 'mapErrors',
+    name: "mapErrors",
     errorMode: "manual",
     transform(chunk, controller) {
       if (isObservableError(chunk)) {
@@ -159,21 +164,24 @@ export function mapErrors<T, E>(
           const mappedError = errorMapper(chunk);
           controller.enqueue(mappedError);
         } catch (mapperError) {
-          controller.error(new ObservableError(
-            [mapperError, chunk],
-            `Your error mapper function threw an error: ${mapperError}`,
-            {
-              operator: 'operator:mapErrors:mapper',
-              value: mapperError,
-              cause: chunk,
-              tip: 'The function passed to mapErrors threw an error. Check its implementation.'
-            }
-          ));
+          controller.error(
+            new ObservableError(
+              [mapperError, chunk],
+              `Your error mapper function threw an error: ${mapperError}`,
+              {
+                operator: "operator:mapErrors:mapper",
+                value: mapperError,
+                cause: chunk,
+                tip:
+                  "The function passed to mapErrors threw an error. Check its implementation.",
+              },
+            ),
+          );
         }
       } else {
         controller.enqueue(chunk as ExcludeError<T>);
       }
-    }
+    },
   });
 }
 
@@ -206,16 +214,19 @@ export function mapErrors<T, E>(
  * @template T The type of data in the source stream.
  * @returns An operator that filters for errors.
  */
-export function onlyErrors<T>(): Operator<T | ObservableError, ObservableError> {
+export function onlyErrors<T>(): Operator<
+  T | ObservableError,
+  ObservableError
+> {
   return createOperator<T | ObservableError, ObservableError>({
-    name: 'onlyErrors',
+    name: "onlyErrors",
     errorMode: "manual",
     transform(chunk, controller) {
       if (isObservableError(chunk)) {
         controller.enqueue(chunk);
       }
       // Good data is discarded
-    }
+    },
   });
 }
 
@@ -256,16 +267,13 @@ export function summarizeErrors<T>(): Operator<T | ObservableError, {
   totalProcessed: number;
   successRate: number;
 }> {
-  return createStatefulOperator<T | ObservableError,
-    {
-      successCount: number;
-      errorCount: number;
-      totalProcessed: number;
-      successRate: number;
-    },
-    { successCount: number, errorCount: number }
-  >({
-    name: 'summarizeErrors',
+  return createStatefulOperator<T | ObservableError, {
+    successCount: number;
+    errorCount: number;
+    totalProcessed: number;
+    successRate: number;
+  }, { successCount: number; errorCount: number }>({
+    name: "summarizeErrors",
     errorMode: "manual",
     createState: () => ({ successCount: 0, errorCount: 0 }),
     transform(chunk, state) {
@@ -281,9 +289,9 @@ export function summarizeErrors<T>(): Operator<T | ObservableError, {
         successCount: state.successCount,
         errorCount: state.errorCount,
         totalProcessed: total,
-        successRate: total > 0 ? state.successCount / total : 0
+        successRate: total > 0 ? state.successCount / total : 0,
       });
-    }
+    },
   });
 }
 
@@ -322,22 +330,22 @@ export function summarizeErrors<T>(): Operator<T | ObservableError, {
  * @returns An operator that performs a side effect on errors.
  */
 export function tapError<T>(
-  sideEffect: (error: ObservableError) => void
+  sideEffect: (error: ObservableError) => void,
 ): Operator<T | ObservableError, T | ObservableError> {
   return createOperator<T | ObservableError, T | ObservableError>({
-    name: 'tapError',
+    name: "tapError",
     errorMode: "manual",
     transform(chunk, controller) {
       try {
         if (isObservableError(chunk)) {
           sideEffect(chunk);
         }
-      }
-      catch (_) { /* no empty */ }
-      finally {
+      } catch (_) {
+        /* no empty */
+      } finally {
         controller.enqueue(chunk);
       }
-    }
+    },
   });
 }
 
@@ -376,11 +384,11 @@ export function tapError<T>(
  */
 export function throwErrors<T>(): Operator<T | ObservableError, T> {
   return createOperator({
-    name: 'throwErrors',
+    name: "throwErrors",
     errorMode: "throw",
     transform(chunk, controller) {
       // If it's an error, this will automatically throw due to errorMode: "throw"
       controller.enqueue(chunk as T);
-    }
+    },
   });
 }

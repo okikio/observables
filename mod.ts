@@ -1,21 +1,21 @@
 /**
- * A **spec-faithful** yet ergonomic TC39-inspired Observable implementation with 
+ * A **spec-faithful** yet ergonomic TC39-inspired Observable implementation with
  * detailed TSDocs and examples.
- * 
+ *
  * Observables are a **push‑based stream abstraction** for events, data, and long‑running
- * operations. 
+ * operations.
  *
  * If you've ever built a web app, you know the pain: user clicks, API responses, WebSocket messages,
  * timers, file uploads, they all arrive at different times and need different handling. Before Observables,
  * you'd end up with a mess of callbacks, Promise chains, event listeners, and async/await scattered
  * throughout your code.
- * 
+ *
  * **Observables solve this by giving you one consistent way to handle all async data.**
- * 
- * Think of it as a **multi‑value Promise** that keeps sending values until you tell it to stop. 
- * Where a Promise gives you one value eventually, an Observable can give you many values over time, 
- * mouse clicks, search results, chat messages, sensor readings. And just like Promises have 
- * `.then()` and `.catch()`, Observables have operators like `map()`, `filter()`, and `debounce()` 
+ *
+ * Think of it as a **multi‑value Promise** that keeps sending values until you tell it to stop.
+ * Where a Promise gives you one value eventually, an Observable can give you many values over time,
+ * mouse clicks, search results, chat messages, sensor readings. And just like Promises have
+ * `.then()` and `.catch()`, Observables have operators like `map()`, `filter()`, and `debounce()`
  * to transform data as it flows.
  *
  * ## Why This Exists
@@ -24,34 +24,33 @@
  * mish‑mash of callbacks, Promises, `EventTarget`s and async iterators, each
  * with different rules for cleanup and error handling. **Observables give you
  * one mental model** for subscription → cancellation → propagation → teardown.
- * 
- * 
+ *
  * Let's say you're building a search box. Without Observables, you might write something like this:
- * 
+ *
  * ```ts
  * // The messy way: callbacks, timers, and manual cleanup 😫
  * let searchTimeout: number;
  * let lastRequest: Promise<any> | null = null;
- * 
+ *
  * searchInput.addEventListener('input', async (event) => {
  *   const query = event.target.value;
- *   
+ *
  *   // Debounce: wait 300ms after user stops typing
  *   clearTimeout(searchTimeout);
  *   searchTimeout = setTimeout(async () => {
- *     
+ *
  *     // Cancel previous request somehow?
  *     if (lastRequest) {
  *       // How do you cancel a fetch? 🤔
  *     }
- *     
+ *
  *     if (query.length < 3) return; // Skip short queries
- *     
+ *
  *     try {
  *       lastRequest = fetch(`/search?q=${query}`);
  *       const response = await lastRequest;
  *       const results = await response.json();
- *       
+ *
  *       // Update UI, but what if user already typed something new?
  *       updateSearchResults(results);
  *     } catch (error) {
@@ -60,22 +59,22 @@
  *     }
  *   }, 300);
  * });
- * 
+ *
  * // Don't forget cleanup when component unmounts!
  * // (Spoiler: everyone forgets this and creates memory leaks)
  * ```
- * 
+ *
  * This works, but it's fragile, hard to test, and easy to mess up. Plus, you have to remember to
  * clean up event listeners, cancel timers, and handle edge cases manually.
  *
  * ## The Solution: Observable Pipelines
- * 
+ *
  * Here's the same search box with Observables:
- * 
+ *
  * ```ts
  * // The Observable way: clean, composable, and robust ✨
  * import { pipe, debounce, filter, switchMap, map } from './mod.ts';
- * 
+ *
  * const searchResults = pipe(
  *   inputEvents,                          // Stream of input events
  *   debounce(300),                        // Wait 300ms after user stops typing
@@ -85,7 +84,7 @@
  *   ),
  *   map(response => response.json())      // Parse response
  * );
- * 
+ *
  * // Subscribe to results (with automatic cleanup!)
  * using subscription = searchResults.subscribe({
  *   next: results => updateSearchResults(results),
@@ -93,19 +92,19 @@
  * });
  * // Subscription automatically cleaned up when leaving scope
  * ```
- * 
+ *
  * Notice how much cleaner this is? No manual timers, no cancellation logic, no memory leaks.
  * **The operators handle all the complex async stuff for you.**
- * 
+ *
  * Observables aren't just "nice to have", they solve real problems that bite every developer:
- * 
+ *
  * - **🧹 Memory Leaks**: Forgot to remove an event listener? Observable subscriptions can clean themselves up.
  * - **🏃‍♂️ Race Conditions**: User clicks fast, requests arrive out of order? `switchMap` cancels old requests.
  * - **🔄 Retry Logic**: Network failed? Built-in retry operators handle backoff and error recovery.
  * - **⚡ Backpressure**: Producer too fast for consumer? Built-in flow control prevents memory bloat.
  * - **🧪 Testing**: Complex async flows become simple to test with predictable, pure operators.
  * - **🎯 Composability**: Mix and match operators like Lego blocks to build exactly what you need.
- * 
+ *
  * ## ✨ Feature Highlights
  * - **Unified push + pull** – use callbacks *or* `for await … of` on the same
  *   stream.
@@ -123,12 +122,12 @@
  * - **High-performance operators** – Web Streams-based operators with pre-compiled error handling.
  *
  * ## What Makes This Observables Implementation Special
- * 
+ *
  * `@okikio/observables` isn't just another Observable library. It's designed to be:
- * 
+ *
  * - **Beginner-friendly**: If you know `Array.map()`, you already understand operators
  * - **Performance-first**: Built on Web Streams with pre-compiled error handling for speed
- * - **TypeScript-native**: Full type safety with intelligent inference  
+ * - **TypeScript-native**: Full type safety with intelligent inference
  * - **Standards-compliant**: Follows the TC39 Observable proposal for future compatibility
  * - **Tiny but complete**: <3KB but includes everything you need for real apps
  * - **Error-resilient**: 4 different error handling modes for every situation
@@ -191,7 +190,6 @@
  * That's it! You now know the basics. But the real power comes from **operators**...
  *
  * ## Operators
- *
  *
  * If you've used `Array.map()` or `Array.filter()`, you already understand operators.
  * They're just like array methods, but for data that arrives over time:

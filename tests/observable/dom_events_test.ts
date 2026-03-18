@@ -1,21 +1,21 @@
 import type { Subscription } from "../../_types.ts";
-import { test, expect, fn } from "@libs/testing";
+import { expect, fn, test } from "@libs/testing";
 import { Observable } from "../../observable.ts";
-import { pipe, map, filter } from "../../helpers/mod.ts";
+import { filter, map, pipe } from "../../helpers/mod.ts";
 
 /**
  * TYPE SYSTEM ISSUE IDENTIFIED:
- * 
+ *
  * Based on JSR documentation research:
  * - @libs/testing provides the `test` function and basic testing utilities
- * - @std/expect provides Jest-compatible `fn()` for mocks and `expect` for assertions  
+ * - @std/expect provides Jest-compatible `fn()` for mocks and `expect` for assertions
  * - The `fn()` function from @std/expect creates mock functions like Jest's jest.fn()
  * - Mock functions have .toHaveBeenCalledWith(), .toHaveBeenCalledTimes(), etc.
- * 
+ *
  * The current operator type system has a fundamental mismatch:
- * - Operators are typed as: Operator<T, R | ObservableError>  
+ * - Operators are typed as: Operator<T, R | ObservableError>
  * - But they should be: Operator<T | ObservableError, R | ObservableError>
- * 
+ *
  * WORKAROUND SOLUTIONS:
  * 1. Update assertObservableError to use TypeScript assertion function: asserts value is T
  * 2. Fix operator type signatures to properly handle error flow
@@ -56,14 +56,14 @@ interface MockElement {
  * This follows TC39 Observable spec exactly
  */
 function listen<T extends MockEvent>(
-  element: MockElement, 
-  eventName: string
+  element: MockElement,
+  eventName: string,
 ): Observable<T> {
-  return new Observable<T>(observer => {
+  return new Observable<T>((observer) => {
     const handler = (event: MockEvent) => observer.next(event as T);
-    
+
     element.addEventListener(eventName, handler, true);
-    
+
     return () => {
       element.removeEventListener(eventName, handler, true);
     };
@@ -76,34 +76,46 @@ function listen<T extends MockEvent>(
 
 test("listen creates Observable for DOM events with proper cleanup", () => {
   const mockHandlers = new Map<string, (event: MockEvent) => void>();
-  
+
   // Create mock functions using @std/expect fn()
-  const addEventListenerSpy = fn((type: string, handler: (event: MockEvent) => void, _capture?: boolean) => {
-    mockHandlers.set(type, handler);
-  });
-  
-  const removeEventListenerSpy = fn((_type: string, _handler: (event: MockEvent) => void, _capture?: boolean) => {
-    mockHandlers.clear();
-  });
-  
+  const addEventListenerSpy = fn(
+    (type: string, handler: (event: MockEvent) => void, _capture?: boolean) => {
+      mockHandlers.set(type, handler);
+    },
+  );
+
+  const removeEventListenerSpy = fn(
+    (
+      _type: string,
+      _handler: (event: MockEvent) => void,
+      _capture?: boolean,
+    ) => {
+      mockHandlers.clear();
+    },
+  );
+
   const element: MockElement = {
     addEventListener: addEventListenerSpy,
-    removeEventListener: removeEventListenerSpy
+    removeEventListener: removeEventListenerSpy,
   };
 
   const keydown = listen<MockKeyboardEvent>(element, "keydown");
-  
-  // Verify lazy behavior - no listeners added yet  
+
+  // Verify lazy behavior - no listeners added yet
   expect(addEventListenerSpy).toHaveBeenCalledTimes(0);
 
   const receivedEvents: MockKeyboardEvent[] = [];
   const subscription = keydown.subscribe({
-    next: event => receivedEvents.push(event)
+    next: (event) => receivedEvents.push(event),
   });
 
   // Verify addEventListener was called
   expect(addEventListenerSpy).toHaveBeenCalledTimes(1);
-  expect(addEventListenerSpy).toHaveBeenCalledWith("keydown", expect.any(Function), true);
+  expect(addEventListenerSpy).toHaveBeenCalledWith(
+    "keydown",
+    expect.any(Function),
+    true,
+  );
 
   // Simulate events
   const handler = mockHandlers.get("keydown")!;
@@ -113,7 +125,7 @@ test("listen creates Observable for DOM events with proper cleanup", () => {
   // Verify events received
   expect(receivedEvents).toEqual([
     { type: "keydown", key: "A", keyCode: 65 },
-    { type: "keydown", key: "B", keyCode: 66 }
+    { type: "keydown", key: "B", keyCode: 66 },
   ]);
 
   // Test cleanup
@@ -128,64 +140,72 @@ test("listen creates Observable for DOM events with proper cleanup", () => {
 test("functional composition with Observable operators", () => {
   // Mock element that can dispatch events
   const mockHandlers = new Map<string, Set<(event: MockEvent) => void>>();
-  
+
   // Create mock functions using @std/expect fn()
-  const addEventListenerSpy = fn((type: string, handler: (event: MockEvent) => void, _capture?: boolean) => {
-    if (!mockHandlers.has(type)) {
-      mockHandlers.set(type, new Set());
-    }
-    mockHandlers.get(type)!.add(handler);
-  });
-  
-  const removeEventListenerSpy = fn((type: string, _handler: (event: MockEvent) => void, _capture?: boolean) => {
-    mockHandlers.get(type)!.clear();
-  });
-  
+  const addEventListenerSpy = fn(
+    (type: string, handler: (event: MockEvent) => void, _capture?: boolean) => {
+      if (!mockHandlers.has(type)) {
+        mockHandlers.set(type, new Set());
+      }
+      mockHandlers.get(type)!.add(handler);
+    },
+  );
+
+  const removeEventListenerSpy = fn(
+    (
+      type: string,
+      _handler: (event: MockEvent) => void,
+      _capture?: boolean,
+    ) => {
+      mockHandlers.get(type)!.clear();
+    },
+  );
+
   const element: MockElement = {
     addEventListener: addEventListenerSpy,
-    removeEventListener: removeEventListenerSpy
+    removeEventListener: removeEventListenerSpy,
   };
 
   // Create base observable
   const keydownEvents = listen<MockKeyboardEvent>(element, "keydown");
-  
+
   // This is how filtering WORKS with your functional approach
   const commandKeys = { "38": "up", "40": "down" } as const;
-  
+
   // This works around the current type system limitations
   // The proper solution would be to add type predicate support to filter
   const commandKeysObservable = pipe(
     keydownEvents,
     // Use a type predicate to help TypeScript understand the filtering
-    filter((event): event is MockKeyboardEvent => 
-      'keyCode' in event && event.keyCode.toString() in commandKeys
+    filter((event): event is MockKeyboardEvent =>
+      "keyCode" in event && event.keyCode.toString() in commandKeys
     ),
-    map((event) => 
+    map((event) =>
       commandKeys[event.keyCode.toString() as keyof typeof commandKeys]
-    )
+    ),
   );
-  
+
   // The output type will be string | ObservableError since errors pass through
   const processedCommands: string[] = [];
-  
+
   // Start subscription
   const subscription = commandKeysObservable.subscribe({
     next(result) {
       // Handle both successful results and potential errors
-      if (typeof result === 'string') {
+      if (typeof result === "string") {
         processedCommands.push(result);
       }
-      
+
       if (processedCommands.length === 4) {
         expect(processedCommands).toEqual(["up", "down"]);
       }
-    }
+    },
   });
 
   // Simulate key events
   for (const [type, handlers] of mockHandlers.entries()) {
     if (type === "keydown") {
-      handlers.forEach(handler => {
+      handlers.forEach((handler) => {
         handler({ type: "keydown", key: "ArrowUp", keyCode: 38 });
         handler({ type: "keydown", key: "ArrowLeft", keyCode: 37 }); // filtered out
         handler({ type: "keydown", key: "ArrowDown", keyCode: 40 });
@@ -204,31 +224,39 @@ test("functional composition with Observable operators", () => {
 test("DOM events with async iteration", async () => {
   // Mock element that can dispatch events
   const mockHandlers = new Map<string, Set<(event: MockEvent) => void>>();
-  
+
   // Create mock functions using @std/expect fn()
-  const addEventListenerSpy = fn((type: string, handler: (event: MockEvent) => void, _capture?: boolean) => {
-    if (!mockHandlers.has(type)) {
-      mockHandlers.set(type, new Set());
-    }
-    mockHandlers.get(type)!.add(handler);
-  });
-  
-  const removeEventListenerSpy = fn((_type: string, _handler: (event: MockEvent) => void, _capture?: boolean) => { });
-  
+  const addEventListenerSpy = fn(
+    (type: string, handler: (event: MockEvent) => void, _capture?: boolean) => {
+      if (!mockHandlers.has(type)) {
+        mockHandlers.set(type, new Set());
+      }
+      mockHandlers.get(type)!.add(handler);
+    },
+  );
+
+  const removeEventListenerSpy = fn(
+    (
+      _type: string,
+      _handler: (event: MockEvent) => void,
+      _capture?: boolean,
+    ) => {},
+  );
+
   const element: MockElement = {
     addEventListener: addEventListenerSpy,
-    removeEventListener: removeEventListenerSpy
+    removeEventListener: removeEventListenerSpy,
   };
 
   const clicks = listen<MockEvent>(element, "click");
-  
+
   // Use your pull() method for async iteration
   const clicksAsync = clicks.pull({ strategy: { highWaterMark: 3 } });
-  
+
   // Simulate async processing
   setTimeout(() => {
     const handlers = mockHandlers.get("click")!;
-    handlers.forEach(handler => {
+    handlers.forEach((handler) => {
       handler({ type: "click" });
       handler({ type: "click" });
       handler({ type: "click" });
@@ -237,17 +265,17 @@ test("DOM events with async iteration", async () => {
 
   const receivedClicks: MockEvent[] = [];
   let count = 0;
-  
+
   for await (const click of clicksAsync) {
     receivedClicks.push(click);
     count++;
-    
+
     // Stop after 3 clicks to avoid infinite loop
     if (count >= 3) break;
   }
 
   expect(receivedClicks).toHaveLength(3);
-  expect(receivedClicks.every(click => click.type === "click")).toBe(true);
+  expect(receivedClicks.every((click) => click.type === "click")).toBe(true);
 });
 
 // -----------------------------------------------------------------------------
@@ -256,14 +284,25 @@ test("DOM events with async iteration", async () => {
 
 test("automatic cleanup with using blocks", () => {
   // Create mock functions using @std/expect fn()
-  const addEventListenerSpy = fn((_type: string, _handler: (event: MockEvent) => void, _capture?: boolean) => { });
-  const removeEventListenerSpy = fn((_type: string, _handler: (event: MockEvent) => void, _capture?: boolean) => { });
-  
+  const addEventListenerSpy = fn(
+    (
+      _type: string,
+      _handler: (event: MockEvent) => void,
+      _capture?: boolean,
+    ) => {},
+  );
+  const removeEventListenerSpy = fn(
+    (
+      _type: string,
+      _handler: (event: MockEvent) => void,
+      _capture?: boolean,
+    ) => {},
+  );
+
   const element: MockElement = {
     addEventListener: addEventListenerSpy,
-    removeEventListener: removeEventListenerSpy
+    removeEventListener: removeEventListenerSpy,
   };
-
 
   const clicks = listen<MockEvent>(element, "click");
   let subscription: Subscription | null = null;
@@ -271,10 +310,10 @@ test("automatic cleanup with using blocks", () => {
   {
     // This should work with your Symbol.dispose implementation
     using sub = clicks.subscribe({
-      next: () => {}
+      next: () => {},
     });
     subscription = sub;
-    
+
     expect(subscription.closed).toBe(false);
   } // Automatic cleanup happens here
 
@@ -288,15 +327,27 @@ test("automatic cleanup with using blocks", () => {
 
 test("DOM event error propagation", () => {
   // Create mock functions using @std/expect fn()
-  const addEventListenerSpy = fn((_type: string, _handler: (event: MockEvent) => void, _capture?: boolean) => { 
+  const addEventListenerSpy = fn(
+    (
+      _type: string,
+      _handler: (event: MockEvent) => void,
+      _capture?: boolean,
+    ) => {
       // Simulate addEventListener throwing
       throw new Error("Event binding failed");
-  });
-  const removeEventListenerSpy = fn((_type: string, _handler: (event: MockEvent) => void, _capture?: boolean) => { });
-  
+    },
+  );
+  const removeEventListenerSpy = fn(
+    (
+      _type: string,
+      _handler: (event: MockEvent) => void,
+      _capture?: boolean,
+    ) => {},
+  );
+
   const element: MockElement = {
     addEventListener: addEventListenerSpy,
-    removeEventListener: removeEventListenerSpy
+    removeEventListener: removeEventListenerSpy,
   };
 
   const clicks = listen<MockEvent>(element, "click");
@@ -304,7 +355,7 @@ test("DOM event error propagation", () => {
 
   const subscription = clicks.subscribe({
     next: () => {},
-    error: err => errors.push(err)
+    error: (err) => errors.push(err),
   });
 
   expect(errors).toHaveLength(1);
@@ -319,12 +370,24 @@ test("DOM event error propagation", () => {
 
 test("multiple subscriptions create independent event handlers", () => {
   // Create mock functions using @std/expect fn()
-  const addEventListenerSpy = fn((_type: string, _handler: (event: MockEvent) => void, _capture?: boolean) => { });
-  const removeEventListenerSpy = fn((_type: string, _handler: (event: MockEvent) => void, _capture?: boolean) => { });
-  
+  const addEventListenerSpy = fn(
+    (
+      _type: string,
+      _handler: (event: MockEvent) => void,
+      _capture?: boolean,
+    ) => {},
+  );
+  const removeEventListenerSpy = fn(
+    (
+      _type: string,
+      _handler: (event: MockEvent) => void,
+      _capture?: boolean,
+    ) => {},
+  );
+
   const element: MockElement = {
     addEventListener: addEventListenerSpy,
-    removeEventListener: removeEventListenerSpy
+    removeEventListener: removeEventListenerSpy,
   };
 
   const clicks = listen<MockEvent>(element, "click");

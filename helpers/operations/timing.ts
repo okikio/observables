@@ -1,13 +1,13 @@
 import type { ExcludeError, Operator } from "../_types.ts";
 import { createOperator, createStatefulOperator } from "../operators.ts";
-import { ObservableError, isObservableError } from "../../error.ts";
+import { isObservableError, ObservableError } from "../../error.ts";
 
 /**
  * Delays each item in the stream by a specified number of milliseconds.
  *
  * This operator shifts the entire stream of events forward in time, preserving
  * the relative time between them.
- * 
+ *
  * > Note: This does not delay error emissions. If an error occurs, it will
  * > be emitted immediately, regardless of the delay.
  *
@@ -37,31 +37,31 @@ import { ObservableError, isObservableError } from "../../error.ts";
  * @param ms - The delay duration in milliseconds
  * @returns A stream operator that delays each value
  */
-export function delay<T>(ms: number): Operator<T | ObservableError, T | ObservableError> {
+export function delay<T>(
+  ms: number,
+): Operator<T | ObservableError, T | ObservableError> {
   return createStatefulOperator<T | ObservableError, T, {
-    timeoutId: ReturnType<typeof setTimeout> | null,
-    pendingFlush: PromiseWithResolvers<void> | null,
-    hasStarted: boolean,
-    buffer: T[],
-    delayOver: boolean
+    timeoutId: ReturnType<typeof setTimeout> | null;
+    pendingFlush: PromiseWithResolvers<void> | null;
+    hasStarted: boolean;
+    buffer: T[];
+    delayOver: boolean;
   }>({
-    name: 'delay',
-    errorMode: 'pass-through', // Should be explicit
+    name: "delay",
+    errorMode: "pass-through", // Should be explicit
     createState: () => ({
       timeoutId: null,
       buffer: [],
       hasStarted: false,
       delayOver: false,
-      pendingFlush: null
+      pendingFlush: null,
     }),
 
     transform(chunk, state, controller) {
       // If delay period is over, emit immediately
       if (state.delayOver) controller.enqueue(chunk);
-
       // Buffer the item and start delay timer if not already started
       else state.buffer.push(chunk as T);
-
 
       // Start the delay timer on the first item
       if (!state.hasStarted) {
@@ -118,7 +118,7 @@ export function delay<T>(ms: number): Operator<T | ObservableError, T | Observab
       }
 
       state.buffer.length = 0;
-    }
+    },
   });
 }
 
@@ -128,7 +128,7 @@ export function delay<T>(ms: number): Operator<T | ObservableError, T | Observab
  * This operator delays every item independently, preserving the relative
  * spacing between them while shifting each one forward by the same amount.
  * Think of it as "adding X milliseconds to each item's timestamp."
- * 
+ *
  * > Note: This does not delay error emissions. If an error occurs, it will
  * > be emitted immediately, regardless of the delay.
  *
@@ -136,7 +136,7 @@ export function delay<T>(ms: number): Operator<T | ObservableError, T | Observab
  * ```ts
  * import { pipe, delayEach, from } from "./helpers/mod.ts";
  *
- * // Stream behavior  
+ * // Stream behavior
  * const sourceStream = from([1, 2, 3]); // Items at T+0, T+100, T+200
  * const delayedStream = pipe(sourceStream, delayEach(1000));
  * // Emits 1 (at T+1000), 2 (at T+1100), 3 (at T+1200)
@@ -157,30 +157,36 @@ export function delay<T>(ms: number): Operator<T | ObservableError, T | Observab
  * @param ms - The delay duration in milliseconds for each item
  * @returns A stream operator that delays each value individually
  */
-export function delayEach<T>(ms: number): Operator<T | ObservableError, T | ObservableError> {
+export function delayEach<T>(
+  ms: number,
+): Operator<T | ObservableError, T | ObservableError> {
   return createStatefulOperator<T | ObservableError, T, {
-    pendingTimeouts: Set<ReturnType<typeof setTimeout>>,
-    isComplete: boolean
+    pendingTimeouts: Set<ReturnType<typeof setTimeout>>;
+    isComplete: boolean;
   }>({
-    name: 'delayEach',
-    errorMode: 'pass-through',
+    name: "delayEach",
+    errorMode: "pass-through",
     createState: () => ({
       pendingTimeouts: new Set(),
-      isComplete: false
+      isComplete: false,
     }),
 
     transform(chunk, state, controller) {
       // Schedule delayed emission for this specific item
-      const timeout = setTimeout((_chunk) => {
-        controller.enqueue(_chunk);
-        state.pendingTimeouts.delete(timeout);
-        clearTimeout(timeout);
+      const timeout = setTimeout(
+        (_chunk) => {
+          controller.enqueue(_chunk);
+          state.pendingTimeouts.delete(timeout);
+          clearTimeout(timeout);
 
-        // If stream ended and this was the last pending timeout, close stream
-        if (state.isComplete && state.pendingTimeouts.size === 0) {
-          controller.terminate();
-        }
-      }, ms, chunk);
+          // If stream ended and this was the last pending timeout, close stream
+          if (state.isComplete && state.pendingTimeouts.size === 0) {
+            controller.terminate();
+          }
+        },
+        ms,
+        chunk,
+      );
 
       state.pendingTimeouts.add(timeout);
     },
@@ -202,7 +208,7 @@ export function delayEach<T>(ms: number): Operator<T | ObservableError, T | Obse
       }
 
       state.pendingTimeouts.clear();
-    }
+    },
   });
 }
 
@@ -211,7 +217,7 @@ export function delayEach<T>(ms: number): Operator<T | ObservableError, T | Obse
  *
  * This is the "search bar" operator. It waits for the user to stop typing
  * before firing off a search query.
- * 
+ *
  * > Note: This operator does not delay error emissions. If an error occurs,
  * > it will be emitted immediately, regardless of the debounce period.
  *
@@ -242,18 +248,20 @@ export function delayEach<T>(ms: number): Operator<T | ObservableError, T | Obse
  * @param ms - The debounce duration in milliseconds
  * @returns A stream operator that debounces values
  */
-export function debounce<T>(ms: number): Operator<T | ObservableError, T | ObservableError> {
+export function debounce<T>(
+  ms: number,
+): Operator<T | ObservableError, T | ObservableError> {
   return createStatefulOperator<T | ObservableError, T, {
-    timeout: ReturnType<typeof setTimeout> | null,
-    lastValue: ExcludeError<T> | null,
-    hasValue: boolean
+    timeout: ReturnType<typeof setTimeout> | null;
+    lastValue: ExcludeError<T> | null;
+    hasValue: boolean;
   }>({
-    name: 'debounce',
-    errorMode: 'pass-through',
+    name: "debounce",
+    errorMode: "pass-through",
     createState: () => ({
       timeout: null,
       lastValue: null,
-      hasValue: false
+      hasValue: false,
     }),
 
     transform(chunk, state, controller) {
@@ -301,7 +309,7 @@ export function debounce<T>(ms: number): Operator<T | ObservableError, T | Obser
       }
       state.lastValue = null;
       state.hasValue = false;
-    }
+    },
   });
 }
 
@@ -339,20 +347,22 @@ export function debounce<T>(ms: number): Operator<T | ObservableError, T | Obser
  * @param ms - The throttle duration in milliseconds
  * @returns A stream operator that throttles values
  */
-export function throttle<T>(ms: number): Operator<T | ObservableError, T | ObservableError> {
+export function throttle<T>(
+  ms: number,
+): Operator<T | ObservableError, T | ObservableError> {
   return createStatefulOperator<T | ObservableError, T, {
-    lastEmitTime: number,
-    nextValue: ExcludeError<T> | null,
-    hasNextValue: boolean,
-    timeoutId: ReturnType<typeof setTimeout> | null
+    lastEmitTime: number;
+    nextValue: ExcludeError<T> | null;
+    hasNextValue: boolean;
+    timeoutId: ReturnType<typeof setTimeout> | null;
   }>({
-    name: 'throtle',
-    errorMode: 'pass-through',
+    name: "throtle",
+    errorMode: "pass-through",
     createState: () => ({
       lastEmitTime: 0,
       nextValue: null,
       hasNextValue: false,
-      timeoutId: null
+      timeoutId: null,
     }),
 
     transform(chunk, state, controller) {
@@ -415,7 +425,7 @@ export function throttle<T>(ms: number): Operator<T | ObservableError, T | Obser
       }
       state.nextValue = null;
       state.hasNextValue = false;
-    }
+    },
   });
 }
 
@@ -455,22 +465,24 @@ export function throttle<T>(ms: number): Operator<T | ObservableError, T | Obser
  * @param ms The timeout duration in milliseconds.
  * @returns An operator that enforces a timeout on each item.
  */
-export function timeout<T>(ms: number): Operator<T | ObservableError, T | ObservableError> {
+export function timeout<T>(
+  ms: number,
+): Operator<T | ObservableError, T | ObservableError> {
   return createOperator<T | ObservableError, T | ObservableError>({
-    name: 'timeout',
-    errorMode: 'pass-through',
+    name: "timeout",
+    errorMode: "pass-through",
     transform(chunk, controller) {
       // If the chunk is an error, we can immediately emit it
       const timeoutId = setTimeout(() => {
         controller.enqueue(ObservableError.from(
           new Error(`Operation timed out after ${ms}ms`),
-          'operator:timeout',
-          { timeoutMs: ms, chunk }
+          "operator:timeout",
+          { timeoutMs: ms, chunk },
         ));
       }, ms);
 
       Promise.resolve().then(() => clearTimeout(timeoutId));
       controller.enqueue(chunk);
-    }
+    },
   });
 }

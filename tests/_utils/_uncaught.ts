@@ -1,9 +1,10 @@
-import type process from "node:process"
+import type process from "node:process";
 
 // Portable helper that returns a promise resolving with the first unhandled
 // error (or `null` if none occurred within this tick).
 export function captureUnhandledOnce() {
-  const _process = (globalThis as unknown as { process: typeof process })?.process;
+  const _process = (globalThis as unknown as { process: typeof process })
+    ?.process;
   return new Promise<ErrorEvent | Error | null>((resolve) => {
     function done<T>(err?: ErrorEvent | Error | null) {
       cleanup();
@@ -14,7 +15,7 @@ export function captureUnhandledOnce() {
       if (typeof _process !== "undefined" && _process?.removeListener) {
         _process.removeListener("uncaughtException", nodeHandler);
       }
-      
+
       globalThis.removeEventListener?.("error", domHandler as EventListener);
     }
 
