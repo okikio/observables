@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-import-prefix
 /**
  * Integration tests validating operator composition in real-world patterns. Unlike unit tests
  * focused on individual operators, these ensure complete pipelines handle order dependencies,

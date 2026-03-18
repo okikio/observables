@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-import-prefix
 /**
  * Cross-runtime intent tests for the Observable library.
  * Tests core macro and micro behaviors with the shared `@libs/testing` harness.

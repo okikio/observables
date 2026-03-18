@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-import-prefix
 /**
  * Comprehensive test suite for EventBus and Event Dispatcher
  *

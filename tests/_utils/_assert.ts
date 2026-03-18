@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-import-prefix
 import { AssertionError } from "jsr:@std/assert@^1/assertion-error";
 
 /**

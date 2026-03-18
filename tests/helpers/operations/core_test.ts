@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-import-prefix
 import { expect, test } from "jsr:@libs/testing@^5";
 
 import { Observable } from "../../../observable.ts";

@@ -1,3 +1,4 @@
+// deno-lint-ignore-file no-import-prefix
 /**
  * Tests for circular buffer queue - a high-performance FIFO data structure using O(1) operations
  * instead of O(n) Array.shift(). Think of it as a ring of parking spaces: when you reach the last
