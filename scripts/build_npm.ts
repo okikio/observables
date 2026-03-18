@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-import-prefix
 /**
  * Builds the npm package from the Deno source using `@deno/dnt`.
  *

@@ -8,12 +8,12 @@
  * deno.jsonc untouched.
  */
 const semverPattern =
-  /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 const versionFieldPattern = /("version"\s*:\s*")[^"]*(")/;
 
 /**
- * Returns true when the provided string follows SemVer's `x.y.z` structure,
- * optionally with pre-release or build metadata.
+ * Returns true when the provided string is a valid SemVer version, including
+ * optional pre-release or build metadata segments.
  */
 export function isSemVerVersion(version: string): boolean {
   return semverPattern.test(version);

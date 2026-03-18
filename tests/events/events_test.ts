@@ -12,7 +12,6 @@
  * @module
  */
 
-// deno-lint-ignore-file no-import-prefix
 import type { Subscription } from "../../_types.ts";
 import type { EventMap } from "../../events.ts";
 

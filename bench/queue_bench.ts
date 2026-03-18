@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-import-prefix
 /**
  * Queue operations benchmarks focusing on O(1) performance claims.
  *

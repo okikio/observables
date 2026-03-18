@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-import-prefix
 import type { SubscriptionObserver } from "../../observable.ts";
 import { expect, test } from "jsr:@libs/testing@^5";
 
