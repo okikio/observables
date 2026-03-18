@@ -216,7 +216,7 @@
  *
  * @example Testing & Debugging Tips
  * ```ts
- * import { assertEquals } from "@std/assert";
+ * import { assertEquals } from "jsr:@std/assert@^1";
  *
  * Deno.test("emits three ticks then completes", async () => {
  *   const ticks = Observable.of(1, 2, 3);

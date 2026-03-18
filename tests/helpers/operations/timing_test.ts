@@ -1,5 +1,5 @@
 // deno-lint-ignore-file no-import-prefix
-import { expect, test } from "@libs/testing";
+import { expect, test } from "jsr:@libs/testing@^5";
 import { delay as stdDelay } from "jsr:@std/async@^1";
 
 import { Observable } from "../../../observable.ts";
