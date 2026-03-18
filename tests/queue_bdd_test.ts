@@ -697,7 +697,8 @@ describe("Advanced Operations", () => {
       enqueue(queue, 5);
       enqueue(queue, 6);
       
-      // After wrapping, toArray should still expose FIFO order to callers.
+      // Internal state: [5, 6, 3, 4] with head=2, tail=2
+      // toArray reads in order: starting from head (index 2), we get 3, 4, 5, 6
       expect(toArray(queue)).toEqual([3, 4, 5, 6]);
     });
 
@@ -994,8 +995,8 @@ describe("Edge Cases and Stress Tests", () => {
         timestamp: number;
       }
       
-      const requestQueue = createQueue<Request>(5);
-      const rateLimit = 5;
+      const RATE_LIMIT = 5; // Max 5 requests
+      const requestQueue = createQueue<Request>(RATE_LIMIT);
       
       // Simulate incoming requests
       for (let i = 0; i < 10; i++) {
@@ -1007,7 +1008,7 @@ describe("Edge Cases and Stress Tests", () => {
       }
       
       // Only first 5 requests made it through
-      expect(getSize(requestQueue)).toBe(rateLimit);
+      expect(getSize(requestQueue)).toBe(5);
     });
   });
 });

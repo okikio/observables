@@ -22,9 +22,6 @@ import {
 } from '../events.ts';
 import { Observable } from '../observable.ts';
 
-/**
- * Collects values with timeout to prevent hanging tests.
- */
 describe("EventBus", () => {
   describe("Basic Operations", () => {
     it("should create an empty event bus", () => {
@@ -384,7 +381,7 @@ describe("EventDispatcher (Type-Safe Event Bus)", () => {
       const second: string[] = [];
 
       const sub1 = dispatcher.on('simple', (text: string) => first.push(text));
-      dispatcher.on('simple', (text: string) => second.push(text));
+      const sub2 = dispatcher.on('simple', (text: string) => second.push(text));
 
       dispatcher.emit('simple', '1');
       sub1.unsubscribe();

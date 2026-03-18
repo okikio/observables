@@ -21,7 +21,8 @@ import {
   injectError
 } from "../../helpers/utils.ts";
 import type { CreateOperatorOptions } from "../../helpers/_types.ts";
-import { type ObservableError, isObservableError } from "../../error.ts";
+import type { ObservableError } from "../../error.ts";
+import { isObservableError } from "../../error.ts";
 
 /**
  * Collects all values from a ReadableStream using the reader API.

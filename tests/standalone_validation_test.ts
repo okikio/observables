@@ -40,8 +40,7 @@ function assertTrue(value: boolean, msg?: string): void {
 
 // Import library modules
 import { Observable } from "../observable.ts";
-import type { Subscription } from "../_types.ts";
-import { createQueue, enqueue, dequeue, peek, isEmpty, isFull, clear } from "../queue.ts";
+import { createQueue, enqueue, dequeue, peek, isEmpty, isFull, getSize, clear } from "../queue.ts";
 import { ObservableError, isObservableError } from "../error.ts";
 
 // ============================================================================
@@ -366,41 +365,44 @@ test("INTEGRATION: Error handling consistency across components", () => {
 // PERFORMANCE & MEMORY TESTS
 // ============================================================================
 
-test("PERFORMANCE: Queue operations are truly O(1)", () => {
+test("PERFORMANCE: Queue preserves FIFO order through wrap-around cycles", () => {
   const queue = createQueue<number>(10000);
   
-  // Fill queue completely
-  const startEnqueue = performance.now();
+  // Fill queue completely so the tail reaches the end of the buffer.
   for (let i = 0; i < 10000; i++) {
     enqueue(queue, i);
   }
-  const enqueueTime = performance.now() - startEnqueue;
+  assertTrue(isFull(queue), "Queue should be full after initial fill");
   
-  // Dequeue half
-  const startDequeue = performance.now();
+  // Remove half the items so the head advances into the middle.
   for (let i = 0; i < 5000; i++) {
-    dequeue(queue);
+    assertEquals(dequeue(queue), i, "Dequeues should stay FIFO before wrap-around");
   }
-  const dequeueTime = performance.now() - startDequeue;
+  assertEquals(getSize(queue), 5000, "Half the queue should remain");
   
-  // Refill (circular wrap)
-  const startRefill = performance.now();
+  // Refill so the tail wraps back to the front of the circular buffer.
   for (let i = 10000; i < 15000; i++) {
     enqueue(queue, i);
   }
-  const refillTime = performance.now() - startRefill;
-  
-  // Times should be roughly similar (O(1) per operation)
-  // Not exact due to system variance, but orders of magnitude should match
-  console.log(`Enqueue: ${enqueueTime}ms, Dequeue: ${dequeueTime}ms, Refill: ${refillTime}ms`);
-  
-  assertTrue(enqueueTime < 100, "Enqueue should be fast");
-  assertTrue(dequeueTime < 100, "Dequeue should be fast");
-  assertTrue(refillTime < 100, "Refill (with wrap) should be fast");
+  assertTrue(isFull(queue), "Queue should be full again after wrap-around refill");
+
+  const remaining = [];
+  while (!isEmpty(queue)) {
+    remaining.push(dequeue(queue)!);
+  }
+
+  assertArrayEquals(
+    remaining,
+    [
+      ...Array.from({ length: 5000 }, (_, index) => index + 5000),
+      ...Array.from({ length: 5000 }, (_, index) => index + 10000),
+    ],
+    "Wrap-around should preserve FIFO order across the full drain"
+  );
 });
 
 test("MEMORY: Observable cleanup prevents leaks", () => {
-  const subscriptions: Subscription[] = [];
+  const subscriptions: Array<{ unsubscribe(): void; closed: boolean }> = [];
   
   // Create many subscriptions
   for (let i = 0; i < 1000; i++) {

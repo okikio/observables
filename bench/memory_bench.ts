@@ -10,8 +10,16 @@ import { bench, run, do_not_optimize } from 'npm:mitata';
 import { Observable } from '../observable.ts';
 import { isObservableError } from '../error.ts';
 import { pipe } from '../helpers/pipe.ts';
-import { map, take, scan } from '../helpers/operations/core.ts';
+import { map, filter, take, scan } from '../helpers/operations/core.ts';
 import { createQueue, enqueue, dequeue } from '../queue.ts';
+
+// Memory tracking helper
+function getMemoryUsage(): number {
+  if (typeof Deno !== 'undefined' && Deno.memoryUsage) {
+    return Deno.memoryUsage().heapUsed;
+  }
+  return 0;
+}
 
 // Stress test data generator
 function* largeDataGenerator(sizeBytes: number) {

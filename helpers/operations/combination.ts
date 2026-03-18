@@ -312,7 +312,8 @@ export function switchMap<T, R>(
 
       // Subscribe to the new inner Observable
       const currentTaskToken = {};
-      const currentTask: Promise<void> = (async () => {
+      let currentTask: Promise<void>;
+      currentTask = (async () => {
         const enqueueIfActive = (value: R | ObservableError): void => {
           if (
             abortController.signal.aborted ||

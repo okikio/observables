@@ -138,7 +138,7 @@ export class EventBus<T> extends Observable<T> {
  * }
  * ```
  */
-export type EventMap = object;
+export type EventMap = {};
 
 /**
  * The return type of {@link createEventDispatcher}.
@@ -348,9 +348,9 @@ export function waitForEvent<
     return promise;
   }
 
-  const subscriptionRef: { current?: Subscription } = {};
+  let subscription: Subscription | undefined;
 
-  subscriptionRef.current = bus.events.subscribe({
+  subscription = bus.events.subscribe({
     next(event) {
       if (event.type === type) {
         cleanup();
@@ -375,7 +375,7 @@ export function waitForEvent<
   });
 
   function cleanup() {
-    subscriptionRef.current?.unsubscribe?.();
+    subscription?.unsubscribe?.();
     signal?.removeEventListener?.('abort', onAbort);
   }
 
