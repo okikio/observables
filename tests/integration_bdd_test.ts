@@ -9,7 +9,6 @@
  * (mergeMap for parallelism, concatMap for ordering).
  */
 
-// deno-lint-ignore-file no-import-prefix
 import { describe, it } from "jsr:@std/testing@^1/bdd";
 import { expect } from "jsr:@std/expect@^1";
 
