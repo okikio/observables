@@ -514,7 +514,9 @@ test("waitForEvent utility - Does not miss aborts during listener registration",
   };
 
   await expect(
-    waitForEvent(dispatcher, "data", { signal: signal as unknown as AbortSignal }),
+    waitForEvent(dispatcher, "data", {
+      signal: signal as unknown as AbortSignal,
+    }),
   ).rejects.toThrow("Aborted during registration");
 
   dispatcher.emit("data", { value: 1 });
