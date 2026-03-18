@@ -58,9 +58,13 @@ describe("publishing setup", () => {
     );
   });
 
-  it("publishes only from release events or explicit publish-only retries", () => {
+  it("triggers publishing only from release events or explicit publish-only workflow dispatches", () => {
     const publish_workflow = readRepoFile(".github/workflows/publish.yml");
 
+    expect(publish_workflow).toContain("types: [published]");
+    expect(publish_workflow).toContain(
+      'if [ "$EVENT_NAME" = "release" ]; then',
+    );
     expect(publish_workflow).toContain(
       "the published release event publishes the tagged commit to JSR and npm",
     );
@@ -74,6 +78,7 @@ describe("publishing setup", () => {
   it("uses npm trusted publishing without requiring a token secret", () => {
     const publish_workflow = readRepoFile(".github/workflows/publish.yml");
 
+    expect(publish_workflow).toContain("id-token: write");
     expect(publish_workflow).toContain(
       "npm publish --provenance --access public",
     );
