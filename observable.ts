@@ -626,6 +626,27 @@ export class SubscriptionObserver<T> {
    * @param subscription - The subscription that created this observer
    */
   constructor(subscription?: Subscription | null) {
+    Object.defineProperties(this, {
+      next: {
+        value: this.next.bind(this),
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      },
+      error: {
+        value: this.error.bind(this),
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      },
+      complete: {
+        value: this.complete.bind(this),
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      },
+    });
+
     this.#subscription = subscription;
 
     if (subscription) {

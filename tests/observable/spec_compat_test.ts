@@ -90,3 +90,111 @@ test("Reusing the same observer object does not tear down an existing subscripti
 
   expect(teardownCount).toBe(1);
 });
+
+test("Detached SubscriptionObserver methods stay bound to the subscription observer", () => {
+  let completeObserver!: TC39SubscriptionObserver;
+  let errorObserver!: TC39SubscriptionObserver;
+  const values: number[] = [];
+  const errors: unknown[] = [];
+  let completeCalls = 0;
+  const completeToken = Symbol("complete");
+
+  new Observable<number>((subscriptionObserver) => {
+    completeObserver =
+      subscriptionObserver as unknown as TC39SubscriptionObserver;
+  }).subscribe({
+    next(value) {
+      values.push(value);
+      return completeToken;
+    },
+    complete() {
+      completeCalls++;
+      return completeToken;
+    },
+  });
+
+  new Observable<number>((subscriptionObserver) => {
+    errorObserver = subscriptionObserver as unknown as TC39SubscriptionObserver;
+  }).subscribe({
+    error(error) {
+      errors.push(error);
+      return completeToken;
+    },
+  });
+
+  const { next, complete } = completeObserver;
+  const { error } = errorObserver;
+
+  expect(next(1)).toBe(undefined);
+  expect(values).toEqual([1]);
+
+  expect(complete()).toBe(undefined);
+  expect(completeCalls).toBe(1);
+
+  const expectedError = new Error("detached error");
+  expect(error(expectedError)).toBe(undefined);
+  expect(errors).toEqual([expectedError]);
+});
+
+test("SubscriptionObserver methods are no-ops after explicit unsubscribe", () => {
+  let observer!: TC39SubscriptionObserver;
+  let nextCalls = 0;
+  let errorCalls = 0;
+  let completeCalls = 0;
+
+  const subscription = new Observable<number>((subscriptionObserver) => {
+    observer = subscriptionObserver as unknown as TC39SubscriptionObserver;
+  }).subscribe({
+    next() {
+      nextCalls++;
+    },
+    error() {
+      errorCalls++;
+    },
+    complete() {
+      completeCalls++;
+    },
+  });
+
+  subscription.unsubscribe();
+
+  expect(() => observer.next(1)).not.toThrow();
+  expect(() => observer.error(new Error("ignored"))).not.toThrow();
+  expect(() => observer.complete()).not.toThrow();
+
+  expect(observer.closed).toBe(true);
+  expect(nextCalls).toBe(0);
+  expect(errorCalls).toBe(0);
+  expect(completeCalls).toBe(0);
+});
+
+test("SubscriptionObserver methods are no-ops after completion", () => {
+  let observer!: TC39SubscriptionObserver;
+  let nextCalls = 0;
+  let errorCalls = 0;
+  let completeCalls = 0;
+
+  new Observable<number>((subscriptionObserver) => {
+    observer = subscriptionObserver as unknown as TC39SubscriptionObserver;
+  }).subscribe({
+    next() {
+      nextCalls++;
+    },
+    error() {
+      errorCalls++;
+    },
+    complete() {
+      completeCalls++;
+    },
+  });
+
+  observer.complete();
+  observer.next(1);
+  observer.error(new Error("ignored"));
+  observer.complete();
+
+  expect(observer.closed).toBe(true);
+  expect(nextCalls).toBe(0);
+  expect(errorCalls).toBe(0);
+  expect(completeCalls).toBe(1);
+});
