@@ -34,6 +34,13 @@ describe("publishing setup", () => {
     }
   });
 
+  it("pins publishing-script JSR imports to explicit versions", () => {
+    const build_script = readRepoFile("scripts/build_npm.ts");
+
+    expect(build_script).toContain("jsr:@deno/dnt@^0.42.3");
+    expect(build_script).toContain("jsr:@std/jsonc@^1.0.2");
+  });
+
   it("documents npm install before the JSR bridge fallback", () => {
     const readme = readRepoFile("README.md");
 

@@ -348,6 +348,7 @@ export function waitForEvent<
   const { resolve, reject, promise } = Promise.withResolvers<
     E[K] | undefined
   >();
+  let settled = false;
 
   // Immediate abort
   if (signal?.aborted) {
@@ -357,9 +358,25 @@ export function waitForEvent<
 
   const subscription_ref: { current?: Subscription } = {};
 
+  function cleanup() {
+    subscription_ref.current?.unsubscribe?.();
+    signal?.removeEventListener?.("abort", onAbort);
+  }
+
+  function onAbort() {
+    if (settled) return;
+    settled = true;
+    cleanup();
+    reject(signal!.reason);
+  }
+
+  signal?.addEventListener?.("abort", onAbort, { once: true });
+
   subscription_ref.current = bus.events.subscribe({
     next(event) {
+      if (settled) return;
       if (event.type === type) {
+        settled = true;
         cleanup();
 
         // cast payload to the correct type
@@ -367,10 +384,14 @@ export function waitForEvent<
       }
     },
     error(err) {
+      if (settled) return;
+      settled = true;
       cleanup();
       reject(err);
     },
     complete() {
+      if (settled) return;
+      settled = true;
       cleanup();
 
       if (throwOnClose) {
@@ -381,17 +402,17 @@ export function waitForEvent<
     },
   });
 
-  function cleanup() {
-    subscription_ref.current?.unsubscribe?.();
-    signal?.removeEventListener?.("abort", onAbort);
+  // We need both hooks for full race coverage:
+  // 1. the listener above catches aborts that happen before or during
+  //    subscription setup, so the promise rejects immediately
+  // 2. this re-check catches the narrow case where that abort happened before
+  //    `subscription_ref.current` was assigned, so we can still unsubscribe the
+  //    newly created subscription instead of leaving it attached. For example,
+  //    the signal can abort synchronously from inside `addEventListener()`
+  //    before control returns to the subscription assignment above.
+  if (signal?.aborted) {
+    onAbort();
   }
-
-  function onAbort() {
-    cleanup?.();
-    reject(signal!.reason);
-  }
-
-  signal?.addEventListener?.("abort", onAbort, { once: true });
 
   return promise;
 }

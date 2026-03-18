@@ -1,4 +1,4 @@
-// deno-lint-ignore-file no-import-prefix no-unversioned-import
+// deno-lint-ignore-file no-import-prefix
 /**
  * Builds the npm package from the Deno source using `@deno/dnt`.
  *
@@ -8,8 +8,8 @@
  * Output is written to ./npm/ and is gitignored so publish artifacts never
  * leak back into source control.
  */
-import { build, emptyDir } from "jsr:@deno/dnt";
-import { parse } from "jsr:@std/jsonc";
+import { build, emptyDir } from "jsr:@deno/dnt@^0.42.3";
+import { parse } from "jsr:@std/jsonc@^1.0.2";
 
 const deno_config_path = new URL("../deno.jsonc", import.meta.url);
 const deno_config_text = await Deno.readTextFile(deno_config_path);
