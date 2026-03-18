@@ -1,45 +1,26 @@
 /**
- * Standalone tests for Observable library without external dependencies.
- * Tests core macro and micro behaviors for intent validation.
+ * Cross-runtime intent tests for the Observable library.
+ * Tests core macro and micro behaviors with the shared `@libs/testing` harness.
  *
  * Run with: deno test --allow-read --trace-leaks standalone_validation_test.ts
  */
 
-// Use Deno's built-in testing (no network required)
-const { test } = Deno;
+// deno-lint-ignore-file no-import-prefix
+import { expect, test } from "jsr:@libs/testing@^5";
 
-// Simple assertion helpers
 function assertEquals<T>(actual: T, expected: T, msg?: string): void {
-  if (actual !== expected) {
-    throw new Error(
-      msg || `Expected ${expected}, got ${actual}`,
-    );
-  }
+  void msg;
+  expect(actual).toBe(expected);
 }
 
 function assertArrayEquals<T>(actual: T[], expected: T[], msg?: string): void {
-  if (actual.length !== expected.length) {
-    throw new Error(
-      msg ||
-        `Array length mismatch: expected ${expected.length}, got ${actual.length}`,
-    );
-  }
-  for (let i = 0; i < actual.length; i++) {
-    if (actual[i] !== expected[i]) {
-      throw new Error(
-        msg ||
-          `Array mismatch at index ${i}: expected ${expected[i]}, got ${
-            actual[i]
-          }`,
-      );
-    }
-  }
+  void msg;
+  expect(actual).toEqual(expected);
 }
 
 function assertTrue(value: boolean, msg?: string): void {
-  if (!value) {
-    throw new Error(msg || `Expected true, got ${value}`);
-  }
+  void msg;
+  expect(value).toBe(true);
 }
 
 // Import library modules

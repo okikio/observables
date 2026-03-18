@@ -21,10 +21,9 @@
   "tasks": {
     "test": "deno test --allow-read --allow-net --coverage --trace-leaks",
     "test:watch": "deno test --allow-read --allow-net --watch",
-    "test:cross-platform": "deno run --allow-read --allow-net tests/cross-platform.ts",
     "test:docs": "deno test --allow-read --allow-net --doc",
-    "bench": "deno run --allow-read --allow-hrtime bench/run.ts",
-    "bench:compare": "deno run --allow-read --allow-hrtime bench/compare.ts",
+    "bench": "deno run --allow-read --allow-env --allow-sys bench/run.ts",
+    "bench:compare": "deno run --allow-read --allow-env --allow-sys bench/compare.ts",
     "coverage": "deno coverage --html",
     "lint": "deno lint",
     "fmt": "deno fmt",

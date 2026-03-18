@@ -216,13 +216,13 @@
  *
  * @example Testing & Debugging Tips
  * ```ts
- * import { assertEquals } from "jsr:@std/assert@^1";
+ * import { expect, test } from 'jsr:@libs/testing@^5';
  *
- * Deno.test("emits three ticks then completes", async () => {
+ * test('emits three ticks then completes', async () => {
  *   const ticks = Observable.of(1, 2, 3);
  *   const out: number[] = [];
  *   for await (const n of ticks) out.push(n);
- *   assertEquals(out, [1, 2, 3]);
+ *   expect(out).toEqual([1, 2, 3]);
  * });
  *
  * // Quick console probe
