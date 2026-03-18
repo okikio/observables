@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/okikio/observables/compare/v1.0.0...v1.0.1) (2026-03-18)
+
+
+### Bug Fixes
+
+* **release:** allow publish-only registry retries ([b51c952](https://github.com/okikio/observables/commit/b51c9521d5fccc4da0ee3d38ae3f5905d7237221))
+
 # 1.0.0 (2026-03-18)
 
 
