@@ -131,15 +131,13 @@ if (
  * import { Observable } from './observable.ts';
  * 
  * async function streamData() {
- *   await using connection = await Observable.from(
- *     connectToDatabase()
- *   ).subscribe({
+ *   await using sub = Observable.of(1, 2, 3).subscribe({
  *     next: async (data) => await saveData(data)
  *   });
  *   
- *   // Use connection here
+ *   // Use the subscription here
  *   // ...
- * } // connection cleanup awaited automatically at block end
+ * } // sub.unsubscribe() (or async dispose) awaited automatically at block end
  * ```
  * 
  * @example Guaranteed async cleanup on error
@@ -147,7 +145,7 @@ if (
  * import { Observable } from './observable.ts';
  * 
  * async function fetchAndProcess() {
- *   await using sub = await Observable.from(apiStream).subscribe({
+ *   await using sub = Observable.from(apiStream).subscribe({
  *     next: async (item) => await processAsync(item)
  *   });
  *   
