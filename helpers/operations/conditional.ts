@@ -13,8 +13,8 @@
  * @module
  */
 import type { ExcludeError, Operator } from "../_types.ts";
-import type { ObservableError } from "../../error.ts";
 
+import { isObservableError, ObservableError } from "../../error.ts";
 import { createStatefulOperator } from "../operators.ts";
 
 /**
@@ -269,10 +269,57 @@ export function unique<T, K = T>(
 }
 
 /**
+ * Configuration for `changed()`.
+ *
+ * `by` lets you compare on a derived key instead of the full value.
+ * For example, you may want to emit only when `user.id` changes.
+ */
+export interface ChangedOptions<T, K = ExcludeError<T>> {
+  /**
+   * Pick the value that should be compared.
+   *
+   * By default, the full value is compared.
+   */
+  by?: (value: ExcludeError<T>, index: number) => K;
+
+  /**
+   * Decide whether two comparison keys should be treated as the same.
+   *
+   * By default, `Object.is()` is used.
+   */
+  equals?: (previous: K, current: K) => boolean;
+
+  /**
+   * Whether the first non-error value should be emitted.
+   *
+   * This defaults to `true`, which is usually what people expect from a
+   * "changed" operator.
+   */
+  emitFirst?: boolean;
+}
+
+function defaultBy<T>(value: T): T {
+  return value;
+}
+
+function defaultEquals<T>(previous: T, current: T): boolean {
+  return Object.is(previous, current);
+}
+
+/**
  * Emits an item only if it is different from the previous one.
  *
  * This is useful for streams where values can be emitted repeatedly, but you
  * only care about the changes.
+ * 
+ * Example 1:
+ *   source: 1, 1, 2, 2, 3
+ *   output: 1, 2, 3
+ *
+ * Example 2:
+ *   source: { id: 1, name: "A" }, { id: 1, name: "B" }, { id: 2, name: "C" }
+ *   changed({ by: value => value.id })
+ *   output: first item, then the item with id 2
  *
  * @example
  * ```ts
@@ -311,3 +358,95 @@ export function unique<T, K = T>(
  * @param compare An optional function to compare two keys for equality.
  * @returns An operator that filters out consecutive duplicate values.
  */
+export function changed<T, K = ExcludeError<T>>(
+  options: ChangedOptions<T, K> = {},
+): Operator<T | ObservableError, T | ObservableError> {
+  const by = (options.by ??
+    defaultBy) as (value: ExcludeError<T>, index: number) => K;
+
+  const equals = (options.equals ??
+    defaultEquals) as (previous: K, current: K) => boolean;
+
+  const emitFirst = options.emitFirst ?? true;
+
+  return createStatefulOperator<
+    T | ObservableError,
+    T | ObservableError,
+    {
+      hasPrevious: boolean;
+      previousKey: K | undefined;
+      index: number;
+    }
+  >({
+    name: "changed",
+
+    createState: () => ({
+      hasPrevious: false,
+      previousKey: undefined,
+      index: 0,
+    }),
+
+    transform(chunk, state, controller) {
+      if (isObservableError(chunk)) {
+        controller.enqueue(chunk);
+        return;
+      }
+
+      const value = chunk as ExcludeError<T>;
+
+      let currentKey: K;
+
+      try {
+        currentKey = by(value, state.index++);
+      } catch (err) {
+        controller.enqueue(
+          ObservableError.from(
+            err,
+            "operator:stateful:changed:by",
+            value,
+          ) as ObservableError,
+        );
+        return;
+      }
+
+      if (!state.hasPrevious) {
+        state.hasPrevious = true;
+        state.previousKey = currentKey;
+
+        if (emitFirst) {
+          controller.enqueue(value as T);
+        }
+
+        return;
+      }
+
+      let isSame: boolean;
+
+      try {
+        isSame = equals(state.previousKey as K, currentKey);
+      } catch (err) {
+        controller.enqueue(
+          ObservableError.from(
+            err,
+            "operator:stateful:changed:equals",
+            value,
+          ) as ObservableError,
+        );
+
+        return;
+      }
+
+      state.previousKey = currentKey;
+
+      if (!isSame) {
+        controller.enqueue(value as T);
+      }
+    },
+
+    cancel(state) {
+      state.hasPrevious = false;
+      state.previousKey = undefined;
+      state.index = 0;
+    },
+  });
+}
