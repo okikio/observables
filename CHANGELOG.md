@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/okikio/observables/compare/v1.0.2...v1.1.0) (2026-03-20)
+
+
+### Features
+
+* add changed operator to emit only distinct values in streams ([7d5bf2a](https://github.com/okikio/observables/commit/7d5bf2a5a2b5e542da6f23105cffe78d039c3f41))
+
 ## [1.0.2](https://github.com/okikio/observables/compare/v1.0.1...v1.0.2) (2026-03-18)
 
 
