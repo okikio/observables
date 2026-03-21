@@ -913,19 +913,34 @@ test("Documentation - waitForEvent example from docs", async () => {
 // Runtime-specific tests
 if (runtime === "deno") {
   test("Deno-specific - Network permissions test", async () => {
-    // This test only runs on Deno and requires network permissions
-    await using server = Deno.serve(
-      { port: 8080, onListen: () => null },
-      () => new Response(null, { status: 200 }),
+    // Use an ephemeral port and force the connection closed so shutdown does
+    // not wait on a kept-alive client socket after the assertion passes.
+    const server = Deno.serve(
+      {
+        hostname: "127.0.0.1",
+        port: 0,
+        onListen: () => {},
+      },
+      () => new Response(null, {
+        status: 200,
+        headers: {
+          connection: "close",
+        },
+      }),
     );
 
-    const response = await fetch(
-      `http://${server.addr.hostname}:${server.addr.port}`,
-    );
-    expect(response.status).toBe(200);
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.addr.port}`, {
+        headers: {
+          connection: "close",
+        },
+      });
 
-    // Dispose of the response body if it exists
-    await response?.body?.cancel();
+      expect(response.status).toBe(200);
+      await response.body?.cancel();
+    } finally {
+      await server.shutdown();
+    }
   }, { permissions: { net: "inherit" } });
 }
 

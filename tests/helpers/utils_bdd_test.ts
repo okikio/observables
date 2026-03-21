@@ -13,6 +13,13 @@
 
 import { describe, it } from "jsr:@std/testing@^1/bdd";
 import { expect } from "jsr:@std/expect@^1";
+import {
+  type Observable as RxObservable,
+  from as rxFrom,
+  map as rxMap,
+  pipe as rxPipe,
+  take as rxTake,
+} from "npm:rxjs@7.8.2";
 
 import {
   applyOperator,
@@ -514,6 +521,57 @@ describe("Interop Utilities", () => {
       const result = applyOperator(toStream([1, 2, 3]), doubleFirstTwo);
 
       expect(await collectStream(result)).toEqual([2, 4]);
+    });
+
+    it("should adapt standard RxJS operator functions", async () => {
+      const rxOperator = fromObservableOperator<
+        number,
+        number,
+        RxObservable<number>
+      >(
+        rxPipe(
+          rxMap((value: number) => value + 1),
+          rxTake(2),
+        ),
+        { sourceAdapter: (source) => rxFrom(source) as RxObservable<number> },
+      );
+
+      const result = applyOperator(toStream([1, 2, 3]), rxOperator);
+
+      expect(await collectStream(result)).toEqual([2, 3]);
+    });
+
+    it("should unsubscribe foreign subscribable output when the stream is cancelled early", async () => {
+      let unsubscribeCount = 0;
+
+      const foreignOperator = fromObservableOperator<number, number>(() => ({
+        subscribe(observer) {
+          observer.next?.(1);
+
+          return {
+            unsubscribe() {
+              unsubscribeCount++;
+            },
+          };
+        },
+      }));
+
+      const result = applyOperator(toStream([1, 2, 3]), foreignOperator);
+      const reader = result.getReader();
+
+      try {
+        const first = await reader.read();
+
+        expect(first.done).toBe(false);
+        expect(first.value).toBe(1);
+
+        await reader.cancel();
+        await Promise.resolve();
+
+        expect(unsubscribeCount).toBe(1);
+      } finally {
+        reader.releaseLock();
+      }
     });
 
     it("should preserve wrapped errors from the foreign output", async () => {

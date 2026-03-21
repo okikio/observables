@@ -661,6 +661,16 @@ test("Observable.from throws for incompatible inputs", () => {
   expect(() => Observable.from(true as unknown as [])).toThrow(TypeError);
 });
 
+test("Observable.from rejects direct subscribables without Symbol.observable", () => {
+  expect(() =>
+    Observable.from({
+      subscribe() {
+        return { unsubscribe() {} };
+      },
+    } as unknown as never)
+  ).toThrow(TypeError);
+});
+
 test("Observable.from uses the this value if it's a function", () => {
   let usedThisValue = false;
   const thisObj = function () {
