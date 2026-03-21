@@ -18,6 +18,24 @@ import { isObservableError, ObservableError } from "../../error.ts";
 import { createStatefulOperator } from "../operators.ts";
 
 /**
+ * Shared state for predicate operators that count source positions.
+ */
+interface IndexedPredicateState {
+  /** Zero-based index passed to the predicate for the current source value. */
+  index: number;
+  /** Prevents duplicate output after an early terminal decision. */
+  finished: boolean;
+}
+
+/**
+ * Shared state for operators that need to track only the current source index.
+ */
+interface IndexedState {
+  /** Zero-based index of the current non-error source value. */
+  index: number;
+}
+
+/**
  * Checks if every item in the stream passes a test.
  *
  * Like `Array.prototype.every()`, it stops and returns `false` on the first
@@ -60,7 +78,7 @@ export function every<T>(
   return createStatefulOperator<
     T | ObservableError,
     boolean,
-    { index: number; finished: boolean }
+    IndexedPredicateState
   >({
     name: "every",
     createState: () => ({ index: 0, finished: false }),
@@ -128,7 +146,7 @@ export function some<T>(
   return createStatefulOperator<
     T | ObservableError,
     boolean,
-    { index: number; finished: boolean }
+    IndexedPredicateState
   >({
     name: "some",
     createState: () => ({ index: 0, finished: false }),
@@ -189,7 +207,7 @@ export function some<T>(
 export function find<T>(
   predicate: (value: ExcludeError<T>, index: number) => boolean,
 ): Operator<T | ObservableError, T | ObservableError> {
-  return createStatefulOperator<T | ObservableError, T, { index: number }>({
+  return createStatefulOperator<T | ObservableError, T, IndexedState>({
     name: "find",
     createState: () => ({ index: 0 }),
     transform(chunk, state, controller) {
@@ -202,6 +220,110 @@ export function find<T>(
       }
     },
   });
+}
+
+/**
+ * Finds the index of the first item in the stream that passes a test.
+ *
+ * This mirrors `Array.prototype.findIndex()`: it emits the zero-based index of
+ * the first matching value, or `-1` if the stream completes without a match.
+ *
+ * @typeParam T - Type of values from the source stream
+ * @param predicate - Function to test each value
+ * @returns An operator that emits the first matching index or `-1`
+ */
+export function findIndex<T>(
+  predicate: (value: ExcludeError<T>, index: number) => boolean,
+): Operator<T | ObservableError, number | ObservableError> {
+  return createStatefulOperator<
+    T | ObservableError,
+    number,
+    IndexedPredicateState
+  >({
+    name: "findIndex",
+    createState: () => ({ index: 0, finished: false }),
+    transform(chunk, state, controller) {
+      if (state.finished) {
+        return;
+      }
+
+      const currentIndex = state.index;
+      const result = predicate(chunk as ExcludeError<T>, currentIndex);
+      state.index++;
+
+      if (result) {
+        state.finished = true;
+        controller.enqueue(currentIndex);
+        controller.terminate();
+      }
+    },
+    flush(state, controller) {
+      if (!state.finished) {
+        controller.enqueue(-1);
+      }
+    },
+  });
+}
+
+/**
+ * Emits the value at a specific zero-based source index.
+ *
+ * Unlike arrays, streams cannot jump to a position directly, so this operator
+ * reads and counts values until it reaches the requested slot. If the stream
+ * completes first, it emits nothing.
+ *
+ * @typeParam T - Type of values from the source stream
+ * @param targetIndex - Zero-based index to emit
+ * @returns An operator that emits at most one value from the requested index
+ */
+export function elementAt<T>(
+  targetIndex: number,
+): Operator<T | ObservableError, T | ObservableError> {
+  if (!Number.isInteger(targetIndex) || targetIndex < 0) {
+    throw new RangeError("elementAt: targetIndex must be a non-negative integer");
+  }
+
+  return createStatefulOperator<T | ObservableError, T, IndexedState>({
+    name: "elementAt",
+    createState: () => ({ index: 0 }),
+    transform(chunk, state, controller) {
+      if (state.index === targetIndex) {
+        controller.enqueue(chunk);
+        controller.terminate();
+        return;
+      }
+
+      state.index++;
+    },
+  });
+}
+
+/**
+ * Emits the first value in the stream, optionally constrained by a predicate.
+ *
+ * Without a predicate this is the Observable equivalent of reading index `0`.
+ * With a predicate it behaves like `find()`, but the name is useful when the
+ * caller wants to emphasize "take the first match" rather than "search".
+ *
+ * @typeParam T - Type of values from the source stream
+ * @param predicate - Optional test that the first emitted value must satisfy
+ * @returns An operator that emits at most one matching value
+ */
+export function first<T>(): Operator<T | ObservableError, T | ObservableError>;
+/**
+ * Emits the first value that satisfies the provided predicate.
+ */
+export function first<T>(
+  predicate: (value: ExcludeError<T>, index: number) => boolean,
+): Operator<T | ObservableError, T | ObservableError>;
+export function first<T>(
+  predicate?: (value: ExcludeError<T>, index: number) => boolean,
+): Operator<T | ObservableError, T | ObservableError> {
+  if (!predicate) {
+    return elementAt<T>(0);
+  }
+
+  return find(predicate);
 }
 
 /**
