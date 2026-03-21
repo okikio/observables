@@ -377,6 +377,7 @@ export function createOperator<
   const transform = (options as TransformFunctionOptions<T, O>)?.transform;
   const start = (options as TransformFunctionOptions<T, O>)?.start;
   const flush = (options as TransformFunctionOptions<T, O>)?.flush;
+  const cancel = (options as TransformFunctionOptions<T, O>)?.cancel;
 
   return (source) => {
     try {
@@ -398,8 +399,10 @@ export function createOperator<
           { highWaterMark: 0 },
         );
 
-      // Pipe the source through the transform
-      return source.pipeThrough(transformStream);
+      // Pipe the source through the transform and bind downstream cancellation
+      return wrapStreamWithCancel(source.pipeThrough(transformStream), {
+        cancel: handleCancel(errorMode, cancel, { operatorName }),
+      });
     } catch (err) {
       // If setup fails, return a stream that errors immediately
       return source.pipeThrough(
@@ -755,6 +758,152 @@ export function handleFlush<T, O, S extends unknown = undefined>(
 }
 
 /**
+ * Lifecycle handling for downstream cancellation cleanup.
+ *
+ * `flush()` runs when the source ends normally. `cancel()` runs when a consumer
+ * stops early, for example by unsubscribing, breaking out of `for await`, or
+ * otherwise cancelling the pipeline before the source completes.
+ *
+ * ```text
+ * source completes normally  -> flush()
+ * consumer stops early       -> cancel(reason)
+ * ```
+ *
+ * That distinction matters for operators that hold timers, inner
+ * subscriptions, or abort controllers. Those resources should be released when
+ * the consumer goes away, even if the source never reached completion.
+ *
+ * Cleanup here is intentionally not treated like transform output. If the
+ * cleanup callback fails, the cancellation promise rejects, but no
+ * `ObservableError` is emitted into the stream because the consumer has already
+ * said it is no longer interested in more values.
+ *
+ * @typeParam T - Input chunk type
+ * @typeParam O - Output chunk type
+ * @typeParam S - State type (for stateful operators)
+ * @param _errorMode - Unused here. Cancellation cleanup does not route through
+ * the operator error modes because it is teardown, not part of the data path.
+ * @param cancel - Your cancellation handler (stateless or stateful, optional)
+ * @param context - Info about the operator, including name and state
+ * @returns A function suitable for a ReadableStream `cancel` hook, or undefined
+ */
+export function handleCancel<T, O, S extends unknown = undefined>(
+  _errorMode: OperatorErrorMode,
+  cancel?:
+    | TransformFunctionOptions<T, O>["cancel"]
+    | StatefulTransformFunctionOptions<T, O, S>["cancel"],
+  context: TransformHandlerContext<S> = {},
+): ((reason?: unknown) => Promise<void>) | undefined {
+  if (!cancel) return;
+
+  const operatorName = context.operatorName || `operator:unknown`;
+  const isStateful = context.isStateful || false;
+  const state = context.state;
+
+  return async function (reason?: unknown): Promise<void> {
+    try {
+      if (isStateful) {
+        await (cancel as StatefulTransformFunctionOptions<T, O, S>["cancel"])!(
+          state as S,
+          reason,
+        );
+        return;
+      }
+
+      await (cancel as TransformFunctionOptions<T, O>["cancel"])!(reason);
+    } catch (err) {
+      throw ObservableError.from(err, `${operatorName}:cancel`, reason);
+    }
+  };
+}
+
+/**
+ * Wraps a transformed stream so operator-level cleanup runs when a downstream
+ * consumer stops early.
+ *
+ * This wrapper has a deliberately narrow job: it forwards readable-side
+ * cancellation to an operator cleanup callback while preserving the chunks
+ * coming from the wrapped stream. It does not try to redefine TransformStream
+ * semantics or reinterpret cancellation as a normal data-path error.
+ *
+ * ```text
+ * source -> TransformStream -> wrapped readable -> consumer
+ *                                |
+ *                                +-> cancel(reason)
+ * ```
+ *
+ * @typeParam T - Output chunk type of the wrapped stream
+ * @param stream - The transformed stream to expose downstream
+ * @param options - Cancellation behavior for the wrapped stream
+ * @returns A readable stream that preserves output values and forwards cancel
+ */
+export function wrapStreamWithCancel<T>(
+  stream: ReadableStream<T>,
+  options: {
+    /**
+     * Cleanup to run if the consumer cancels the stream before it completes.
+     */
+    cancel?: (reason?: unknown) => void | Promise<void>;
+  } = {},
+): ReadableStream<T> {
+  if (!options.cancel) return stream;
+
+  const reader = stream.getReader();
+  let settled = false;
+
+  // The wrapper acquires an exclusive reader, so releasing it exactly once
+  // keeps teardown predictable even when both cancel and read completion race.
+  const release = (): void => {
+    if (settled) return;
+    settled = true;
+
+    try {
+      reader.releaseLock();
+    } catch {
+      // Releasing the reader is best-effort during teardown.
+    }
+  };
+
+  return new ReadableStream<T>({
+    async pull(controller) {
+      try {
+        // Forward chunks one-by-one so downstream backpressure still controls
+        // how quickly we read from the wrapped stream.
+        const { done, value } = await reader.read();
+
+        if (done) {
+          release();
+          controller.close();
+          return;
+        }
+
+        controller.enqueue(value);
+      } catch (err) {
+        release();
+        controller.error(err);
+      }
+    },
+
+    async cancel(reason) {
+      try {
+        // Run operator cleanup first so resources such as timers or inner
+        // subscriptions are released before we cancel the wrapped reader.
+        await options.cancel?.(reason);
+      } finally {
+        try {
+          // Cancelling the reader tells the wrapped stream that nobody wants
+          // more output. Any rejection here is surfaced through the returned
+          // cancellation promise instead of being emitted as a chunk.
+          await reader.cancel(reason);
+        } finally {
+          release();
+        }
+      }
+    },
+  });
+}
+
+/**
  * Creates operators that maintain state across stream chunks
  *
  * Problem: Many stream operations need memory (scanning, buffering, counting, etc.)
@@ -881,6 +1030,7 @@ export function createStatefulOperator<
     ?.transform;
   const start = (options as StatefulTransformFunctionOptions<T, O, S>)?.start;
   const flush = (options as StatefulTransformFunctionOptions<T, O, S>)?.flush;
+  const cancel = (options as StatefulTransformFunctionOptions<T, O, S>)?.cancel;
 
   return (source) => {
     try {
@@ -933,8 +1083,14 @@ export function createStatefulOperator<
         { highWaterMark: 0 },
       );
 
-      // Pipe the source through the transform
-      return source.pipeThrough(transformStream);
+      // Pipe the source through the transform and bind downstream cancellation
+      return wrapStreamWithCancel(source.pipeThrough(transformStream), {
+        cancel: handleCancel(errorMode, cancel, {
+          operatorName,
+          isStateful: true,
+          state,
+        }),
+      });
     } catch (err) {
       // If setup fails, return a stream that errors immediately
       return source.pipeThrough(

@@ -1,6 +1,7 @@
 // deno-lint-ignore-file no-explicit-any
 import type { ObservableError } from "../error.ts";
 import type { Observable } from "../observable.ts";
+import type { SpecObservable } from "../_spec.ts";
 
 /**
  * Type representing a stream operator function
@@ -93,6 +94,34 @@ export interface BaseTransformOptions {
    */
   name?: string;
 }
+
+/**
+ * Structural readable/writable pair used by platform transforms such as
+ * `CompressionStream`.
+ */
+export interface StreamPair<TIn, TOut> {
+  /** Readable side exposed by the transform-like object. */
+  readable: ReadableStream<TOut>;
+  /** Writable side exposed by the transform-like object. */
+  writable: WritableStream<TIn>;
+}
+
+/**
+ * Observable-like values that can be converted through `Observable.from()`.
+ */
+export type ObservableInputLike<T> =
+  | SpecObservable<T>
+  | AsyncIterable<T>
+  | Iterable<T>
+  | PromiseLike<T>;
+
+/**
+ * Foreign operator shape used by libraries that transform one Observable-like
+ * source into another Observable-like result.
+ */
+export type ObservableOperatorInterop<TIn, TOut> = (
+  source: SpecObservable<TIn>,
+) => ObservableInputLike<TOut>;
 
 // ========================================
 // 2. CREATEOPERATOR INTERFACES
