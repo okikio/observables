@@ -421,11 +421,19 @@ export function createSubscription<T>(
   const abortHandler = () => subscription?.unsubscribe();
   const removeAbortHandler = () =>
     opts?.signal?.removeEventListener("abort", abortHandler);
-  opts?.signal?.addEventListener?.("abort", abortHandler, { once: true });
   stateMap.removeAbortHandler = removeAbortHandler;
 
-  // Initialize shared state
+  // Initialize shared state before any early-close path so subscribe() can
+  // still call observer.start(subscription) with a valid, already-closed
+  // subscription facade when needed.
   SubscriptionStateMap.set(subscription, stateMap);
+
+  if (opts?.signal?.aborted) {
+    closeSubscription(subscription, stateMap);
+    return subscription;
+  }
+  
+  opts?.signal?.addEventListener?.("abort", abortHandler, { once: true });
   return subscription;
 }
 
@@ -481,18 +489,12 @@ export function performSubscriptionCleanup(
   let cleanup = state.cleanup;
   let removeAbortHandler = state.removeAbortHandler;
 
-  // Only clean if we have something to clean
-  if (!cleanup && !removeAbortHandler) return;
-
   // Clear references first
   state.cleanup = null;
   state.removeAbortHandler = null;
 
-  // Remove the abort handler
-  removeAbortHandler?.();
-
-  // Run teardown (existing logic preserved)
   try {
+    removeAbortHandler?.();
     cleanupSubscription(cleanup);
   } finally {
     SubscriptionStateMap.delete(subscription);
@@ -1157,12 +1159,7 @@ export class Observable<T>
     const subscription: Subscription = createSubscription(observer, opts);
 
     /* -------------------------------------------------------------------
-     * 3.  Wrap user observer so we enforce closed-state.
-     * ------------------------------------------------------------------- */
-    const subObserver = new SubscriptionObserver<T>(subscription);
-
-    /* -------------------------------------------------------------------
-     * 4.  Call observer.start(subscription) – (spec step 10).
+     * 3.  Call observer.start(subscription) – (spec step 10).
      * ------------------------------------------------------------------- */
     try {
       observer.start?.(subscription);
@@ -1182,6 +1179,11 @@ export class Observable<T>
       subscription?.unsubscribe?.();
       return subscription;
     }
+
+    /* -------------------------------------------------------------------
+     * 4.  Wrap user observer so we enforce closed-state.
+     * ------------------------------------------------------------------- */
+    const subObserver = new SubscriptionObserver<T>(subscription);
 
     /* -------------------------------------------------------------------
      * 5.  Execute the user subscriber and capture its cleanup (spec step 12-16).
