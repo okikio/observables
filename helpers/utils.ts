@@ -245,41 +245,69 @@ function hasSubscribe<T>(
  * input or a direct subscribable from another Observable implementation.
  * Converting the result with a direct subscription avoids the extra
  * async-generator and stream layers that `pull(...)+toStream()` would add.
+ *
+ * If the foreign subscribable throws during subscription setup, this bridge
+ * converts that failure into an `ObservableError` value so downstream
+ * consumers see the same buffered-error behavior as the rest of this library.
  */
 export function observableInputToStream<T>(
   input: ObservableInteropInputLike<T>,
   errorContext: string,
 ): ReadableStream<T | ObservableError> {
   let subscription: { unsubscribe?(): void } | void;
+  let settled = false;
 
   return new ReadableStream<T | ObservableError>({
     start(controller) {
       const source = hasSubscribe<T>(input) ? input : Observable.from(input);
 
-      subscription = source.subscribe({
-        next(value) {
-          try {
-            controller.enqueue(value);
-          } catch {
-            // Downstream cancellation already decided the stream outcome.
-          }
-        },
-        error(error) {
-          try {
-            controller.enqueue(ObservableError.from(error, errorContext));
-            controller.close();
-          } catch {
-            // Downstream cancellation already decided the stream outcome.
-          }
-        },
-        complete() {
-          try {
-            controller.close();
-          } catch {
-            // Downstream cancellation already decided the stream outcome.
-          }
-        },
-      });
+      try {
+        const startedSubscription = source.subscribe({
+          next(value) {
+            try {
+              controller.enqueue(value);
+            } catch {
+              // Downstream cancellation already decided the stream outcome.
+            }
+          },
+          error(error) {
+            settled = true;
+
+            try {
+              controller.enqueue(ObservableError.from(error, errorContext));
+              controller.close();
+            } catch {
+              // Downstream cancellation already decided the stream outcome.
+            } finally {
+              subscription = undefined;
+            }
+          },
+          complete() {
+            settled = true;
+
+            try {
+              controller.close();
+            } catch {
+              // Downstream cancellation already decided the stream outcome.
+            } finally {
+              subscription = undefined;
+            }
+          },
+        });
+
+        subscription = settled ? undefined : startedSubscription;
+      } catch (error) {
+        settled = true;
+
+        try {
+          controller.enqueue(ObservableError.from(error, errorContext));
+          controller.close();
+        } catch {
+          // Downstream cancellation already decided the stream outcome.
+        } finally {
+          subscription = undefined;
+        }
+      }
     },
     cancel() {
       subscription?.unsubscribe?.();
@@ -302,6 +330,8 @@ export function observableInputToStream<T>(
  * The result keeps this library's buffered error behavior by converting the
  * foreign output into a `ReadableStream` that enqueues wrapped
  * `ObservableError` values instead of failing the readable side outright.
+ * That includes synchronous setup failures when the foreign subscribable
+ * throws from its `subscribe()` implementation.
  *
  * @typeParam TIn - Value type accepted by the foreign operator
  * @typeParam TOut - Value type produced by the foreign operator

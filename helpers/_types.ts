@@ -119,22 +119,28 @@ export interface SubscribableLike<T> {
 }
 
 /**
- * Observable-like values that can be converted through `Observable.from()`.
+ * Primary conversion shapes mirrored by helper utilities and interop types.
+ *
+ * This alias is intentionally descriptive rather than authoritative.
+ * `Observable.from()` keeps its own explicit signature so the runtime entry
+ * points `from()` and `of()` can stay distinct, but the shapes listed here
+ * mirror the main non-subscribable inputs that `Observable.from()` accepts.
  */
 export type ObservableInputLike<T> =
   | SpecObservable<T>
   | AsyncIterable<T>
   | Iterable<T>
-  | PromiseLike<T>;
+  | PromiseLike<T>
+  | ArrayLike<T>;
 
 /**
  * Wider Observable-like values accepted by interop helpers that adapt foreign
  * operator ecosystems.
  *
- * This is intentionally wider than `ObservableInputLike<T>`. `Observable.from()`
- * stays aligned with the library's spec-facing conversion contract, while
- * interop helpers may also need to consume direct subscribables returned by
- * third-party libraries such as RxJS.
+ * This is intentionally wider than `ObservableInputLike<T>`. The base alias
+ * covers the primary `Observable.from()`-style conversion set, while interop
+ * helpers may also need to consume direct subscribables returned by third-party
+ * libraries such as RxJS.
  */
 export type ObservableInteropInputLike<T> =
   | ObservableInputLike<T>
