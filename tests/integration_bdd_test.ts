@@ -423,8 +423,8 @@ describe("Integration Tests - Real World Patterns", () => {
     it("should emit on companion updates with combineLatestWith", async () => {
       const source = new Observable<number>((observer) => {
         setTimeout(() => observer.next(1), 15);
-        setTimeout(() => observer.next(2), 35);
-        setTimeout(() => observer.complete(), 50);
+        setTimeout(() => observer.next(2), 60);
+        setTimeout(() => observer.complete(), 75);
       });
 
       const letters = new Observable<string>((observer) => {
