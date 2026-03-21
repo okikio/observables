@@ -1,9 +1,13 @@
 import type {
+  ObservableInputLike,
+  ObservableOperatorInterop,
   TransformFunctionOptions,
+  StreamPair,
   TransformStreamOptions,
 } from "./_types.ts";
 import type { CreateOperatorOptions, Operator } from "./_types.ts";
 import { ObservableError } from "../error.ts";
+import { Observable } from "../observable.ts";
 
 /**
  * Type guard to check if options is a TransformStreamOptions
@@ -133,6 +137,168 @@ export function toStream<T>(
       }
     },
   });
+}
+
+/**
+ * Adapts a readable/writable stream pair into an Observable operator.
+ *
+ * Some platform transforms, such as `CompressionStream`, expose a writable side
+ * and a readable side without being created through this library's operator
+ * builders. This helper turns that pair into a normal `Operator` so it can be
+ * used inside `pipe()` like any built-in operator.
+ *
+ * A fresh pair is created for each operator application. That preserves the
+ * cold semantics of the surrounding Observable pipeline and avoids reusing a
+ * consumed stream pair across subscriptions.
+ *
+ * @typeParam TIn - Chunk type written into the pair
+ * @typeParam TOut - Chunk type read from the pair
+ * @param createPair - Factory that returns a fresh readable/writable pair
+ * @returns An operator that pipes input through the created pair
+ *
+ * @example
+ * ```ts
+ * const gzip = fromStreamPair<Uint8Array, Uint8Array>(
+ *   () => new CompressionStream('gzip')
+ * );
+ * ```
+ */
+export function fromStreamPair<TIn, TOut>(
+  createPair: () => StreamPair<TIn, TOut>,
+): Operator<TIn, TOut> {
+  return (source) => source.pipeThrough(createPair());
+}
+
+/**
+ * Wraps a `ReadableStream` as an Observable so foreign Observable-style
+ * operators can subscribe to it directly.
+ *
+ * This avoids first converting the stream into an async-iterable Observable via
+ * `Observable.from()`, which would add an extra adaptation layer before the
+ * foreign operator even starts running.
+ */
+export function streamAsObservable<T>(stream: ReadableStream<T>): Observable<T> {
+  return new Observable<T>((observer) => {
+    const reader = stream.getReader();
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        while (!cancelled && !observer.closed) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            break;
+          }
+
+          observer.next(value);
+        }
+
+        if (!cancelled && !observer.closed) {
+          observer.complete();
+        }
+      } catch (err) {
+        if (!cancelled && !observer.closed) {
+          observer.error(err);
+        }
+      } finally {
+        try {
+          reader.releaseLock();
+        } catch {
+          // Releasing the reader is best-effort during teardown.
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      void reader.cancel();
+    };
+  });
+}
+
+/**
+ * Subscribes to an Observable-like output and exposes it as a ReadableStream.
+ *
+ * Foreign operators are allowed to return any shape that `Observable.from()`
+ * understands. Converting the result with a direct subscription avoids the
+ * extra async-generator and stream layers that `pull(...)+toStream()` would add.
+ */
+export function observableInputToStream<T>(
+  input: ObservableInputLike<T>,
+  errorContext: string,
+): ReadableStream<T | ObservableError> {
+  return new ReadableStream<T | ObservableError>({
+    start(controller) {
+      const observable = Observable.from(input);
+
+      return observable.subscribe({
+        next(value) {
+          try {
+            controller.enqueue(value);
+          } catch {
+            // Downstream cancellation already decided the stream outcome.
+          }
+        },
+        error(error) {
+          try {
+            controller.enqueue(ObservableError.from(error, errorContext));
+            controller.close();
+          } catch {
+            // Downstream cancellation already decided the stream outcome.
+          }
+        },
+        complete() {
+          try {
+            controller.close();
+          } catch {
+            // Downstream cancellation already decided the stream outcome.
+          }
+        },
+      });
+    },
+  });
+}
+
+/**
+ * Adapts a foreign Observable-style operator into a stream operator.
+ *
+ * Libraries such as RxJS model operators as functions from one Observable-like
+ * source to another Observable-like result. This helper bridges that shape into
+ * this library's `Operator` contract by:
+ *
+ * 1. wrapping the input stream as an Observable-like source
+ * 2. calling the foreign operator
+ * 3. converting the resulting Observable-like output back into a stream
+ *
+ * The result keeps this library's buffered error behavior by reading the
+ * foreign output through `pull(..., { throwError: false })` before converting it
+ * back to a `ReadableStream`.
+ *
+ * @typeParam TIn - Value type accepted by the foreign operator
+ * @typeParam TOut - Value type produced by the foreign operator
+ * @param operator - Foreign operator function to adapt
+ * @returns An operator compatible with this library's `pipe()`
+ *
+ * @example
+ * ```ts
+ * const foreignTakeOne = fromObservableOperator<number, number>((source) =>
+ *   rxTake(1)(source)
+ * );
+ * ```
+ */
+export function fromObservableOperator<TIn, TOut>(
+  operator: ObservableOperatorInterop<TIn, TOut>,
+): Operator<TIn, TOut | ObservableError> {
+  return (source) => {
+    const observableSource = streamAsObservable(source);
+    const output = operator(observableSource) as ObservableInputLike<TOut>;
+
+    return observableInputToStream(
+      output,
+      "operator:fromObservableOperator:output",
+    );
+  };
 }
 
 /**
