@@ -9,6 +9,14 @@
 import { bench, do_not_optimize, run } from "npm:mitata@^1.0.34";
 import { Observable } from "../observable.ts";
 import { isObservableError } from "../error.ts";
+import {
+  zipWith,
+} from "../helpers/operations/combination.ts";
+import {
+  elementAt,
+  findIndex,
+  first,
+} from "../helpers/operations/conditional.ts";
 import { pipe } from "../helpers/pipe.ts";
 import { filter, map, scan, take, tap } from "../helpers/operations/core.ts";
 import { batch, toArray } from "../helpers/operations/batch.ts";
@@ -175,6 +183,76 @@ bench("Operators: deep chain (10 operators)", async () => {
   );
 
   const values: number[] = [];
+  for await (const val of result) {
+    if (!isObservableError(val)) values.push(val);
+  }
+
+  do_not_optimize(values);
+}).gc("inner");
+
+bench("Operators: findIndex early match (1000 items)", async () => {
+  const result = pipe(
+    Observable.from(numberStream(1000)),
+    findIndex((value: number) => value === 10),
+  );
+
+  const values: number[] = [];
+  for await (const val of result) {
+    if (!isObservableError(val)) values.push(val);
+  }
+
+  do_not_optimize(values);
+}).gc("inner");
+
+bench("Operators: elementAt middle index (1000 items)", async () => {
+  const result = pipe(
+    Observable.from(numberStream(1000)),
+    elementAt<number>(500),
+  );
+
+  const values: number[] = [];
+  for await (const val of result) {
+    if (!isObservableError(val)) values.push(val);
+  }
+
+  do_not_optimize(values);
+}).gc("inner");
+
+bench("Operators: first predicate early termination (1000 items)", async () => {
+  const result = pipe(
+    Observable.from(numberStream(1000)),
+    first((value: number) => value >= 10),
+  );
+
+  const values: number[] = [];
+  for await (const val of result) {
+    if (!isObservableError(val)) values.push(val);
+  }
+
+  do_not_optimize(values);
+}).gc("inner");
+
+bench("Operators: zipWith balanced companions (1000 items)", async () => {
+  const result = pipe(
+    Observable.from(numberStream(1000)),
+    zipWith(Observable.from(numberStream(1000))),
+  );
+
+  const values: Array<[number, number]> = [];
+  for await (const val of result) {
+    if (!isObservableError(val)) values.push(val);
+  }
+
+  do_not_optimize(values);
+}).gc("inner");
+
+bench("Operators: zipWith skewed companion backlog (1000 outputs)", async () => {
+  const result = pipe(
+    Observable.from(numberStream(1000)),
+    zipWith(Observable.from(numberStream(5000))),
+  );
+
+  const values: Array<[number, number]> = [];
   for await (const val of result) {
     if (!isObservableError(val)) values.push(val);
   }

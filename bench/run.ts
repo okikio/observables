@@ -25,6 +25,11 @@ console.log("-".repeat(80));
 await import("./operators_bench.ts");
 
 console.log("");
+console.log("Running Interop benchmarks...");
+console.log("-".repeat(80));
+await import("./interop_bench.ts");
+
+console.log("");
 console.log("Running Memory benchmarks...");
 console.log("-".repeat(80));
 await import("./memory_bench.ts");
