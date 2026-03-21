@@ -1,3 +1,16 @@
+# [1.3.0](https://github.com/okikio/observables/compare/v1.2.0...v1.3.0) (2026-03-21)
+
+
+### Bug Fixes
+
+* adjust timing in combineLatestWith test for accurate emission sequence ([ad26217](https://github.com/okikio/observables/commit/ad26217855939dfcbfd99b81bfe10a6018dd916f))
+
+
+### Features
+
+* enhance interoperability with new SubscribableLike interface and improved ObservableInteropInputLike type ([9c70c52](https://github.com/okikio/observables/commit/9c70c52bbcea0487aac4ad0e95aa58320768224c))
+* enhance observableInputToStream with subscription management and cancellation support ([f5425aa](https://github.com/okikio/observables/commit/f5425aa1e0485ace2e0b7352eddf58ae8710ca2c))
+
 # [1.2.0](https://github.com/okikio/observables/compare/v1.1.0...v1.2.0) (2026-03-21)
 
 
