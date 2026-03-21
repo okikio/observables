@@ -107,6 +107,18 @@ export interface StreamPair<TIn, TOut> {
 }
 
 /**
+ * Minimal subscribable shape used by foreign Observable implementations.
+ */
+export interface SubscribableLike<T> {
+  /** Subscribe to values from the foreign Observable-like object. */
+  subscribe(observer: {
+    next?(value: T): void;
+    error?(error: unknown): void;
+    complete?(): void;
+  }): { unsubscribe?(): void } | void;
+}
+
+/**
  * Observable-like values that can be converted through `Observable.from()`.
  */
 export type ObservableInputLike<T> =
@@ -116,12 +128,50 @@ export type ObservableInputLike<T> =
   | PromiseLike<T>;
 
 /**
+ * Wider Observable-like values accepted by interop helpers that adapt foreign
+ * operator ecosystems.
+ *
+ * This is intentionally wider than `ObservableInputLike<T>`. `Observable.from()`
+ * stays aligned with the library's spec-facing conversion contract, while
+ * interop helpers may also need to consume direct subscribables returned by
+ * third-party libraries such as RxJS.
+ */
+export type ObservableInteropInputLike<T> =
+  | ObservableInputLike<T>
+  | SubscribableLike<T>;
+
+/**
  * Foreign operator shape used by libraries that transform one Observable-like
  * source into another Observable-like result.
  */
-export type ObservableOperatorInterop<TIn, TOut> = (
-  source: SpecObservable<TIn>,
-) => ObservableInputLike<TOut>;
+export type ObservableOperatorInterop<
+  TIn,
+  TOut,
+  TSource = Observable<TIn>,
+> = (
+  source: TSource,
+) => ObservableInteropInputLike<TOut>;
+
+/**
+ * Configuration for adapting foreign Observable-style operators.
+ *
+ * Some libraries, such as RxJS, require their own Observable class on the
+ * input side even when the returned operator shape is still `(source) =>
+ * output`. `sourceAdapter` lets callers convert this library's Observable into
+ * that foreign source type before the operator runs.
+ */
+export interface ObservableOperatorInteropOptions<TIn, TSource = Observable<TIn>> {
+  /**
+   * Converts this library's Observable into the source type expected by the
+   * foreign operator.
+   */
+  sourceAdapter?: (source: Observable<TIn>) => TSource;
+
+  /**
+   * Context label used when the foreign output reports an error.
+   */
+  errorContext?: string;
+}
 
 // ========================================
 // 2. CREATEOPERATOR INTERFACES

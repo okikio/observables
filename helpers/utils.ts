@@ -1,6 +1,7 @@
 import type {
-  ObservableInputLike,
+  ObservableInteropInputLike,
   ObservableOperatorInterop,
+  ObservableOperatorInteropOptions,
   TransformFunctionOptions,
   StreamPair,
   TransformStreamOptions,
@@ -218,21 +219,42 @@ export function streamAsObservable<T>(stream: ReadableStream<T>): Observable<T> 
 }
 
 /**
+ * Returns true when a value exposes a direct `subscribe()` method.
+ *
+ * Many Observable libraries return subscribable objects that are usable without
+ * first going through this library's `Observable.from()`. Detecting that shape
+ * lets interop stay direct for outputs such as RxJS Observables.
+ */
+function hasSubscribe<T>(
+  input: ObservableInteropInputLike<T> | unknown,
+): input is {
+  subscribe(observer: {
+    next?(value: T): void;
+    error?(error: unknown): void;
+    complete?(): void;
+  }): { unsubscribe?(): void } | void;
+} {
+  return typeof input === "object" && input !== null &&
+    typeof (input as { subscribe?: unknown }).subscribe === "function";
+}
+
+/**
  * Subscribes to an Observable-like output and exposes it as a ReadableStream.
  *
- * Foreign operators are allowed to return any shape that `Observable.from()`
- * understands. Converting the result with a direct subscription avoids the
- * extra async-generator and stream layers that `pull(...)+toStream()` would add.
+ * Foreign operators are allowed to return either a normal `Observable.from()`
+ * input or a direct subscribable from another Observable implementation.
+ * Converting the result with a direct subscription avoids the extra
+ * async-generator and stream layers that `pull(...)+toStream()` would add.
  */
 export function observableInputToStream<T>(
-  input: ObservableInputLike<T>,
+  input: ObservableInteropInputLike<T>,
   errorContext: string,
 ): ReadableStream<T | ObservableError> {
   return new ReadableStream<T | ObservableError>({
     start(controller) {
-      const observable = Observable.from(input);
+      const source = hasSubscribe<T>(input) ? input : Observable.from(input);
 
-      return observable.subscribe({
+      return source.subscribe({
         next(value) {
           try {
             controller.enqueue(value);
@@ -271,9 +293,9 @@ export function observableInputToStream<T>(
  * 2. calling the foreign operator
  * 3. converting the resulting Observable-like output back into a stream
  *
- * The result keeps this library's buffered error behavior by reading the
- * foreign output through `pull(..., { throwError: false })` before converting it
- * back to a `ReadableStream`.
+ * The result keeps this library's buffered error behavior by converting the
+ * foreign output into a `ReadableStream` that enqueues wrapped
+ * `ObservableError` values instead of failing the readable side outright.
  *
  * @typeParam TIn - Value type accepted by the foreign operator
  * @typeParam TOut - Value type produced by the foreign operator
@@ -284,19 +306,24 @@ export function observableInputToStream<T>(
  * ```ts
  * const foreignTakeOne = fromObservableOperator<number, number>((source) =>
  *   rxTake(1)(source)
- * );
+ * , { sourceAdapter: (source) => rxFrom(source) });
  * ```
  */
-export function fromObservableOperator<TIn, TOut>(
-  operator: ObservableOperatorInterop<TIn, TOut>,
+export function fromObservableOperator<TIn, TOut, TSource = Observable<TIn>>(
+  operator: ObservableOperatorInterop<TIn, TOut, TSource>,
+  options?: ObservableOperatorInteropOptions<TIn, TSource>,
 ): Operator<TIn, TOut | ObservableError> {
   return (source) => {
     const observableSource = streamAsObservable(source);
-    const output = operator(observableSource) as ObservableInputLike<TOut>;
+    const foreignSource = options?.sourceAdapter
+      ? options.sourceAdapter(observableSource)
+      : observableSource as unknown as TSource;
+
+    const output = operator(foreignSource) as ObservableInteropInputLike<TOut>;
 
     return observableInputToStream(
       output,
-      "operator:fromObservableOperator:output",
+      options?.errorContext ?? "operator:fromObservableOperator:output",
     );
   };
 }
