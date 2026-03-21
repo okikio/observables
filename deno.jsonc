@@ -1,6 +1,6 @@
 {
   "name": "@okikio/observables",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "A spec-faithful yet ergonomic TC39-inspired Observable library with detailed types, tsdocs and examples.",
   "exports": {
     ".": "./mod.ts",

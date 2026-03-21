@@ -1,3 +1,13 @@
+# [1.2.0](https://github.com/okikio/observables/compare/v1.1.0...v1.2.0) (2026-03-21)
+
+
+### Features
+
+* add cancellation handling and stream wrapping for operators ([9843b2e](https://github.com/okikio/observables/commit/9843b2ec1806f42e4b75bacae30d7784a18c8c12))
+* add indexed predicate operators and enhance existing operators for improved functionality ([df80455](https://github.com/okikio/observables/commit/df804556ea64e24ccdb6ec02feb3292522e7c386))
+* add stream and observable integration functions for better interoperability ([53ef4ab](https://github.com/okikio/observables/commit/53ef4ab796a01e4b8144b667fb84970337d833b8))
+* enhance combination operators with improved state management and error handling ([f3a13e6](https://github.com/okikio/observables/commit/f3a13e6c68f6a68ae0f38e3b74c25014275b5424))
+
 # [1.1.0](https://github.com/okikio/observables/compare/v1.0.2...v1.1.0) (2026-03-20)
 
 
