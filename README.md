@@ -1,6 +1,7 @@
 # @okikio/observables
 
 [![CI](https://github.com/okikio/observables/actions/workflows/ci.yml/badge.svg)](https://github.com/okikio/observables/actions/workflows/ci.yml)
+[![JSR](https://jsr.io/badges/@okikio/observables)](https://jsr.io/@okikio/observables)
 [![npm version](https://img.shields.io/npm/v/%40okikio%2Fobservables?logo=npm&label=npm)](https://www.npmjs.com/package/@okikio/observables)
 [![Bundle Size](https://deno.bundlejs.com/badge?q=@okikio/observables&treeshake=[{+Observable,+pipe,+map,+filter+}]&style=flat)](https://bundlejs.com/?q=@okikio/observables&treeshake=[{+Observable,+pipe,+map,+filter+}])
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
@@ -371,6 +372,44 @@ for await (
   await processChunk(chunk);
 }
 ```
+
+### Behavior Notes and Differences
+
+This package stays close to the TC39 Observable proposal, but a few practical
+choices matter when you compare it with RxJS, `zen-observable`, or older
+proposal examples.
+
+- Operators are function-first. Instead of adding lots of prototype helpers to
+  `Observable`, this package puts transformation and coordination logic in
+  `pipe(...)` plus operator functions such as `map`, `filter`, `switchMap`, and
+  `tap`.
+- There is no instance `observable.forEach()` today. In-pipeline side effects
+  live in `tap(...)`, and terminal consumption lives in `subscribe(...)`,
+  `for await ... of`, or `observable.pull()`.
+- Side effects inside a pipeline belong in `tap(...)`. Terminal consumption
+  belongs in `subscribe(...)`, `for await ... of observable`, or
+  `observable.pull()`.
+- `for await` and `pull()` are the backpressure-aware path. They are great when
+  the consumer is asynchronous or the producer can outpace it. They also carry
+  async-iterator overhead, so plain `subscribe(...)` is still the lower-overhead
+  path for tight synchronous workflows.
+- This package exposes `observer.start(subscription)` before the subscriber body
+  runs. That hook is useful for inspection and early cancellation, but it is not
+  a teardown registration point.
+- If you allocate resources only inside `start()`, this package will not clean
+  them up for you automatically. Automatic teardown only knows about cleanup
+  returned from the subscriber function or cleanup attached to resources that
+  manage themselves.
+- An already-aborted `AbortSignal` still creates the subscription facade and
+  still calls `start(subscription)`, but `subscription.closed` is already `true`
+  and the subscriber body is skipped.
+
+In practice, `start()` should stay lightweight. Use it to observe or cancel the
+subscription early. Put long-lived resource allocation in the subscriber
+function so the returned teardown can release it deterministically.
+
+For a fuller comparison against RxJS and `zen-observable`, see
+[docs/observable-comparison-matrix.md](./docs/observable-comparison-matrix.md).
 
 Look through the [tests/](./tests/) and [bench/](./bench/) folders for complex
 examples and multiple usage patterns.
