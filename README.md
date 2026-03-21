@@ -486,13 +486,14 @@ const compressed = pipe(
 If you want to reuse RxJS operator functions, `fromObservableOperator()` wraps
 that operator shape and keeps the rest of your pipeline in this library.
 
-That helper is intentionally a little wider than `Observable.from()`. The core
-`Observable.from()` conversion path stays aligned with spec-style inputs such as
-iterables, promises, async iterables, array-like values, and objects that
-implement `[Symbol.observable]()`. The interop helper also accepts direct
-subscribables returned by third-party operator ecosystems, so you can reuse an
-RxJS stage without first forcing its output through the stricter `from()`
-contract.
+That helper is intentionally a little wider than `Observable.from()`. The
+runtime `Observable.from()` entrypoint keeps its own explicit signature, but it
+primarily accepts spec-style and collection-style inputs such as iterables,
+promises, async iterables, array-like values, and objects that implement
+`[Symbol.observable]()`. The interop helper goes one step wider by also
+accepting direct subscribables returned by third-party operator ecosystems, so
+you can reuse an RxJS stage without first forcing its output through the
+non-subscribable conversion path.
 
 Use the standard RxJS names when you are only talking to RxJS inside the
 adapter:
@@ -546,8 +547,10 @@ const result = pipe(
 operator functions expect an RxJS `Observable` on the input side, so the
 adapter converts this library's Observable into that source shape before the
 foreign operator runs. On the output side, `fromObservableOperator()` can read
-either a normal `Observable.from()` input or a direct subscribable returned by
-RxJS.
+either a normal `Observable.from()`-compatible input or a direct subscribable
+returned by RxJS. If that foreign subscribable throws during subscription
+setup, the bridge wraps the failure as an `ObservableError` value instead of
+tearing the readable side down immediately.
 
 Some operators have the same name in both ecosystems, such as `switchMap`,
 `mergeMap`, `concatMap`, `findIndex`, `first`, and `elementAt`. Others map by
