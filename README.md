@@ -280,7 +280,7 @@ Observable.of(1, 2, 3); // From values
 Observable.from(fetch("/api/data")); // From promises/iterables
 ```
 
-### Operators (19+ included)
+### Operators (including combination, conditional, and recovery helpers)
 
 ```ts
 import { debounce, filter, map, pipe, switchMap } from "@okikio/observables";
@@ -294,6 +294,15 @@ pipe(
   switchMap((x) => fetchData(x)), // Cancel previous requests
 );
 ```
+
+The built-in operator set covers the common array-like transforms plus the
+stream-specific coordination helpers you usually reach for next:
+
+- `map`, `filter`, `scan`, `take`, `drop`
+- `find`, `findIndex`, `first`, `elementAt`
+- `mergeMap`, `concatMap`, `switchMap`
+- `withLatestFrom`, `combineLatestWith`, `zipWith`, `raceWith`
+- `changed`, `unique`, `catchErrors`, `ignoreErrors`
 
 ### EventBus & EventDispatcher
 
@@ -448,6 +457,103 @@ function movingAverage(windowSize: number) {
 }
 ```
 
+### Native Stream and RxJS Interop
+
+The library stays on Web Streams internally, but you can still bring in
+platform transforms and foreign operator ecosystems when that is the cheapest
+way to solve a problem.
+
+If you already have a readable/writable pair such as `CompressionStream`, use
+`fromStreamPair()` to treat it like a normal operator:
+
+```ts
+import {
+  fromStreamPair,
+  Observable,
+  pipe,
+} from "@okikio/observables";
+
+const gzip = fromStreamPair<Uint8Array, Uint8Array>(
+  () => new CompressionStream("gzip"),
+);
+
+const compressed = pipe(
+  Observable.of(new TextEncoder().encode("hello world")),
+  gzip,
+);
+```
+
+If you want to reuse RxJS operator functions, `fromObservableOperator()` wraps
+that operator shape and keeps the rest of your pipeline in this library.
+
+That helper is intentionally a little wider than `Observable.from()`. The core
+`Observable.from()` conversion path stays aligned with spec-style inputs such as
+iterables, promises, async iterables, array-like values, and objects that
+implement `[Symbol.observable]()`. The interop helper also accepts direct
+subscribables returned by third-party operator ecosystems, so you can reuse an
+RxJS stage without first forcing its output through the stricter `from()`
+contract.
+
+Use the standard RxJS names when you are only talking to RxJS inside the
+adapter:
+
+```ts
+import { fromObservableOperator, Observable, pipe } from "@okikio/observables";
+import { from, map, pipe as rxPipe, take } from "rxjs";
+
+const rxStage = fromObservableOperator<number, number>(
+  rxPipe(
+    map((value) => value + 1),
+    take(2),
+  ),
+  { sourceAdapter: (source) => from(source) },
+);
+
+const result = pipe(Observable.of(1, 2, 3), rxStage);
+```
+
+Alias the RxJS imports when you want local operators and RxJS operators in the
+same file:
+
+```ts
+import {
+  fromObservableOperator,
+  map,
+  Observable,
+  pipe,
+} from "@okikio/observables";
+import {
+  from as rxFrom,
+  map as rxMap,
+  pipe as rxPipe,
+  take as rxTake,
+} from "rxjs";
+
+const result = pipe(
+  Observable.of(1, 2, 3, 4),
+  map((value) => value * 10),
+  fromObservableOperator<number, number>(
+    rxPipe(
+      rxMap((value) => value + 1),
+      rxTake(2),
+    ),
+    { sourceAdapter: (source) => rxFrom(source) },
+  ),
+);
+```
+
+`sourceAdapter` is the important piece for standard RxJS operators. RxJS
+operator functions expect an RxJS `Observable` on the input side, so the
+adapter converts this library's Observable into that source shape before the
+foreign operator runs. On the output side, `fromObservableOperator()` can read
+either a normal `Observable.from()` input or a direct subscribable returned by
+RxJS.
+
+Some operators have the same name in both ecosystems, such as `switchMap`,
+`mergeMap`, `concatMap`, `findIndex`, `first`, and `elementAt`. Others map by
+intent rather than by exact name. For example, this library's `changed()` is
+closest to RxJS `distinctUntilChanged()`.
+
 ## Performance
 
 We built this on Web Streams for good reason, native backpressure and memory
@@ -458,6 +564,12 @@ efficiency come for free. Here's what you get:
 - **Pre-compiled Error Modes**: Skip runtime checks in hot paths
 - **Tree Shaking**: Import only what you use (most apps need <4KB)
 - **TypeScript Native**: Zero runtime overhead for type safety
+
+Interop helpers are intentionally thin, but they still add one adaptation
+boundary. If raw throughput is the main goal, prefer built-in operators first,
+then reach for `fromStreamPair()` or `fromObservableOperator()` when reusing an
+existing platform transform or foreign operator saves more code than it costs
+in adapter overhead.
 
 Performance varies by use case, but here's how different error modes stack up:
 
@@ -500,9 +612,8 @@ like a stream of search results, mouse movements, or WebSocket messages.
 
 ### Why not just use RxJS?
 
-RxJS is powerful but can be overwhelming. We've all been there, 100+ operators,
-steep learning curve, 35KB bundle size. This library gives you the essential
-Observable patterns you actually use day-to-day, following the TC39 proposal so
+RxJS is powerful but can be overwhelming. 100+ operators, a steep learning curve, 35KB bundle size, it can be very overwhelming. `@okikio/observables` gives you the essential
+Observable patterns you actually need day-to-day, following the TC39 proposal so
 you're future-ready.
 
 ### EventBus vs Observable, when do I use which?
@@ -525,9 +636,9 @@ Pick the mode that fits your situation:
 
 ### Is this actually production ready?
 
-We use it in production. It follows the TC39 proposal, has comprehensive tests,
+It follows the TC39 proposal, has comprehensive tests,
 and handles resource management properly. The Web Streams foundation is
-battle-tested across browsers and runtimes.
+battle-tested across browsers and runtimes. I'd say it's good enough for prime-time, but as with any library, test it in your specific use case first.
 
 ## Contributing
 
