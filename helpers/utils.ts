@@ -250,11 +250,13 @@ export function observableInputToStream<T>(
   input: ObservableInteropInputLike<T>,
   errorContext: string,
 ): ReadableStream<T | ObservableError> {
+  let subscription: { unsubscribe?(): void } | void;
+
   return new ReadableStream<T | ObservableError>({
     start(controller) {
       const source = hasSubscribe<T>(input) ? input : Observable.from(input);
 
-      return source.subscribe({
+      subscription = source.subscribe({
         next(value) {
           try {
             controller.enqueue(value);
@@ -278,6 +280,10 @@ export function observableInputToStream<T>(
           }
         },
       });
+    },
+    cancel() {
+      subscription?.unsubscribe?.();
+      subscription = undefined;
     },
   });
 }
