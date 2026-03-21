@@ -622,6 +622,179 @@ describe("createStatefulOperator()", () => {
     });
   });
 
+  describe("Cancel Callback", () => {
+    it("should cancel exactly once and tear down the source when a subscription unsubscribes early", async () => {
+      const cancelled = Promise.withResolvers<void>();
+      const sourceCleaned = Promise.withResolvers<void>();
+      const settled = Promise.withResolvers<void>();
+      const seenValues: number[] = [];
+      let cancelCallCount = 0;
+      let sourceCleanupCount = 0;
+
+      const trackCancel = createOperator<number, number>({
+        name: "trackCancel",
+        transform(chunk, controller) {
+          controller.enqueue(chunk);
+        },
+        cancel() {
+          cancelCallCount++;
+          cancelled.resolve();
+        },
+      });
+
+      const source = new Observable<number>((observer) => {
+        let value = 0;
+        const id = setInterval(() => observer.next(value++), 1);
+        return () => {
+          clearInterval(id);
+          sourceCleanupCount++;
+          sourceCleaned.resolve();
+        };
+      });
+
+      const result = pipe(source, ignoreErrors(), trackCancel);
+
+      const subscription = result.subscribe({
+        next(value) {
+          if (isObservableError(value)) {
+            return;
+          }
+
+          seenValues.push(value);
+          subscription.unsubscribe();
+        },
+      });
+
+      void (async () => {
+        await Promise.all([cancelled.promise, sourceCleaned.promise]);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        settled.resolve();
+      })();
+
+      await settled.promise;
+      expect(seenValues).toEqual([0]);
+      expect(cancelCallCount).toBe(1);
+      expect(sourceCleanupCount).toBe(1);
+    });
+
+    it("should call cancel with final state and tear down the source when async iteration stops early", async () => {
+      const cancelled = Promise.withResolvers<void>();
+      const sourceCleaned = Promise.withResolvers<void>();
+      let seenValues = 0;
+      let finalCount = 0;
+      let cancelCallCount = 0;
+      let sourceCleanupCount = 0;
+
+      const countUntilCancelled = createStatefulOperator<
+        number,
+        number,
+        { count: number }
+      >({
+        name: "countUntilCancelled",
+        createState: () => ({ count: 0 }),
+        transform(chunk, state, controller) {
+          state.count++;
+          controller.enqueue(chunk);
+        },
+        cancel(state) {
+          cancelCallCount++;
+          finalCount = state.count;
+          cancelled.resolve();
+        },
+      });
+
+      const source = new Observable<number>((observer) => {
+        let value = 0;
+        const id = setInterval(() => observer.next(value++), 1);
+        return () => {
+          clearInterval(id);
+          sourceCleanupCount++;
+          sourceCleaned.resolve();
+        };
+      });
+
+      const result = pipe(source, ignoreErrors(), countUntilCancelled);
+
+      for await (const _value of result) {
+        seenValues++;
+        break;
+      }
+
+      await Promise.all([cancelled.promise, sourceCleaned.promise]);
+      expect(finalCount).toBe(seenValues);
+      expect(finalCount).toBe(1);
+      expect(cancelCallCount).toBe(1);
+      expect(sourceCleanupCount).toBe(1);
+    });
+
+    it("should keep another subscription alive when one subscription unsubscribes", async () => {
+      const bothCancelled = Promise.withResolvers<void>();
+      const bothCleaned = Promise.withResolvers<void>();
+      const firstValues: number[] = [];
+      const secondValues: number[] = [];
+      let cancelCallCount = 0;
+      let sourceCleanupCount = 0;
+
+      const trackCancel = createOperator<number, number>({
+        name: "trackCancelPerSubscription",
+        transform(chunk, controller) {
+          controller.enqueue(chunk);
+        },
+        cancel() {
+          cancelCallCount++;
+          if (cancelCallCount === 2) {
+            bothCancelled.resolve();
+          }
+        },
+      });
+
+      const source = new Observable<number>((observer) => {
+        let value = 0;
+        const id = setInterval(() => observer.next(value++), 1);
+
+        return () => {
+          clearInterval(id);
+          sourceCleanupCount++;
+          if (sourceCleanupCount === 2) {
+            bothCleaned.resolve();
+          }
+        };
+      });
+
+      const result = pipe(source, ignoreErrors(), trackCancel);
+
+      const firstSubscription = result.subscribe({
+        next(value) {
+          if (isObservableError(value)) {
+            return;
+          }
+
+          firstValues.push(value);
+          firstSubscription.unsubscribe();
+        },
+      });
+
+      const secondSubscription = result.subscribe({
+        next(value) {
+          if (isObservableError(value)) {
+            return;
+          }
+
+          secondValues.push(value);
+          if (secondValues.length === 3) {
+            secondSubscription.unsubscribe();
+          }
+        },
+      });
+
+      await Promise.all([bothCancelled.promise, bothCleaned.promise]);
+      expect(firstValues).toEqual([0]);
+      expect(secondValues).toEqual([0, 1, 2]);
+      expect(cancelCallCount).toBe(2);
+      expect(sourceCleanupCount).toBe(2);
+    });
+  });
+
   describe("Error Handling in Stateful Operators", () => {
     it("should handle errors in transform with pass-through mode", async () => {
       const errorOnEven = createStatefulOperator<

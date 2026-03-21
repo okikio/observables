@@ -18,9 +18,13 @@ import { pipe } from "../helpers/pipe.ts";
 import { filter, map, scan, take, tap } from "../helpers/operations/core.ts";
 import { debounce, throttle } from "../helpers/operations/timing.ts";
 import {
+  combineLatestWith,
   concatMap,
   mergeMap,
+  raceWith,
   switchMap,
+  withLatestFrom,
+  zipWith,
 } from "../helpers/operations/combination.ts";
 import { catchErrors, ignoreErrors } from "../helpers/operations/errors.ts";
 import { batch } from "../helpers/operations/batch.ts";
@@ -276,6 +280,7 @@ describe("Integration Tests - Real World Patterns", () => {
       const values = await collect(result);
 
       expect(values).toHaveLength(5);
+      expect(maxConcurrent).toBe(2);
       expect(maxConcurrent).toBeLessThanOrEqual(2);
     });
 
@@ -342,6 +347,178 @@ describe("Integration Tests - Real World Patterns", () => {
       // Earlier ones are canceled when new ones arrive
       expect(values).toEqual(["Result: req3"]);
       expect(processedCount).toBe(3);
+    });
+
+    it("should dispose stale inner streams in switchMap", async () => {
+      const source = new Observable<number>((observer) => {
+        observer.next(1);
+        setTimeout(() => observer.next(2), 5);
+        setTimeout(() => observer.complete(), 25);
+
+        return () => {
+          // The source has no shared resources beyond short-lived timers.
+        };
+      });
+
+      let cleanupCount = 0;
+
+      const result = pipe(
+        source,
+        ignoreErrors(),
+        switchMap((value) =>
+          new Observable<string>((observer) => {
+            const id = setTimeout(() => {
+              observer.next(`Result: ${value}`);
+              observer.complete();
+            }, 20);
+
+            return () => {
+              cleanupCount++;
+              clearTimeout(id);
+            };
+          })
+        ),
+        ignoreErrors(),
+      );
+
+      const values = await collect(result);
+
+      expect(values).toEqual(["Result: 2"]);
+      expect(cleanupCount).toBe(2);
+    });
+
+    it("should attach the latest companion values with withLatestFrom", async () => {
+      const source = new Observable<number>((observer) => {
+        setTimeout(() => observer.next(1), 15);
+        setTimeout(() => observer.next(2), 30);
+        setTimeout(() => observer.complete(), 40);
+      });
+
+      const letters = new Observable<string>((observer) => {
+        setTimeout(() => observer.next("a"), 5);
+        setTimeout(() => observer.next("b"), 20);
+        setTimeout(() => observer.complete(), 35);
+      });
+
+      const labels = new Observable<string>((observer) => {
+        setTimeout(() => observer.next("x"), 10);
+        setTimeout(() => observer.complete(), 25);
+      });
+
+      const result = pipe(
+        source,
+        ignoreErrors(),
+        withLatestFrom(letters, labels),
+        ignoreErrors(),
+      );
+
+      const values = await collect(result);
+
+      expect(values).toEqual([
+        [1, "a", "x"],
+        [2, "b", "x"],
+      ]);
+    });
+
+    it("should emit on companion updates with combineLatestWith", async () => {
+      const source = new Observable<number>((observer) => {
+        setTimeout(() => observer.next(1), 15);
+        setTimeout(() => observer.next(2), 35);
+        setTimeout(() => observer.complete(), 50);
+      });
+
+      const letters = new Observable<string>((observer) => {
+        setTimeout(() => observer.next("a"), 5);
+        setTimeout(() => observer.next("b"), 25);
+        setTimeout(() => observer.complete(), 45);
+      });
+
+      const labels = new Observable<string>((observer) => {
+        setTimeout(() => observer.next("x"), 10);
+        setTimeout(() => observer.next("y"), 30);
+        setTimeout(() => observer.complete(), 40);
+      });
+
+      const result = pipe(
+        source,
+        ignoreErrors(),
+        combineLatestWith(letters, labels),
+        ignoreErrors(),
+      );
+
+      const values = await collect(result);
+
+      expect(values).toEqual([
+        [1, "a", "x"],
+        [1, "b", "x"],
+        [1, "b", "y"],
+        [2, "b", "y"],
+      ]);
+    });
+
+    it("should pair values by position with zipWith", async () => {
+      const result = pipe(
+        Observable.of(1, 2, 3),
+        ignoreErrors(),
+        zipWith(Observable.of("a", "b")),
+        ignoreErrors(),
+      );
+
+      const values = await collect(result);
+
+      expect(values).toEqual([
+        [1, "a"],
+        [2, "b"],
+      ]);
+    });
+
+    it("should mirror the first companion that wins raceWith", async () => {
+      const source = new Observable<number>((observer) => {
+        setTimeout(() => observer.next(1), 20);
+        setTimeout(() => observer.next(2), 35);
+        setTimeout(() => observer.complete(), 45);
+      });
+
+      const winner = new Observable<string>((observer) => {
+        setTimeout(() => observer.next("first"), 5);
+        setTimeout(() => observer.next("second"), 15);
+        setTimeout(() => observer.complete(), 25);
+      });
+
+      const result = pipe(
+        source,
+        ignoreErrors(),
+        raceWith(winner),
+        ignoreErrors(),
+      );
+
+      const values = await collect(result);
+
+      expect(values).toEqual(["first", "second"]);
+    });
+
+    it("should keep source values when the source wins raceWith", async () => {
+      const source = new Observable<number>((observer) => {
+        setTimeout(() => observer.next(1), 5);
+        setTimeout(() => observer.next(2), 15);
+        setTimeout(() => observer.complete(), 25);
+      });
+
+      const loser = new Observable<string>((observer) => {
+        setTimeout(() => observer.next("late"), 20);
+        setTimeout(() => observer.complete(), 30);
+      });
+
+      const result = pipe(
+        source,
+        ignoreErrors(),
+        raceWith(loser),
+        ignoreErrors(),
+      );
+
+      const values = await collect(result);
+
+      expect(values).toEqual([1, 2]);
     });
   });
 

@@ -16,6 +16,8 @@ import { expect } from "jsr:@std/expect@^1";
 
 import {
   applyOperator,
+  fromObservableOperator,
+  fromStreamPair,
   injectError,
   isTransformFunctionOptions,
   isTransformStreamOptions,
@@ -24,6 +26,7 @@ import {
 import type { CreateOperatorOptions } from "../../helpers/_types.ts";
 import type { ObservableError } from "../../error.ts";
 import { isObservableError } from "../../error.ts";
+import { Observable } from "../../observable.ts";
 
 /**
  * Collects all values from a ReadableStream using the reader API.
@@ -440,6 +443,92 @@ describe("Stream Conversion Utilities", () => {
       const values = await collectStream(stream);
 
       expect(values).toEqual(nested);
+    });
+  });
+});
+
+describe("Interop Utilities", () => {
+  describe("fromStreamPair()", () => {
+    it("should adapt a readable/writable pair into an operator", async () => {
+      const stringify = fromStreamPair<number, string>(() => {
+        const stream = new TransformStream<number, string>({
+          transform(chunk, controller) {
+            controller.enqueue(String(chunk));
+          },
+        });
+
+        return {
+          readable: stream.readable,
+          writable: stream.writable,
+        };
+      });
+
+      const result = applyOperator(toStream([1, 2, 3]), stringify);
+
+      expect(await collectStream(result)).toEqual(["1", "2", "3"]);
+    });
+
+    it("should create a fresh pair for each operator application", async () => {
+      let pairCount = 0;
+
+      const identifyPair = fromStreamPair<number, string>(() => {
+        pairCount++;
+        const id = pairCount;
+        const stream = new TransformStream<number, string>({
+          transform(chunk, controller) {
+            controller.enqueue(`${id}:${chunk}`);
+          },
+        });
+
+        return {
+          readable: stream.readable,
+          writable: stream.writable,
+        };
+      });
+
+      const first = await collectStream(applyOperator(toStream([1]), identifyPair));
+      const second = await collectStream(applyOperator(toStream([1]), identifyPair));
+
+      expect(first).toEqual(["1:1"]);
+      expect(second).toEqual(["2:1"]);
+    });
+  });
+
+  describe("fromObservableOperator()", () => {
+    it("should adapt a foreign Observable-style operator", async () => {
+      const doubleFirstTwo = fromObservableOperator<number, number>((source) => ({
+        async *[Symbol.asyncIterator]() {
+          let seen = 0;
+
+          for await (const value of Observable.from(source)) {
+            yield value * 2;
+            seen++;
+
+            if (seen === 2) {
+              break;
+            }
+          }
+        },
+      }));
+
+      const result = applyOperator(toStream([1, 2, 3]), doubleFirstTwo);
+
+      expect(await collectStream(result)).toEqual([2, 4]);
+    });
+
+    it("should preserve wrapped errors from the foreign output", async () => {
+      const failingOperator = fromObservableOperator<number, number>((_source) => ({
+        async *[Symbol.asyncIterator]() {
+          yield 1;
+          throw new Error("foreign failure");
+        },
+      }));
+
+      const values = await collectStream(applyOperator(toStream([1, 2, 3]), failingOperator));
+
+      expect(values).toHaveLength(2);
+      expect(values[0]).toBe(1);
+      expect(isObservableError(values[1])).toBe(true);
     });
   });
 });
