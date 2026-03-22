@@ -140,7 +140,7 @@ export function delayEach<T>(
     transform(chunk, state, controller) {
       // Schedule delayed emission for this specific item
       const timeout = setTimeout(
-        (_chunk) => {
+        (_chunk: typeof chunk) => {
           controller.enqueue(_chunk);
           state.pendingTimeouts.delete(timeout);
           clearTimeout(timeout);

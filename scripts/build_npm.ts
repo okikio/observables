@@ -53,16 +53,24 @@ await build({
   outDir: "./npm",
   shims: { deno: false },
 
-  // Skip dnt's extra Node-oriented type-check pass. The Deno-native source has
-  // already been validated with `deno check **/*.ts`, so re-checking the
-  // transformed npm output here would mostly duplicate that verification while
-  // switching to Node-specific type resolution rules.
-  typeCheck: false,
+  // Keep dnt's Node-oriented type-check pass enabled so the transformed npm
+  // package is validated against the closest Node surface this dnt release can
+  // express, not just Deno's default type environment.
+  typeCheck: 'both',
+  compilerOptions: {
+    // dnt 0.42.3 cannot express an ES2024 target yet, so Promise.withResolvers
+    // still has to come from an ESNext lib even though Node 24 supports it at
+    // runtime. Keep the future-facing libs narrow to the features this package
+    // actually uses.
+    target: 'Latest',
+    lib: ['ES2023', 'DOM', 'DOM.Iterable', 'ESNext', 'ESNext.Promise', 'ESNext.Disposable'],
+  },
 
   // The Deno test suite imports jsr:@std/testing and other Deno-specific test
   // utilities. Running those files through Node would pull Deno-only types into
   // the npm build graph for reasons unrelated to the published library surface.
   test: false,
+  rootTestDir: './tests',
 
   package: {
     name: readConfigString("name"),
@@ -98,7 +106,7 @@ await build({
       provenance: true,
     },
     engines: {
-      node: ">=20",
+      node: ">=24",
     },
   },
 
