@@ -1,13 +1,9 @@
 /**
  * Predicate operators answer questions about a stream.
  *
- * Use them when the important result is a decision rather than a transformed
- * value: does every item match, does any item match, where is the first match,
- * or when should processing stop because the answer is already known?
- *
- * These operators are the stream versions of `every()`, `some()`, `find()`,
- * and related array helpers, with the added benefit that they can stop early
- * instead of waiting for the whole source to finish.
+ * They are the stream equivalents of `every()`, `some()`, `find()`, and related
+ * array helpers, with one useful difference: they can stop the stream as soon
+ * as the answer is already known.
  *
  * @module
  */
@@ -35,41 +31,20 @@ interface IndexedState {
 }
 
 /**
- * Checks if every item in the stream passes a test.
+ * Returns `true` if every value passes the test.
  *
- * Like `Array.prototype.every()`, it stops and returns `false` on the first
- * failure. If the stream completes without any failures, it returns `true`.
+ * Like `Array.prototype.every()`, it stops early on the first failure.
  *
- * @example
+ * @example Check whether all values are even
  * ```ts
- * import { pipe, every, from } from "./helpers/mod.ts";
+ * import { every, from, pipe } from "./helpers/mod.ts";
  *
- * // Array behavior
- * const allEven = [2, 4, 6].every(n => n % 2 === 0); // true
- * const someOdd = [2, 4, 5].every(n => n % 2 === 0); // false
- *
- * // Stream behavior
- * const allEvenStream = from([2, 4, 6]);
- * const result1 = await pipe(allEvenStream, every(n => n % 2 === 0)).toPromise(); // true
- *
- * const someOddStream = from([2, 4, 5]);
- * const result2 = await pipe(someOddStream, every(n => n % 2 === 0)).toPromise(); // false
+ * const result = await pipe(
+ *   from([2, 4, 6]),
+ *   every((value) => value % 2 === 0),
+ * ).toPromise();
  * ```
- *
- * ## Practical Use Case
- *
- * Use `every` to verify that all items in a stream meet a certain condition,
- * such as ensuring all uploaded files are of the correct type or that all
- * API responses were successful.
- *
- * ## Key Insight
- *
- * `every` provides a definitive boolean answer for the entire stream, making
- * it a final, summary operation.
- *
- * @typeParam T - Type of values from the source stream
  * @param predicate - Function to test each value
- * @returns A stream operator that tests all values
  */
 export function every<T>(
   predicate: (value: ExcludeError<T>, index: number) => boolean,
@@ -85,7 +60,6 @@ export function every<T>(
       if (state.finished) return;
       const result = predicate(chunk as ExcludeError<T>, state.index++);
 
-      // If the predicate fails, emit false and complete
       if (!result) {
         state.finished = true;
         controller.enqueue(false);
@@ -93,7 +67,6 @@ export function every<T>(
       }
     },
 
-    // If the stream completes and we haven't emitted yet, emit true
     flush(state, controller) {
       if (!state.finished) {
         controller.enqueue(true);
@@ -103,41 +76,20 @@ export function every<T>(
 }
 
 /**
- * Checks if at least one item in the stream passes a test.
+ * Returns `true` if at least one value passes the test.
  *
- * Like `Array.prototype.some()`, it stops and returns `true` on the first
- * success. If the stream completes without any successes, it returns `false`.
+ * Like `Array.prototype.some()`, it stops early on the first match.
  *
- * @example
+ * @example Check whether any value is even
  * ```ts
- * import { pipe, some, from } from "./helpers/mod.ts";
+ * import { from, pipe, some } from "./helpers/mod.ts";
  *
- * // Array behavior
- * const hasEven = [1, 3, 4].some(n => n % 2 === 0); // true
- * const noEven = [1, 3, 5].some(n => n % 2 === 0); // false
- *
- * // Stream behavior
- * const hasEvenStream = from([1, 3, 4]);
- * const result1 = await pipe(hasEvenStream, some(n => n % 2 === 0)).toPromise(); // true
- *
- * const noEvenStream = from([1, 3, 5]);
- * const result2 = await pipe(noEvenStream, some(n => n % 2 === 0)).toPromise(); // false
+ * const result = await pipe(
+ *   from([1, 3, 4]),
+ *   some((value) => value % 2 === 0),
+ * ).toPromise();
  * ```
- *
- * ## Practical Use Case
- *
- * Use `some` to quickly determine if a condition is met by any item in a
- * stream, such as checking for the existence of a specific user permission or
- * detecting if any item in a batch has an error.
- *
- * ## Key Insight
- *
- * `some` is an efficient way to get a "yes" or "no" answer from a stream
- * without processing all the items.
- *
- * @typeParam T - Type of values from the source stream
  * @param predicate - Function to test each value
- * @returns A stream operator that tests for any matching value
  */
 export function some<T>(
   predicate: (value: ExcludeError<T>, index: number) => boolean,
@@ -153,7 +105,6 @@ export function some<T>(
       if (state.finished) return;
       const result = predicate(chunk as ExcludeError<T>, state.index++);
 
-      // If the predicate passes, emit true and complete
       if (result) {
         state.finished = true;
         controller.enqueue(true);
@@ -161,7 +112,6 @@ export function some<T>(
       }
     },
 
-    // If the stream completes and we haven't emitted yet, emit false
     flush(state, controller) {
       if (!state.finished) {
         controller.enqueue(false);
@@ -171,37 +121,20 @@ export function some<T>(
 }
 
 /**
- * Finds the first item in the stream that passes a test.
+ * Finds the first value that passes the test.
  *
- * Like `Array.prototype.find()`, it stops and emits the first matching item,
- * then immediately completes the stream.
+ * Like `Array.prototype.find()`, it stops as soon as it finds a match.
  *
- * @example
+ * @example Find the first even value
  * ```ts
- * import { pipe, find, from } from "./helpers/mod.ts";
+ * import { find, from, pipe } from "./helpers/mod.ts";
  *
- * // Array behavior
- * const firstEven = [1, 3, 4, 6].find(n => n % 2 === 0); // 4
- *
- * // Stream behavior
- * const numberStream = from([1, 3, 4, 6]);
- * const result = await pipe(numberStream, find(n => n % 2 === 0)).toPromise(); // 4
+ * const result = await pipe(
+ *   from([1, 3, 4, 6]),
+ *   find((value) => value % 2 === 0),
+ * ).toPromise();
  * ```
- *
- * ## Practical Use Case
- *
- * Use `find` to locate a specific record or event in a stream without needing
- * to process the entire dataset, such as finding the first available time slot
- * or the first user to log in.
- *
- * ## Key Insight
- *
- * `find` is an efficient shortcut to get the first item you care about from a
- * potentially long stream.
- *
- * @typeParam T - Type of values from the source stream
  * @param predicate - Function to test each value
- * @returns A stream operator that finds the first matching value
  */
 export function find<T>(
   predicate: (value: ExcludeError<T>, index: number) => boolean,
@@ -212,7 +145,6 @@ export function find<T>(
     transform(chunk, state, controller) {
       const result = predicate(chunk as ExcludeError<T>, state.index++);
 
-      // If the predicate passes, emit the value and complete
       if (result) {
         controller.enqueue(chunk);
         controller.terminate();
@@ -326,43 +258,27 @@ export function first<T>(
 }
 
 /**
- * Removes duplicate values from the stream, keeping only the first occurrence.
+ * Removes duplicate values and keeps the first time each one appears.
  *
- * Like creating a `new Set()` from an array, but for async streams. You can
- * provide a `keySelector` to determine uniqueness based on an object property.
+ * You can provide a `keySelector` when uniqueness should be based on one field
+ * instead of the whole value.
  *
- * @example
+ * @example Keep only the first time each id appears
  * ```ts
- * import { pipe, unique, from } from "./helpers/mod.ts";
+ * import { from, pipe, unique } from "./helpers/mod.ts";
  *
- * // Array behavior
- * const uniqueNumbers = [...new Set([1, 2, 2, 3, 1])]; // [1, 2, 3]
+ * const users = [
+ *   { id: 1, name: "A" },
+ *   { id: 2, name: "B" },
+ *   { id: 1, name: "C" },
+ * ];
  *
- * // Stream behavior
- * const numberStream = from([1, 2, 2, 3, 1]);
- * const uniqueStream = pipe(numberStream, unique()); // Emits 1, 2, 3
- *
- * // With a key selector
- * const users = [{ id: 1, name: 'A' }, { id: 2, name: 'B' }, { id: 1, name: 'C' }];
- * const userStream = from(users);
- * const uniqueUserStream = pipe(userStream, unique(user => user.id)); // Emits { id: 1, name: 'A' }, { id: 2, name: 'B' }
+ * const uniqueUsers = pipe(
+ *   from(users),
+ *   unique((user) => user.id),
+ * );
  * ```
- *
- * ## Practical Use Case
- *
- * Use `unique` to de-duplicate a stream of events or data, such as processing
- * a list of user IDs where some may appear multiple times, or handling event
- * streams that might emit the same event more than once.
- *
- * ## Key Insight
- *
- * `unique` simplifies de-duplication in asynchronous pipelines, ensuring that
- * downstream operations only run once for each unique item.
- *
- * @typeParam T The type of items in the stream.
- * @typeParam K The type of the key used for uniqueness checks.
  * @param keySelector An optional function to extract a key for uniqueness comparison.
- * @returns An operator that filters out duplicate values.
  */
 export function unique<T, K = T>(
   keySelector?: (value: ExcludeError<T>) => K,
@@ -428,56 +344,20 @@ function defaultEquals<T>(previous: T, current: T): boolean {
 }
 
 /**
- * Emits an item only if it is different from the previous one.
+ * Emits a value only when it is different from the one before it.
  *
- * This is useful for streams where values can be emitted repeatedly, but you
- * only care about the changes.
- * 
- * Example 1:
- *   source: 1, 1, 2, 2, 3
- *   output: 1, 2, 3
+ * This is useful when a source repeats the same state over and over, but you
+ * only want the moments where something changes.
  *
- * Example 2:
- *   source: { id: 1, name: "A" }, { id: 1, name: "B" }, { id: 2, name: "C" }
- *   changed({ by: value => value.id })
- *   output: first item, then the item with id 2
- *
- * @example
+ * @example Keep only real state changes
  * ```ts
- * import { pipe, changed, from } from "./helpers/mod.ts";
+ * import { changed, from, pipe } from "./helpers/mod.ts";
  *
- * // No direct Array equivalent, as it depends on sequence.
- *
- * // Stream behavior
- * const valueStream = from([1, 1, 2, 2, 2, 1, 3]);
- * const changedStream = pipe(valueStream, changed()); // Emits 1, 2, 1, 3
- *
- * // With a key selector
- * const userStream = from([
- *   { id: 1, status: 'active' },
- *   { id: 1, status: 'active' },
- *   { id: 1, status: 'inactive' }
- * ]);
- * const statusChangeStream = pipe(userStream, changed(user => user.status));
- * // Emits { id: 1, status: 'active' }, { id: 1, status: 'inactive' }
+ * const changedStream = pipe(
+ *   from([1, 1, 2, 2, 2, 1, 3]),
+ *   changed(),
+ * );
  * ```
- *
- * ## Practical Use Case
- *
- * Use `changed` to monitor a stream of state updates and only react when the
- * state actually changes. This is common in UI programming for tracking user
- * input or state management.
- *
- * ## Key Insight
- *
- * `changed` filters out noise from repetitive values, allowing you to focus
- * on the moments when something actually changes.
- *
- * @typeParam T The type of items in the stream.
- * @typeParam K The type of the key used for comparison.
- * @param keySelector An optional function to extract a key for comparison.
- * @param compare An optional function to compare two keys for equality.
- * @returns An operator that filters out consecutive duplicate values.
  */
 export function changed<T, K = ExcludeError<T>>(
   options: ChangedOptions<T, K> = {},
