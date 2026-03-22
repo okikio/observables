@@ -1,15 +1,19 @@
 /**
- * Multicast event primitives built on top of the Observable runtime.
+ * Event helpers cover the shared side of the library.
  *
- * This entrypoint is for the hot side of the library: shared event streams that
- * multiple consumers can listen to at the same time. It exports `EventBus` for
- * one-to-many pub/sub, `createEventDispatcher` for named and type-safe events,
- * and helpers such as `withReplay` and `waitForEvent` for common coordination
- * patterns.
+ * `Observable` is cold by default, so each subscriber gets its own execution.
+ * `EventBus` and `createEventDispatcher()` solve the opposite problem, where a
+ * single emitted event should fan out to every current listener.
  *
- * Use `Observable` when each subscription should start fresh work. Use this
- * module when one emission should fan out to many listeners, such as UI events,
- * app-wide notifications, or workflow status updates.
+ * The closest familiar comparison is DOM events:
+ *
+ * ```text
+ * EventTarget        -> addEventListener() + dispatchEvent()
+ * EventBus<T>        -> subscribe()/on()   + emit()
+ * ```
+ *
+ * Use these helpers for app-wide notifications, socket fan-out, UI event
+ * bridges, and workflow status updates.
  *
  * @module
  */
@@ -30,36 +34,22 @@ import {
 } from "./queue.ts"; // Assume path to your queue utils
 
 /**
- * A multicast event bus that extends {@link Observable<T>}, allowing
- * emission of values to multiple subscribers and supporting both
- * Observer-style and async-iterator consumption.
+ * `EventBus<T>` broadcasts one emitted value to every active subscriber.
  *
- * @typeParam T - The type of values emitted by this bus.
+ * Treat it like a lightweight `EventTarget` for arbitrary payloads. `emit()` is
+ * the broadcast step. `subscribe()` is the listening step. Late subscribers see
+ * only future values unless you layer replay on top.
  *
- * - Calling {@link emit} delivers the value to all active subscribers.
- * - Calling {@link close} completes all subscribers and prevents further emissions.
- * - Implements both {@link Symbol.dispose} and {@link Symbol.asyncDispose}
- *   for cleanup in synchronous and asynchronous contexts.
- *
- * @example
+ * @example Broadcasting to several listeners
  * ```ts
- * import { EventBus } from './EventBus.ts';
- *
- * // Create a bus for string messages
  * const bus = new EventBus<string>();
  *
- * // Subscribe using Observer
- * bus.events.subscribe({
- *   next(msg) { console.log('Received:', msg); },
- *   complete()  { console.log('Bus closed'); }
- * });
+ * bus.subscribe((message) => console.log('A:', message));
+ * bus.subscribe((message) => console.log('B:', message));
  *
- * // Emit values
  * bus.emit('hello');
- * bus.emit('world');
- *
- * // Close the bus
- * bus.close();
+ * // A: hello
+ * // B: hello
  * ```
  */
 export class EventBus<T> extends Observable<T> {
@@ -69,10 +59,7 @@ export class EventBus<T> extends Observable<T> {
   #closed = false;
 
   /**
-   * Construct a new EventBus instance.
-   *
-   * The base {@link Observable} constructor is invoked with the subscriber
-   * registration logic, adding and removing subscribers to the internal set.
+   * Starts with no subscribers and no retained history.
    */
   constructor() {
     super((subscriber) => {
@@ -89,18 +76,14 @@ export class EventBus<T> extends Observable<T> {
   }
 
   /**
-   * Exposes the bus itself as an {@link Observable<T>} for subscription.
-   *
-   * @returns The current instance as an Observable of T.
+   * Read-only Observable view for code that should listen but not emit.
    */
   get events(): Observable<T> {
     return this;
   }
 
   /**
-   * Emit a value to all active subscribers.
-   *
-   * @param value - The value to deliver.
+   * Sends one value to every active subscriber.
    */
   emit(value: T): void {
     if (this.#closed) return;
@@ -110,7 +93,7 @@ export class EventBus<T> extends Observable<T> {
   }
 
   /**
-   * Close the bus, completing all subscribers and preventing further emits.
+   * Completes every subscriber and ignores future `emit()` calls.
    */
   close(): void {
     if (this.#closed) return;
@@ -143,23 +126,16 @@ export class EventBus<T> extends Observable<T> {
 }
 
 /**
- * A mapping from event names (keys) to their payload types (values).
- *
- * @example
- * ```ts
- * interface MyEvents {
- *   login: { userId: string };
- *   logout: void;
- * }
- * ```
+ * Record of event names to payload shapes.
  */
 export type EventMap = object;
 
 /**
- * The return type of {@link createEventDispatcher}.
- * Provides a strongly-typed event bus interface.
+ * Named-event interface returned by `createEventDispatcher()`.
  *
- * @typeParam E - The event map type, mapping event names to payloads.
+ * `emit()` and `on()` are the typed equivalents of `dispatchEvent()` and
+ * `addEventListener()`. The `events` property exposes the same traffic as one
+ * Observable of `{ type, payload }` objects for pipeline-style composition.
  */
 export interface EventDispatcher<E extends EventMap> {
   /**
@@ -182,7 +158,7 @@ export interface EventDispatcher<E extends EventMap> {
   ): Subscription;
 
   /**
-   * Observable stream of all emitted events, carrying `{ type, payload }` objects.
+   * All named events as one Observable of `{ type, payload }` objects.
    */
   events: EventBus<{ type: keyof E; payload: E[keyof E] }>;
 
@@ -205,36 +181,25 @@ export interface EventDispatcher<E extends EventMap> {
 }
 
 /**
- * Creates a strongly-typed event bus based on {@link EventBus}, ensuring
- * that both `emit` and `on` methods enforce matching event names and payload types.
+ * Creates a typed dispatcher for named events.
  *
- * @typeParam E - The event map type, mapping event names to payloads.
+ * Reach for it when the event names are part of the contract and you want the
+ * compiler to keep names and payloads aligned.
  *
- * @returns An object with the following methods:
- * - `emit(name, payload)`: Emit an event.
- * - `on(name, handler)`: Subscribe to a specific event.
- * - `events`: Observable stream of all events.
- * - `close()`: Close the bus and complete all subscribers.
- *
- * @example
+ * @example Typing app-level notifications
  * ```ts
- * interface MyEvents {
- *   message: { text: string };
- *   error: { code: number; message: string };
+ * interface AppEvents {
+ *   user_login: { user_id: string };
+ *   notification: { text: string; level: 'info' | 'error' };
  * }
  *
- * const bus = createTypedEventBus<MyEvents>();
+ * const events = createEventDispatcher<AppEvents>();
  *
- * // Subscribe to `message` events
- * bus.on('message', payload => {
- *   console.log('New message:', payload.text);
+ * events.on('notification', (payload) => {
+ *   console.log(payload.level, payload.text);
  * });
  *
- * // Emit an event
- * bus.emit('message', { text: 'Hello World' });
- *
- * // Close the bus when done
- * bus.close();
+ * events.emit('notification', { text: 'Saved', level: 'info' });
  * ```
  */
 export function createEventDispatcher<E extends EventMap>(): EventDispatcher<
@@ -368,10 +333,10 @@ export function waitForEvent<
     return promise;
   }
 
-  const subscription_ref: { current?: Subscription } = {};
+  const subscriptionRef: { current?: Subscription } = {};
 
   function cleanup() {
-    subscription_ref.current?.unsubscribe?.();
+    subscriptionRef.current?.unsubscribe?.();
     signal?.removeEventListener?.("abort", onAbort);
   }
 
@@ -384,7 +349,7 @@ export function waitForEvent<
 
   signal?.addEventListener?.("abort", onAbort, { once: true });
 
-  subscription_ref.current = bus.events.subscribe({
+  subscriptionRef.current = bus.events.subscribe({
     next(event) {
       if (settled) return;
       if (event.type === type) {
@@ -418,7 +383,7 @@ export function waitForEvent<
   // 1. the listener above catches aborts that happen before or during
   //    subscription setup, so the promise rejects immediately
   // 2. this re-check catches the narrow case where that abort happened before
-  //    `subscription_ref.current` was assigned, so we can still unsubscribe the
+  //    `subscriptionRef.current` was assigned, so we can still unsubscribe the
   //    newly created subscription instead of leaving it attached. For example,
   //    the signal can abort synchronously from inside `addEventListener()`
   //    before control returns to the subscription assignment above.
