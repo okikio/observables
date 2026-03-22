@@ -1,15 +1,10 @@
 /**
- * Built-in operators fall into a few broad jobs, and these re-exports keep
- * those groups together.
+ * Operator groups are split by job so the exported surface is easier to scan.
  *
- * - `./core` handles array-like transforms such as `map`, `filter`, and `scan`
- * - `./timing` handles spacing and deadlines such as `debounce` and `timeout`
- * - `./combination` handles follow-up streams such as `mergeMap` and `switchMap`
- * - `./batch`, `./conditional`, and `./errors` handle collection, decisions,
- *   and recovery
- *
- * Import from these grouped paths when the job matters more than the exact file
- * name.
+ * - `core`: array-like transforms
+ * - `timing`: scheduling and deadlines
+ * - `combination`: follow-up and multi-source coordination
+ * - `batch`, `conditional`, `errors`: grouping, decisions, and recovery
  *
  * @module
  */
