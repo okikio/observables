@@ -1,6 +1,6 @@
 /**
- * A **spec-faithful** yet ergonomic TC39-inspired Observable implementation with
- * detailed TSDocs and examples.
+ * A **spec-faithful** yet ergonomic TC39-inspired Observable implementation for
+ * events, streams, and long-running async work.
  *
  * Observables are a **push‑based stream abstraction** for events, data, and long‑running
  * operations.
@@ -17,6 +17,19 @@
  * mouse clicks, search results, chat messages, sensor readings. And just like Promises have
  * `.then()` and `.catch()`, Observables have operators like `map()`, `filter()`, and `debounce()`
  * to transform data as it flows.
+ *
+ * A useful mental model is to picture three separate jobs:
+ *
+ * ```text
+ * async source -> Observable -> operator pipeline -> consumer
+ *
+ * button click ->              filter()            -> subscribe(...)
+ * websocket    ->              map()               -> forEach(...)
+ * timer        ->              debounce()          -> for await ... of
+ * ```
+ *
+ * The source produces values over time. The pipeline reshapes or coordinates
+ * them. The consumer decides how to react to them.
  *
  * ## Why This Exists
  * Apps juggle many async sources, mouse clicks, HTTP requests, timers,
@@ -124,11 +137,11 @@
  * ## Spec-Faithful Core, Practical Differences
  *
  * The core lifecycle stays close to the TC39 Observable proposal, but a few
- * deliberate additions affect how this package behaves in real applications:
+ * deliberate additions change what day-to-day code can do:
  *
- * - `subscribe(observer)` is still the baseline shape, but this package also
- *   supports `subscribe(next, error?, complete?)` and `subscribe(..., { signal })`
- *   for direct `AbortSignal` cancellation.
+ * - `subscribe(observer)` is still the baseline shape, and the API also
+ *   supports `subscribe(next, error?, complete?)` plus
+ *   `subscribe(..., { signal })` for direct `AbortSignal` cancellation.
  * - `observer.start(subscription)` runs before the subscriber body. If the
  *   signal is already aborted, `start()` still runs, `subscription.closed` is
  *   already `true`, and the subscriber body is skipped. `start()` is for
@@ -141,8 +154,8 @@
  *   and `observable.pull()` are package features, not part of the TC39
  *   proposal.
  * - Operators are exported, tree-shakeable pipeline stages. Instead of
- *   prototype helpers such as `observable.map(...)`, this package keeps
- *   transformation in `pipe(source, map(...), filter(...))`. Terminal
+ *   prototype helpers such as `observable.map(...)`, transformation lives in
+ *   `pipe(source, map(...), filter(...))`. Terminal
  *   consumption helpers such as `forEach(observable, callback, options?)` are
  *   separate from pipeable operators such as `tap(...)`.
  * - Built-in operators default to pass-through error handling. A thrown mapping
@@ -153,7 +166,7 @@
  * - `pipe()` is stream-backed and supports up to 19 operators per call. Split
  *   longer pipelines into named helper functions or smaller reusable stages.
  *
- * This is the high-level flow when you use the package root entrypoint:
+ * This is the high-level flow when you build a pipeline:
  *
  * ```text
  * Observable source
@@ -169,8 +182,8 @@
  *
  * ## Which export to reach for
  *
- * Because generated docs start at this package root, it helps to know how the
- * exported surface is organized before diving into individual symbols:
+ * Most people learn the exported surface faster if they keep the roles
+ * separate:
  *
  * - `Observable` is the core type for creating, subscribing to, and iterating
  *   streams.
@@ -186,9 +199,8 @@
  * - `ObservableError` and the error helpers are the bridge between pass-through
  *   operator failures and explicit recovery stages.
  *
- * If you are learning the package for the first time, the usual reading order
- * is: `Observable` -> `pipe()` -> built-in operators -> `EventBus` helpers only
- * if you need shared fan-out.
+ * A good learning order is: `Observable` -> `pipe()` -> built-in operators ->
+ * `EventBus` helpers only if you need shared fan-out.
  *
  * ## Choosing subscribe, forEach, for-await, or pull
  *
