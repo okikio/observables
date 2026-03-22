@@ -1,3 +1,13 @@
+/**
+ * Utility helpers connect Observable pipelines with Web Streams and foreign
+ * operator ecosystems.
+ *
+ * Most application code will use these indirectly through `pipe()`,
+ * `fromStreamPair()`, or `fromObservableOperator()`. They live here so the
+ * adapter logic stays reusable and the public helpers stay small.
+ *
+ * @module
+ */
 import type {
   ObservableInteropInputLike,
   ObservableOperatorInterop,
@@ -11,15 +21,7 @@ import { ObservableError } from "../error.ts";
 import { Observable } from "../observable.ts";
 
 /**
- * Type guard to check if options is a TransformStreamOptions
- *
- * This checks if the options object has a 'stream' property,
- * indicating it is using an existing TransformStream.
- *
- * @typeParam T - Input type
- * @typeParam R - Output type
- * @param options - The options object to check
- * @returns True if options is TransformStreamOptions, false otherwise
+ * Returns `true` when operator options provide a `TransformStream` factory.
  */
 export function isTransformStreamOptions<T, R>(
   options: CreateOperatorOptions<T, R>,
@@ -28,15 +30,7 @@ export function isTransformStreamOptions<T, R>(
 }
 
 /**
- * Type guard to check if options is a TransformFunctionOptions
- *
- * This checks if the options object has a 'transform' property,
- * indicating it is using a custom transformation function.
- *
- * @typeParam T - Input type
- * @typeParam R - Output type
- * @param options - The options object to check
- * @returns True if options is TransformFunctionOptions, false otherwise
+ * Returns `true` when operator options provide a custom transform callback.
  */
 export function isTransformFunctionOptions<T, R>(
   options: CreateOperatorOptions<T, R>,
@@ -45,16 +39,8 @@ export function isTransformFunctionOptions<T, R>(
 }
 
 /**
- * Applies an operator to a ReadableStream, handling errors gracefully.
- *
- * This function attempts to apply the given operator to the input stream.
- * If the operator throws an error, it injects that error into the stream
- * using `injectError`, allowing downstream consumers to handle it.
- *
- * @param input - The ReadableStream to apply the operator to
- * @param operator - The operator function to apply
- * @param message - Optional message for error context
- * @returns A new ReadableStream with the operator applied or an error injected
+ * Applies one operator to a stream and converts setup failures into injected
+ * error values.
  */
 export function applyOperator(
   input: ReadableStream<unknown>,
@@ -71,36 +57,7 @@ export function applyOperator(
 }
 
 /**
- * Creates a ReadableStream from an iterable or async iterable
- *
- * This utility function creates a ReadableStream from any iterable or async iterable,
- * such as arrays, generators, or custom iterables.
- *
- * @typeParam T - Type of values in the iterable
- * @param iterable - The iterable or async iterable to convert
- * @returns A ReadableStream that emits values from the iterable
- *
- * @example
- * ```ts
- * import { fromIterable, pipe, map } from "./helpers/mod.ts";
- *
- * // Create a stream from an array
- * const numbers = fromIterable([1, 2, 3, 4, 5]);
- *
- * // Create a stream from a generator
- * function* generateNumbers() {
- *   for (let i = 0; i < 5; i++) {
- *     yield i;
- *   }
- * }
- * const generated = fromIterable(generateNumbers());
- *
- * // Process with operators
- * const result = pipe(
- *   numbers,
- *   map(x => x * 2)
- * );
- * ```
+ * Converts an iterable or async iterable into a `ReadableStream`.
  */
 export function toStream<T>(
   iterable: Iterable<T> | AsyncIterable<T>,
