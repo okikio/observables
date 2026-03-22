@@ -11,12 +11,12 @@
 import { build, emptyDir } from "jsr:@deno/dnt@^0.42.3";
 import { parse } from "jsr:@std/jsonc@^1.0.2";
 
-const deno_config_path = new URL("../deno.jsonc", import.meta.url);
-const deno_config_text = await Deno.readTextFile(deno_config_path);
-const deno_config = parse(deno_config_text) as Record<string, unknown>;
+const denoConfigPath = new URL("../deno.jsonc", import.meta.url);
+const denoConfigText = await Deno.readTextFile(denoConfigPath);
+const denoConfig = parse(denoConfigText) as Record<string, unknown>;
 
 function readConfigString(key: string): string {
-  const value = deno_config[key];
+  const value = denoConfig[key];
 
   if (typeof value !== "string") {
     throw new Error(`Unable to find "${key}" in deno.jsonc.`);
