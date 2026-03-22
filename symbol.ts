@@ -31,13 +31,14 @@
 export interface SymbolConstructor
   extends Omit<typeof globalThis.Symbol, "observable"> {
   /**
-   * Well-known symbol for Observable interoperability.
+   * Well-known symbol for values that can expose themselves as Observables.
    *
    * This symbol allows any object to define how it converts to an Observable.
    * Objects with a `[Symbol.observable]()` method can be passed directly to
    * `Observable.from()` and will be properly converted.
    *
-   * This is analogous to how `Symbol.iterator` enables iteration interop.
+   * This works the same way `Symbol.iterator` lets an object act like an
+   * iterable.
    *
    * @see {@link https://github.com/tc39/proposal-observable | TC39 Observable proposal}
    */
@@ -45,19 +46,8 @@ export interface SymbolConstructor
 }
 
 /**
- * Provides a cross-platform Symbol implementation with Observable
- * and resource management symbols.
- *
- * This implementation:
- * 1. Uses the native Symbol if available
- * 2. Falls back to a polyfill if Symbol is not supported
- * 3. Adds our special symbols if they don't exist natively
- *
- * The polyfill is lightweight and provides basic Symbol functionality
- * for environments that don't support it natively.
- *
- * Note: The polyfill does not implement the full Symbol specification
- * and is intended only for basic interoperability in legacy environments.
+ * Cross-runtime `Symbol` reference with the Observable and disposal protocol
+ * names attached when the host does not provide them natively.
  */
 export const Symbol: SymbolConstructor = (globalThis.Symbol ??
   ((description: string) => ({
@@ -66,11 +56,9 @@ export const Symbol: SymbolConstructor = (globalThis.Symbol ??
   }))) as unknown as SymbolConstructor;
 
 /**
- * Adds Symbol.dispose if it doesn't exist natively.
+ * Adds `Symbol.dispose` if the runtime does not provide it.
  *
- * Symbol.dispose enables automatic resource cleanup using the `using` declaration.
- * When a variable declared with `using` goes out of scope, its `[Symbol.dispose]()`
- * method is called automatically, ensuring cleanup happens even if errors occur.
+ * This lets `using` clean up values automatically when the scope ends.
  *
  * @example Basic resource cleanup with using
  * ```ts
@@ -116,12 +104,9 @@ if (
 }
 
 /**
- * Adds Symbol.asyncDispose if it doesn't exist natively.
+ * Adds `Symbol.asyncDispose` if the runtime does not provide it.
  *
- * Symbol.asyncDispose enables automatic async resource cleanup using `await using`.
- * When a variable declared with `await using` goes out of scope, its
- * `[Symbol.asyncDispose]()` method is called and awaited automatically,
- * ensuring async cleanup (like closing connections) happens safely.
+ * This lets `await using` wait for async cleanup when the scope ends.
  *
  * @example Async resource cleanup with await using
  * ```ts
@@ -167,11 +152,9 @@ if (
 }
 
 /**
- * Adds Symbol.observable if it doesn't exist natively.
+ * Adds `Symbol.observable` if the runtime does not provide it.
  *
- * This ensures Symbol.observable is available for Observable
- * interoperability, even in environments that don't support
- * it natively.
+ * This keeps Observable-like values working the same way across runtimes.
  */
 if (
   typeof globalThis.Symbol === "function" &&
