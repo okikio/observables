@@ -121,6 +121,104 @@
  * - **Advanced error handling** – 4-mode error handling system (pass-through, ignore, throw, manual).
  * - **High-performance operators** – Web Streams-based operators with pre-compiled error handling.
  *
+ * ## Spec-Faithful Core, Practical Differences
+ *
+ * The core lifecycle stays close to the TC39 Observable proposal, but a few
+ * deliberate additions affect how this package behaves in real applications:
+ *
+ * - `subscribe(observer)` is still the baseline shape, but this package also
+ *   supports `subscribe(next, error?, complete?)` and `subscribe(..., { signal })`
+ *   for direct `AbortSignal` cancellation.
+ * - `observer.start(subscription)` runs before the subscriber body. If the
+ *   signal is already aborted, `start()` still runs, `subscription.closed` is
+ *   already `true`, and the subscriber body is skipped. `start()` is for
+ *   observing setup or cancelling early, not for creating resources that rely
+ *   on subscriber teardown.
+ * - Subscriber teardown can be a cleanup function, an object with
+ *   `unsubscribe()`, an object with `[Symbol.dispose]()`, or an object with
+ *   `[Symbol.asyncDispose]()`. Cleanup still runs exactly once.
+ * - Native async iteration is first-class here. `for await ... of observable`
+ *   and `observable.pull()` are package features, not part of the TC39
+ *   proposal.
+ * - Operators are exported, tree-shakeable pipeline stages. Instead of
+ *   prototype helpers such as `observable.map(...)`, this package keeps
+ *   transformation in `pipe(source, map(...), filter(...))`. Terminal
+ *   consumption helpers such as `forEach(observable, callback, options?)` are
+ *   separate from pipeable operators such as `tap(...)`.
+ * - Built-in operators default to pass-through error handling. A thrown mapping
+ *   or filtering failure becomes an `ObservableError` value and continues
+ *   downstream until an error-focused operator such as `catchErrors()`,
+ *   `ignoreErrors()`, `mapErrors()`, or `tapError()` decides what to do with
+ *   it.
+ * - `pipe()` is stream-backed and supports up to 19 operators per call. Split
+ *   longer pipelines into named helper functions or smaller reusable stages.
+ *
+ * This is the high-level flow when you use the package root entrypoint:
+ *
+ * ```text
+ * Observable source
+ *   -> pipe(...operators)
+ *   -> operator stages
+ *   -> error recovery stage (optional)
+ *   -> subscribe(), forEach(), or pull()
+ * ```
+ *
+ * The important detail is that pass-through errors stay in the value channel as
+ * `ObservableError` objects until you choose to recover, ignore, transform, or
+ * rethrow them.
+ *
+ * ## Which export to reach for
+ *
+ * Because generated docs start at this package root, it helps to know how the
+ * exported surface is organized before diving into individual symbols:
+ *
+ * - `Observable` is the core type for creating, subscribing to, and iterating
+ *   streams.
+ * - `pipe()` is the main composition helper for building pipelines from small
+ *   operator functions.
+ * - Built-in operators such as `map()`, `filter()`, `debounce()`,
+ *   `switchMap()`, and `catchErrors()` come from the helpers entrypoint but are
+ *   re-exported here for "import from one place" usage.
+ * - `createOperator()` and `createStatefulOperator()` are the low-level tools
+ *   for authoring custom operators that behave like the built-ins.
+ * - `EventBus` and `createEventDispatcher()` cover hot, multicast pub/sub
+ *   workflows that do not fit the usual cold Observable mental model.
+ * - `ObservableError` and the error helpers are the bridge between pass-through
+ *   operator failures and explicit recovery stages.
+ *
+ * If you are learning the package for the first time, the usual reading order
+ * is: `Observable` -> `pipe()` -> built-in operators -> `EventBus` helpers only
+ * if you need shared fan-out.
+ *
+ * ## Choosing subscribe, forEach, for-await, or pull
+ *
+ * The package gives you four main ways to consume a stream. They solve related
+ * problems, but they are not interchangeable in practice:
+ *
+ * - `subscribe(...)` is the lowest-overhead path for event-style callbacks and
+ *   UI wiring.
+ * - `forEach(observable, callback, options?)` or `observable.forEach(...)` is
+ *   the terminal consumer for "visit every value and give me a Promise when
+ *   the stream ends" workflows.
+ * - `for await (const value of observable)` is the simplest way to integrate an
+ *   Observable into async control flow.
+ * - `observable.pull()` is the explicit backpressure-focused option when you
+ *   need to tune buffering with `highWaterMark` or make the producer slow down
+ *   under a slower consumer.
+ *
+ * ```text
+ * event callbacks and UI wiring        -> subscribe()
+ * promise-based terminal consumption   -> forEach()
+ * sequential async work               -> for await ... of observable
+ * buffer tuning and producer pacing   -> observable.pull()
+ * ```
+ *
+ * `forEach`, `for await`, and `pull()` all compose well with async code, but
+ * they pay different costs. `for await` and `pull()` use async-iterator
+ * machinery, which is usually the right trade-off for slow or bursty sources.
+ * For tight synchronous flows where you want a completion Promise without the
+ * async-iterator overhead, `forEach()` is the cheaper terminal path.
+ *
  * ## What Makes This Observables Implementation Special
  *
  * `@okikio/observables` isn't just another Observable library. It's designed to be:
@@ -239,7 +337,23 @@
  *
  * ## Operator Categories
  *
- * Operators enables powerful functional composition patterns using the `pipe()` function.
+ * Operators enable powerful functional composition patterns using the `pipe()` function.
+ * The package root re-exports the same built-in set that `./helpers/operations/mod.ts`
+ * groups by category, so `./mod.ts` is the "one public entrypoint" view and
+ * `./helpers/operations/*` is the narrower discovery view.
+ *
+ * Built-in operators share a few important runtime rules:
+ *
+ * - `map()`, `filter()`, `scan()`, and similar data operators receive clean
+ *   values, not wrapped `ObservableError` instances.
+ * - In the default pass-through mode, wrapped errors bypass those callbacks and
+ *   keep moving until an error-handling operator intercepts them.
+ * - Timing and combination operators still preserve teardown and backpressure,
+ *   because `pipe()` runs the whole chain on top of Web Streams.
+ * - If you write a custom operator with `createOperator()`, remember that the
+ *   first stage in a pass-through pipeline may receive either a source value or
+ *   a previously wrapped `ObservableError`, depending on where you insert it.
+ *
  * All operators are **type-safe**, **tree-shakable**, **support automatic backpressure**, and feature
  * **advanced error handling** with 4 distinct modes: pass-through, ignore, throw, and manual.
  *

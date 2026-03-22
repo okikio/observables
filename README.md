@@ -375,38 +375,37 @@ for await (
 
 ### Behavior Notes and Differences
 
-This package stays close to the TC39 Observable proposal, but a few practical
-choices matter when you compare it with RxJS, `zen-observable`, or older
-proposal examples.
+This package stays close to the TC39 Observable proposal, but a few deliberate
+choices matter when you compare it with raw proposal examples, RxJS,
+`zen-observable`, or handwritten `TransformStream` code.
 
-- Operators are function-first. Instead of adding lots of prototype helpers to
-  `Observable`, this package puts transformation and coordination logic in
-  `pipe(...)` plus operator functions such as `map`, `filter`, `switchMap`, and
-  `tap`.
-- There is no instance `observable.forEach()` today. In-pipeline side effects
-  live in `tap(...)`, and terminal consumption lives in `subscribe(...)`,
-  `for await ... of`, or `observable.pull()`.
-- Side effects inside a pipeline belong in `tap(...)`. Terminal consumption
-  belongs in `subscribe(...)`, `for await ... of observable`, or
-  `observable.pull()`.
-- `for await` and `pull()` are the backpressure-aware path. They are great when
-  the consumer is asynchronous or the producer can outpace it. They also carry
-  async-iterator overhead, so plain `subscribe(...)` is still the lower-overhead
-  path for tight synchronous workflows.
-- This package exposes `observer.start(subscription)` before the subscriber body
-  runs. That hook is useful for inspection and early cancellation, but it is not
-  a teardown registration point.
-- If you allocate resources only inside `start()`, this package will not clean
-  them up for you automatically. Automatic teardown only knows about cleanup
-  returned from the subscriber function or cleanup attached to resources that
-  manage themselves.
-- An already-aborted `AbortSignal` still creates the subscription facade and
-  still calls `start(subscription)`, but `subscription.closed` is already `true`
+- Operators are exported, tree-shakeable pipeline stages. Instead of prototype
+  helpers such as `observable.map(...)`, use
+  `pipe(source, map(...), filter(...))`. There is no instance
+  `observable.forEach()` today.
+- `subscribe(observer)` is still the baseline API, but the package also accepts
+  `subscribe(next, error?, complete?)` and `subscribe(..., { signal })` for
+  direct `AbortSignal` cancellation.
+- `observer.start(subscription)` runs before the subscriber body. If the signal
+  is already aborted, `start()` still runs, the subscription is already closed,
   and the subscriber body is skipped.
+- Teardown can come from a cleanup function, `unsubscribe()`,
+  `[Symbol.dispose]()`, or `[Symbol.asyncDispose]()`. Cleanup still runs once.
+- `for await ... of observable` and `observable.pull()` are first-class here.
+  They are useful when the consumer is async or the producer can outrun it, but
+  they are package features rather than TC39 proposal surface.
+- Built-in operators use pass-through error handling by default. A thrown
+  mapping or filtering failure becomes an `ObservableError` value and keeps
+  moving until a dedicated error operator such as `catchErrors()`,
+  `ignoreErrors()`, `mapErrors()`, or `tapError()` handles it.
+- `pipe()` is stream-backed and supports up to 19 operators per call. Split
+  longer pipelines into named helpers if a single chain starts fighting the type
+  system.
 
-In practice, `start()` should stay lightweight. Use it to observe or cancel the
-subscription early. Put long-lived resource allocation in the subscriber
-function so the returned teardown can release it deterministically.
+If you land in the generated API docs, start with the package root docs for the
+high-level contract, then read `Observable`, `pipe()`, and the built-in
+operators in that order. The README is the quick refresher. The root TSDoc is
+the more complete behavioral reference.
 
 For a fuller comparison against RxJS and `zen-observable`, see
 [docs/observable-comparison-matrix.md](./docs/observable-comparison-matrix.md).
