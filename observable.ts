@@ -988,6 +988,11 @@ export class Observable<T>
    * **What happens**: Creates subscription → calls observer.start() → executes subscriber function →
    * stores cleanup → returns subscription for cancellation.
    *
+   * `observer.start()` is for observing the newly-created subscription or
+   * cancelling it before the subscriber body runs. It is not where teardown is
+   * registered. Cleanup is still sourced from the subscriber function's return
+   * value.
+   *
    * Subscription Lifecycle:
    * - Starts immediately and synchronously
    * - Continues until explicitly cancelled or completed/errored
@@ -1059,6 +1064,11 @@ export class Observable<T>
    *
    * **What happens**: Creates subscription → calls observer.start() → executes subscriber function →
    * stores cleanup → returns subscription for cancellation.
+  *
+  * `observer.start()` is for observing the newly-created subscription or
+  * cancelling it before the subscriber body runs. It is not where teardown is
+  * registered. Cleanup is still sourced from the subscriber function's return
+  * value.
    *
    * Subscription Lifecycle:
    * - Starts immediately and synchronously
@@ -1250,6 +1260,42 @@ export class Observable<T>
 
     // 7) Finally, hand back the Subscription so callers can cancel whenever they like
     return subscription;
+  }
+
+  /**
+   * Visits every value in this Observable and resolves when it completes.
+   *
+   * This is the terminal-consumer counterpart to `tap()`. `tap()` stays inside
+   * a pipeline and returns another Observable. `forEach()` consumes the stream,
+   * runs your callback for each value, and returns a Promise that settles when
+   * the stream ends.
+   *
+   * Use this when you want Promise-style completion semantics without the
+   * async-iterator overhead of `pull()` or `for await ... of`.
+   *
+   * If the callback throws, the returned Promise rejects and the subscription
+   * is cancelled immediately.
+  *
+  * Like the standalone helper, this method still tears down correctly when a
+  * foreign Observable-like source emits synchronously before `subscribe()`
+  * returns its subscription object.
+   *
+   * @param callback - Function invoked for each emitted value
+   * @param opts.signal - Optional AbortSignal to cancel traversal
+   * @returns Promise that resolves with `undefined` on completion
+   *
+  * @example Visiting values through the instance method
+   * ```ts
+   * await Observable.of(1, 2, 3).forEach((value, index) => {
+   *   console.log(index, value);
+   * });
+   * ```
+   */
+  forEach(
+    callback: (value: T, index: number) => void,
+    opts?: { signal?: AbortSignal },
+  ): Promise<void> {
+    return forEach(this, callback, opts);
   }
 
   /**
@@ -2060,6 +2106,211 @@ export async function* pull<T>(
     reader.releaseLock();
     await stream.cancel();
   }
+}
+
+/**
+ * Shared mutable state for one `forEach()` traversal.
+ *
+ * Some Observable-like sources synchronously call observer methods before
+ * `subscribe()` returns the subscription handle. This object keeps callback
+ * progress, cancellation state, and the eventual subscription in one place so
+ * every exit path can coordinate correctly.
+ */
+interface ForEachState<T> {
+  /** Function invoked for each emitted value. */
+  callback: (value: T, index: number) => void;
+  /** Internal signal used to stop the source after callback failure. */
+  controller: AbortController;
+  /** Deferred promise returned from `forEach()`. */
+  deferred: PromiseWithResolvers<void>;
+  /** Optional caller-owned cancellation signal. */
+  externalSignal?: AbortSignal;
+  /** Zero-based callback index. */
+  index: number;
+  /** Stored so the abort listener can be removed exactly once. */
+  onExternalAbort: (() => void) | null;
+  /** Prevents multiple resolve or reject attempts. */
+  settled: boolean;
+  /** Subscription returned by the source, if it has been produced yet. */
+  subscription: SpecSubscription | null;
+}
+
+/**
+ * Settles the traversal promise and removes the external abort listener.
+ *
+ * `forEach()` can finish through completion, source error, callback failure, or
+ * external cancellation. This helper keeps those competing paths one-shot so
+ * the public Promise and listener cleanup stay deterministic.
+ */
+function settleForEach<T>(
+  state: ForEachState<T>,
+  result: { ok: true } | { ok: false; reason: unknown },
+): void {
+  if (state.settled) return;
+
+  state.settled = true;
+
+  if (state.onExternalAbort) {
+    state.externalSignal?.removeEventListener?.('abort', state.onExternalAbort);
+    state.onExternalAbort = null;
+  }
+
+  if (result.ok) {
+    state.deferred.resolve();
+    return;
+  }
+
+  state.deferred.reject(result.reason);
+}
+
+/**
+ * Visits every value in an Observable and resolves when the stream completes.
+ *
+ * This is the tree-shakeable terminal-consumer helper for workflows that want
+ * Promise completion semantics without going through async iteration. It is the
+ * consumer-side counterpart to `tap()`: `tap()` keeps the stream alive inside a
+ * pipeline, while `forEach()` consumes the stream and returns a Promise.
+ *
+ * The callback receives the emitted value and a zero-based index. If the
+ * callback throws, the Promise rejects and the subscription is cancelled.
+ *
+ * Some Observable-like sources synchronously emit before their `subscribe()`
+ * call returns. `forEach()` still tears those sources down correctly by routing
+ * callback failures and `AbortSignal` cancellation through one shared teardown
+ * path.
+ *
+ * This helper follows the WICG Observable draft's promise-returning operator
+ * shape more closely than `zen-observable`'s callback-plus-cancel signature.
+ *
+ * @param observable - Observable or Observable-like source to consume
+ * @param callback - Function invoked for each emitted value
+ * @param opts.signal - Optional AbortSignal to cancel traversal
+ * @returns Promise that resolves with `undefined` on completion
+ *
+ * @example Visiting each emitted value with an index
+ * ```ts
+ * await forEach(Observable.of("a", "b"), (value, index) => {
+ *   console.log(index, value);
+ * });
+ * ```
+ *
+ * @example Cancelling traversal with an AbortSignal
+ * ```ts
+ * const controller = new AbortController();
+ *
+ * const done = forEach(source, (value) => {
+ *   if (value === 10) controller.abort(new Error("stopped early"));
+ * }, { signal: controller.signal });
+ * ```
+ */
+export function forEach<T>(
+  this: unknown,
+  observable: SpecObservable<T>,
+  callback: (value: T, index: number) => void,
+  opts: { signal?: AbortSignal } = {},
+): Promise<void> {
+  if (typeof callback !== "function") {
+    return Promise.reject(new TypeError("forEach callback must be a function"));
+  }
+
+  const obs = observable?.[Symbol.observable]?.();
+  if (!obs || typeof obs.subscribe !== "function") {
+    return Promise.reject(new TypeError("Expected an Observable-like value"));
+  }
+
+  if (opts.signal?.aborted) {
+    return Promise.reject(opts.signal.reason);
+  }
+
+  const deferred = Promise.withResolvers<void>();
+
+  // `subscribe()` can synchronously emit before it returns. This shared state
+  // lets callback code, abort handling, and final settlement all coordinate
+  // even when the subscription handle arrives last.
+  const state: ForEachState<T> = {
+    callback,
+    controller: new AbortController(),
+    deferred,
+    externalSignal: opts.signal,
+    index: 0,
+    onExternalAbort: null,
+    settled: false,
+    subscription: null,
+  };
+
+  // External cancellation should behave the same as callback failure: stop the
+  // source, release the subscription once, and reject with the abort reason.
+  const onExternalAbort = () => {
+    const reason = opts.signal?.reason;
+
+    if (!state.controller.signal.aborted) {
+      state.controller.abort(reason);
+    }
+
+    state.subscription?.unsubscribe();
+    state.subscription = null;
+    settleForEach(state, { ok: false, reason });
+  };
+  state.onExternalAbort = onExternalAbort;
+  opts.signal?.addEventListener?.('abort', onExternalAbort, { once: true });
+
+  try {
+    state.subscription = (
+      obs as {
+        subscribe(
+          observer: Observer<T>,
+          opts?: { signal?: AbortSignal },
+        ): SpecSubscription;
+      }
+    ).subscribe({
+      next(value) {
+        try {
+          state.callback(value, state.index++);
+        } catch (error) {
+          if (!state.controller.signal.aborted) {
+            state.controller.abort(error);
+          }
+
+          state.subscription?.unsubscribe();
+          state.subscription = null;
+          settleForEach(state, { ok: false, reason: error });
+        }
+      },
+      error(error) {
+        // The source has already finished with an error, so later teardown
+        // paths should not try to unsubscribe a stale handle.
+        state.subscription = null;
+        settleForEach(state, { ok: false, reason: error });
+      },
+      complete() {
+        // Completion uses the same one-shot settlement path as errors so the
+        // Promise and abort listener cannot diverge.
+        state.subscription = null;
+        settleForEach(state, { ok: true });
+      },
+    }, { signal: state.controller.signal });
+  } catch (error) {
+    state.subscription = null;
+    settleForEach(state, { ok: false, reason: error });
+    return deferred.promise;
+  }
+
+  // Some Observable-like sources synchronously call `next()` and only return
+  // the subscription object afterward. If traversal already aborted during that
+  // synchronous work, unsubscribe once here now that the handle exists.
+  if (state.controller.signal.aborted) {
+    state.subscription?.unsubscribe();
+    state.subscription = null;
+
+    if (!state.settled) {
+      settleForEach(state, {
+        ok: false,
+        reason: state.controller.signal.reason,
+      });
+    }
+  }
+
+  return deferred.promise;
 }
 
 /**
