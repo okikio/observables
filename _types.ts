@@ -63,6 +63,15 @@ export interface Observer<T> extends SpecObserver<T> {
    * enhanced Subscription type with additional properties and methods,
    * not just the minimal SpecSubscription.
    *
+   * `start()` is best used for observing subscription setup or cancelling the
+   * subscription before the subscriber body runs. It is not a teardown
+  * registration point. Resources that need deterministic cleanup should be
+  * created in the subscriber body, where one returned teardown can already
+  * aggregate multiple cleanup steps, including disposable stacks when useful.
+  * That solves cleanup ownership, but it does not create a cancellation signal
+  * for in-flight async work, which is why this differs from the newer WICG
+  * `Subscriber` shape.
+   *
    * @param subscription - Our enhanced Subscription object
    * @specref § 4.2 CreateSubscription
    */

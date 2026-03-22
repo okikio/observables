@@ -154,10 +154,30 @@ export interface SpecObserver<T> {
    * - Receives the subscription object as a parameter
    * - Runs before any other observer methods
    * - Allows the observer to store the subscription for later cancellation
+   * - Is intended for inspection or immediate cancellation, not for owning
+   *   resources that need teardown
    * - Can throw exceptions, which are reported but don't prevent subscription
    *
    * If this method throws, the error is reported to the host environment
    * but the subscription is still established.
+  *
+  * Cleanup is sourced from the subscriber function's return value, not from
+  * `start()`. That means resources created in `start()` are outside the
+  * normal teardown path unless you arrange their cleanup elsewhere.
+  *
+  * In practice, that does not force this library to add new API surface.
+  * Callers that need to aggregate several cleanup steps can already return one
+  * function or one disposable object, including a `DisposableStack` or
+  * `AsyncDisposableStack`, from the subscriber body. That solves the cleanup
+  * aggregation problem.
+  *
+  * The nuance is that cleanup aggregation is not the same as cancellation
+  * propagation. A stack can collect teardown work to run when the
+  * subscription closes, but it does not replace a live cancellation channel
+  * like `AbortSignal`. The newer WICG Observable draft addresses both concerns
+  * together with a `Subscriber` object that exposes `signal` and
+  * `addTeardown()`. This library keeps the current return-a-teardown model
+  * rather than adopting that extra surface.
    *
    * @param subscription - The subscription object created by this subscribe call
    * @specref § 4.2 CreateSubscription
