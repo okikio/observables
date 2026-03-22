@@ -6,14 +6,15 @@
  * arrive?" Operators let one Observable feed another, so a button click can
  * become a debounced search term, a search term can become a network request,
  * and a network request can become parsed JSON.
+ * 
+ * Operator builders turn stream transformations into reusable pipeline stages.
  *
- * Start with the array analogy, then extend it. `Array.map()` and
- * `Array.filter()` work on values you already have in memory. Observable
- * operators do similar jobs for values that arrive over time.
+ * `Array.map()` reshapes values already in
+ * memory. An Observable operator reshapes values that arrive over time.
  *
  * ```text
- * array values      -> map/filter -> final array
- * stream values     -> operators  -> next Observable
+ * array values   -> map/filter/reduce -> final array
+ * stream values  -> operator stages   -> next Observable
  * ```
  *
  * That time dimension changes what the operator runtime has to manage:
@@ -63,7 +64,7 @@
  * // 2, 4, 6
  * ```
  *
- * @example Recovering from bad JSON without stopping the stream
+ * @example Choosing pass-through mode for partial recovery
  * ```ts
  * const parseJson = createOperator<string, unknown>({
  *   name: 'parseJson',
