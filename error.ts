@@ -1,59 +1,42 @@
 // @filename: error.ts
 /**
- * `ObservableError` carries failures through a pipeline without losing the work
- * that already happened before the failure.
+ * Error values in this library can be handled as part of the value flow.
  *
- * That matters because a stream can emit several useful values before one later
- * stage throws. If every error immediately terminated the stream, downstream
- * code could lose buffered values or context that would have helped recovery.
+ * In pass-through mode, one item can fail without forcing the whole pipeline
+ * to stop right away. Wrapping that failure as an `ObservableError` keeps the
+ * original error, where it happened, and which value caused it, so a later
+ * step can replace it, skip it, log it, or throw it.
  *
- * The helpers in this file keep the original error, stack, operator name, and
- * source value attached so recovery code can make a deliberate decision instead
- * of handling a generic `Error` with missing context.
+ * ```text
+ * source value -> operator throws -> ObservableError -> recovery operator
+ * ```
  *
  * @module
  */
 
-import type { SpecObserver } from "./_spec.ts";
+import type { SpecObserver } from './_spec.ts';
 
 /**
- * Represents an error that occurred during Observable operations,
- * with the ability to aggregate multiple underlying errors.
+ * `ObservableError` carries a failure through the value channel with the
+ * details needed to handle it well.
  *
- * This class extends AggregateError to provide additional context about
- * where and how errors occurred in an Observable pipeline. It can collect
- * multiple errors that occur during a chain of operations while preserving
- * the contextual information about each error.
- *
- * In addition, this class solves a crucial problem with error handling in ReadableStreams. When we call
- * `controller.error()` on a ReadableStream, it immediately puts the stream in an errored state,
- * which can cause values emitted before the error to be lost. By wrapping errors as special
- * values that flow through the normal value channel, we ensure all values emitted before an
- * error are properly processed.
- *
- * Key features:
- * - Tracks which operator caused the error
- * - Captures the value being processed when the error occurred
- * - Aggregates multiple errors from a pipeline
- * - Preserves the original error objects
- * - Builds an error chain showing the full path of error propagation
+ * A plain `Error` tells you that something failed. `ObservableError` also keeps
+ * the operator name, the value being worked on, and the original error list.
+ * That extra context helps when one bad item should not erase the rest of the
+ * stream.
  */
 export class ObservableError extends AggregateError {
-  /** The operator where the error occurred */
+  /** Operator label recorded by the stage that wrapped the failure. */
   readonly operator?: string;
 
-  /** The value being processed when the error occurred */
+  /** Input value that triggered the failure. */
   readonly value?: unknown;
 
-  /** Helpful potential fixes for errors */
+  /** Optional hint that can guide debugging or recovery. */
   readonly tip?: unknown;
 
   /**
-   * Creates a new ObservableError.
-   *
-   * @param errors - The error(s) that caused this error
-   * @param message - The error message
-   * @param options - Additional error context
+    * Builds one wrapped error from one or many underlying failures.
    */
   constructor(
     errors: Error | Error[] | unknown | unknown[],
@@ -65,22 +48,20 @@ export class ObservableError extends AggregateError {
       tip?: unknown;
     },
   ) {
-    // Normalize errors to an array of Error objects
     const errorArray = Array.isArray(errors) ? errors : [errors];
-    const normalizedErrors = errorArray.map((err) =>
-      err instanceof Error ? err : new Error(String(err))
+    const normalizedErrors = errorArray.map((error) =>
+      error instanceof Error ? error : new Error(String(error))
     );
 
     super(normalizedErrors, message, { cause: options?.cause });
-    this.name = "ObservableError";
+    this.name = 'ObservableError';
     this.operator = options?.operator;
     this.value = options?.value;
     this.tip = options?.tip;
   }
 
   /**
-   * Returns a string representation of the error including the operator
-   * and value context if available.
+    * Formats the error in a way that shows where it came from and what failed.
    */
   override toString(): string {
     let result = `${this.name}: ${this.message}`;
@@ -90,17 +71,17 @@ export class ObservableError extends AggregateError {
     }
 
     if (this.value !== undefined) {
-      const valueStr = typeof this.value === "object"
-        ? JSON.stringify(this.value).slice(0, 100) // Truncate long objects
+      const valueString = typeof this.value === 'object'
+        ? JSON.stringify(this.value).slice(0, 100)
         : String(this.value);
 
-      result += `\n  processing value: ${valueStr}`;
+      result += `\n  processing value: ${valueString}`;
     }
 
     if (this.errors.length > 0) {
-      result += "\n  with errors:";
-      this.errors.forEach((err, i) => {
-        result += `\n    ${i + 1}) ${err}`;
+      result += '\n  with errors:';
+      this.errors.forEach((error, index) => {
+        result += `\n    ${index + 1}) ${error}`;
       });
     }
 
@@ -112,13 +93,7 @@ export class ObservableError extends AggregateError {
   }
 
   /**
-   * Creates an ObservableError from any error that occurs during
-   * operator execution.
-   *
-   * @param error - The original error
-   * @param operator - The operator name
-   * @param value - The value being processed
-   * @returns An ObservableError
+    * Turns any thrown value into an `ObservableError`.
    */
   static from(
     error: unknown,
@@ -127,23 +102,18 @@ export class ObservableError extends AggregateError {
     tip?: unknown,
   ): ObservableError {
     if (error instanceof ObservableError) {
-      // If it's already an ObservableError, add context if not present
       if (!error.operator && operator) {
-        return new ObservableError(
-          error.errors,
-          error.message,
-          {
-            operator,
-            value: error.value || value,
-            cause: error.cause,
-            tip: error.tip,
-          },
-        );
+        return new ObservableError(error.errors, error.message, {
+          operator,
+          value: error.value ?? value,
+          cause: error.cause,
+          tip: error.tip,
+        });
       }
+
       return error;
     }
 
-    // Create a new ObservableError
     return new ObservableError(
       error,
       error instanceof Error ? error.message : String(error),
@@ -153,79 +123,29 @@ export class ObservableError extends AggregateError {
 }
 
 /**
- * Asserts that a value is not an ObservableError and narrows the TypeScript type.
+ * Treats the value as normal data or throws if it is an `ObservableError`.
  *
- * This function acts as a TypeScript assertion function that:
- * 1. **Type Narrowing**: If the function returns normally, TypeScript knows the value is definitely T (not T | ObservableError)
- * 2. **Error Handling**: If the value is an ObservableError, either delegates to observer.error or throws
- * 3. **Never Returns on Error**: When value is ObservableError, this function never returns normally
+ * Use it the same way you would use an early `throw` in ordinary JavaScript:
+ * stop right away if recovery already failed upstream. If an observer is
+ * provided, its `error()` callback runs before the error is thrown again.
  *
- * **Key Behavior Changes**:
- * - Now uses TypeScript's `asserts value is T` for proper type narrowing
- * - When observer handles error, the function still doesn't return normally (assertion still fails)
- * - Only returns normally when value is definitely not an ObservableError
+ * @example Stop early when recovery already failed
+ * ```ts
+ * const result: string | ObservableError = getResult();
+ * assertObservableError(result);
+ * console.log(result.toUpperCase());
+ * ```
  *
- * **Intent**: Provide type-safe error checking with automatic TypeScript type narrowing.
- *
- * **Usage Patterns**:
- * ```typescript
- * // Type narrowing in operator results
- * const result: string | ObservableError = someOperation();
- * assertObservableError(result); // Throws if error
- * // TypeScript now knows result is string, not string | ObservableError
- * console.log(result.toUpperCase()); // ✅ No type error
- *
- * // With observer error handling
- * const observer = { error: err => console.error('Error:', err) };
- * assertObservableError(result, observer);
- * // Still throws/doesn't return normally on error, but observer is notified first
- *
- * // In subscribe callbacks
- * observable.subscribe({
- *   next(value) { // value is T | ObservableError
- *     assertObservableError(value);
- *     // value is now narrowed to T
- *     processCleanValue(value);
- *   }
+ * @example Report the failure, then stop
+ * ```ts
+ * const result: User | ObservableError = getUser();
+ * assertObservableError(result, {
+ *   error(error) {
+ *     console.error(error.message);
+ *   },
  * });
- * ```
  *
- * @template T - The expected type of the value when it's not an error
- * @param value - The value to check, which may be either T or ObservableError
- * @param obs - Optional observer that may contain an error handler function
- *
- * @throws {ObservableError} When value is an ObservableError (after notifying observer if provided)
- *
- * @example Basic type narrowing
- * ```typescript
- * const mixed: string | ObservableError = getValue();
- * assertObservableError(mixed); // Throws if ObservableError
- * console.log(mixed.length); // ✅ TypeScript knows mixed is string
- * ```
- *
- * @example With error observer
- * ```typescript
- * const observer = {
- *   error: (err) => analytics.track('error', { message: err.message })
- * };
- *
- * const mixed: User | ObservableError = fetchUser();
- * assertObservableError(mixed, observer); // Observer notified, then throws
- * console.log(mixed.name); // ✅ TypeScript knows mixed is User
- * ```
- *
- * @example In operator pipeline
- * ```typescript
- * import { pipe, map, tap } from './helpers/mod.ts';
- *
- * pipe(
- *   source,
- *   map(x => processX(x)), // Returns T | ObservableError
- *   tap(result => {
- *     assertObservableError(result); // Type narrows from T | ObservableError to T
- *     sendAnalytics(result); // ✅ result is definitely T
- *   })
- * )
+ * console.log(result.name);
  * ```
  */
 export function assertObservableError<T>(
@@ -254,10 +174,10 @@ export function assertObservableError<T>(
 }
 
 /**
- * Checks if a value is an ObservableError without throwing exceptions.
+ * Returns `true` when a value is a wrapped stream error.
  *
- * When working with Observable pipelines, you often receive values that could be either successful
- * results or errors. This creates a dilemma: how do you safely check what you got without risking
+ * Use it the same way you would use `Array.isArray()` or `value instanceof Error`:
+ * branch on the shape, then handle the success and failure paths deliberately.
  * crashes or poor performance? That's exactly what this function solves.
  *
  * **Why This Function Exists**:
