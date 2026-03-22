@@ -1,24 +1,20 @@
 // @filename: helpers/mod.ts
 /**
- * High-level operator entrypoint for composing Observable pipelines.
+ * Most pipelines only need one import path for operators, pipe helpers, and
+ * interop utilities.
  *
- * This is the ergonomic "import most things from one place" surface for the
- * package. It re-exports the pipe/compose helpers, operator builders, utility
- * helpers, and the built-in operator families so callers can build an entire
- * pipeline without remembering which category module each operator lives in.
+ * The exports here cover the common jobs you combine into a pipeline:
  *
- * The exports here fall into a few broad groups:
- * - core transformation operators such as `map`, `filter`, `take`, and `scan`
- * - timing operators such as `debounce`, `delay`, `throttle`, and `timeout`
- * - combination operators such as `mergeMap`, `concatMap`, and `switchMap`
- * - batching and error operators for collecting values or recovering from
- *   failures in a stream
+ * - reshape values with `map`, `filter`, `scan`, `take`, and friends
+ * - coordinate time with `debounce`, `delay`, `throttle`, and `timeout`
+ * - start follow-up work with `mergeMap`, `concatMap`, and `switchMap`
+ * - recover from wrapped failures with `catchErrors`, `ignoreErrors`, and
+ *   related helpers
  *
- * Everything shares the same Web Streams-based runtime, so backpressure,
- * teardown, and error-mode behavior stay consistent from one operator to the
- * next. Import from `./operations/*` only when you want a narrower entrypoint
- * for discovery or tree-shaken docs. Import from this module when you want the
- * familiar "just give me the operator toolbox" experience.
+ * All of those stages share the same Web Streams-based runtime, so teardown,
+ * backpressure, and error-mode behavior stay consistent from one stage to the
+ * next. Narrower `./operations/*` paths are available when a focused category
+ * is easier to explore.
  *
  * ## Basic Usage
  *

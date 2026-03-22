@@ -1,16 +1,18 @@
 /**
- * Operators that turn each source value into another stream and combine the
- * results.
+ * Combination operators start follow-up streams from each source value.
  *
- * This entrypoint covers the "flattening" family of operators such as
- * `mergeMap`, `concatMap`, and `switchMap`. Use it when one input value needs
- * to start follow-up async work, for example fetching related records, reading
- * files, or switching to the latest search request.
+ * They are useful when one value should trigger more async work, such as a
+ * search term starting a fetch or a file path starting a file read. The outer
+ * stream produces the trigger value. The inner stream does the follow-up work.
  *
- * The operators in this module mainly differ in concurrency and cancellation
- * behavior. `mergeMap` keeps multiple inner streams alive at once, `concatMap`
- * preserves order by running one at a time, and `switchMap` cancels older work
- * when a newer source value arrives.
+ * The main question is what to do when a new outer value arrives before the old
+ * inner work has finished:
+ *
+ * ```text
+ * mergeMap   -> keep many inner streams running at once
+ * concatMap  -> queue inner streams and run them one at a time
+ * switchMap  -> cancel older inner work and keep only the latest
+ * ```
  *
  * @module
  */
@@ -42,7 +44,7 @@ import {
  * outer value ---> createFollowUp(value, index) ---> inner Observable
  * ```
  *
- * The operators in this module differ in what they do after that point:
+ * From there, each operator makes a different concurrency decision:
  *
  * ```text
  * mergeMap   -> keep many inners running at once

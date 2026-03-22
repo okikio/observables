@@ -1,14 +1,18 @@
 /**
- * Operators that collect multiple source values into grouped results.
+ * Batching operators wait for several source values before emitting one result.
  *
- * This entrypoint contains the batching side of the operator library. Use it
- * when one output value should summarize several input values, such as turning
- * a whole stream into a single array with `toArray()` or bundling incoming
- * items into fixed-size chunks with `batch()`.
+ * Use them when one output should summarize a group, for example collecting a
+ * whole stream into one array with `toArray()` or bundling values into fixed
+ * chunks with `batch()`.
  *
- * These operators trade immediacy for aggregation. They usually hold on to some
- * values until a batch fills or the source completes, so they are best for
- * finite streams or bounded buffers where that extra memory is intentional.
+ * The trade-off is simple: less immediacy, more aggregation.
+ *
+ * ```text
+ * source values -> hold some values -> emit grouped result
+ * ```
+ *
+ * That extra memory is usually a good trade for finite streams or deliberate
+ * bounded buffering.
  *
  * @module
  */

@@ -1,16 +1,15 @@
 // @filename: error.ts
 /**
- * Error primitives and guards for Observable pipelines.
+ * `ObservableError` carries failures through a pipeline without losing the work
+ * that already happened before the failure.
  *
- * This entrypoint explains the error values that travel through this library
- * when an operator uses pass-through error handling. It exports the
- * `ObservableError` class plus helper functions for narrowing and asserting
- * those wrapped failures without losing the original error object, stack, or
- * operator context.
+ * That matters because a stream can emit several useful values before one later
+ * stage throws. If every error immediately terminated the stream, downstream
+ * code could lose buffered values or context that would have helped recovery.
  *
- * Reach for this module when you want to inspect failures as data, recover from
- * an upstream step without throwing away buffered values, or surface richer
- * debugging information than a plain `Error` can carry on its own.
+ * The helpers in this file keep the original error, stack, operator name, and
+ * source value attached so recovery code can make a deliberate decision instead
+ * of handling a generic `Error` with missing context.
  *
  * @module
  */

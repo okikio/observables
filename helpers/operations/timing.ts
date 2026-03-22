@@ -1,14 +1,19 @@
 /**
- * Time-based operators for spacing, delaying, and expiring stream values.
+ * Timing operators control when values are allowed to move downstream.
  *
- * This entrypoint groups the operators that make time part of your pipeline's
- * behavior. Use it for UI patterns such as debouncing search input, throttling
- * bursty events, delaying retries, or timing out work that takes too long.
+ * Use them for UI and network patterns where time is the real problem: wait for
+ * typing to stop, limit bursty input, delay retries, or fail work that takes
+ * too long.
  *
- * Timing operators do not just change values; they change when work is allowed
- * to move downstream. That makes them especially important for coordinating
- * async side effects without piling up stale requests or overwhelming slower
- * consumers.
+ * They do not mainly change the value. They change the schedule around the
+ * value.
+ *
+ * ```text
+ * source event -> wait, delay, throttle, or expire -> next stage
+ * ```
+ *
+ * That makes them useful for preventing stale requests, noisy event bursts, and
+ * accidental overload on slower consumers.
  *
  * @module
  */

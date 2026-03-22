@@ -4,17 +4,16 @@ import type { ObservableError } from "../../error.ts";
 import { createOperator, createStatefulOperator } from "../operators.ts";
 
 /**
- * Core transformation and terminal operators for everyday stream work.
+ * Core operators cover the array-like side of stream processing.
  *
- * This module is the closest match to familiar array helpers. It exports the
- * operators you reach for first when you want to transform values, filter them,
- * accumulate state, or stop after a condition has been met. In practice, this
- * is where most pipelines start before you add timing or concurrency behavior.
+ * Start here when the job is "change each value", "keep only some values", or
+ * "build a running result". If you already know `Array.map()`,
+ * `Array.filter()`, and `Array.reduce()`, you already know the shape of the
+ * work. The difference is that values arrive over time instead of all at once.
  *
- * The important difference from arrays is error handling. These operators are
- * designed to work with the library's pass-through model, so your callbacks see
- * clean data values while `ObservableError` instances continue downstream
- * unchanged until a dedicated error-handling step decides what to do with them.
+ * Wrapped failures follow a separate path. In pass-through mode, ordinary data
+ * callbacks keep seeing ordinary values while `ObservableError` instances move
+ * downstream until an error-focused operator decides what to do with them.
  *
  * @module
  */

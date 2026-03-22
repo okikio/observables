@@ -1,14 +1,17 @@
 /**
- * Error-focused operators for recovering from or reshaping stream failures.
+ * Error operators decide what should happen after a stage fails.
  *
- * This entrypoint is for pipelines that expect some work to fail and want to
- * keep going. It exports helpers for dropping wrapped errors, mapping them to
- * fallback values, logging them, or converting them into a shape that fits the
- * rest of the pipeline.
+ * In pass-through mode, a thrown error does not have to end the whole pipeline
+ * immediately. It can travel downstream as an `ObservableError` value instead.
+ * These operators are the place where that wrapped failure becomes a real
+ * policy decision: drop it, replace it, log it, summarize it, or throw it.
  *
- * These operators are most useful with the library's pass-through error mode,
- * where failures travel as `ObservableError` values instead of immediately
- * terminating the whole stream.
+ * ```text
+ * source value -> stage throws -> ObservableError -> error operator -> next step
+ * ```
+ *
+ * That separation lets data operators stay simple while recovery logic stays
+ * explicit.
  *
  * @module
  */

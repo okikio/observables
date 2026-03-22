@@ -1,14 +1,13 @@
 /**
- * Predicate and decision-oriented operators for Observable streams.
+ * Predicate operators answer questions about a stream.
  *
- * This entrypoint exports the operators that answer questions about a stream or
- * gate values based on a condition. These are the Observable equivalents of
- * array helpers such as `every()`, `some()`, and `find()`, plus utilities that
- * stop early once a decision has been reached.
+ * Use them when the important result is a decision rather than a transformed
+ * value: does every item match, does any item match, where is the first match,
+ * or when should processing stop because the answer is already known?
  *
- * Reach for this module when you care about whether a stream contains a match,
- * whether every value passes a rule, or when processing should stop as soon as
- * the answer is known.
+ * These operators are the stream versions of `every()`, `some()`, `find()`,
+ * and related array helpers, with the added benefit that they can stop early
+ * instead of waiting for the whole source to finish.
  *
  * @module
  */

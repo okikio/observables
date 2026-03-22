@@ -1,220 +1,102 @@
 /**
- * Operators are the building blocks of Observable pipelines.
+ * Operators reshape a stream without consuming it.
  *
- * If you've ever used `Array.map` or `Array.filter`, you already know the core idea:
- * an **operator** takes a sequence of values and transforms, filters, or combines them
- * into a new sequence. Operators let you build data pipelines, think of them as the
- * Lego bricks for working with streams of data.
+ * If `subscribe()` answers "what should happen when a value arrives?", an
+ * operator answers "what should the next value look like, and when should it
+ * arrive?" Operators let one Observable feed another, so a button click can
+ * become a debounced search term, a search term can become a network request,
+ * and a network request can become parsed JSON.
  *
- * Think of an operator as a function that takes a stream of values and returns a new stream,
- * transforming, filtering, or combining the data as it flows through.
+ * Start with the array analogy, then extend it. `Array.map()` and
+ * `Array.filter()` work on values you already have in memory. Observable
+ * operators do similar jobs for values that arrive over time.
  *
- * For example, to double every number in an array:
- * ```ts
- * [1, 2, 3].map(x => x * 2); // [2, 4, 6]
+ * ```text
+ * array values      -> map/filter -> final array
+ * stream values     -> operators  -> next Observable
  * ```
  *
- * With Observables, you want to do the same thing, but for values that arrive over time:
- * ```ts
- * // Double every number in a stream
- * const double = createOperator({
- *   transform(chunk, controller) {
- *     controller.enqueue(chunk * 2);
- *   }
- * });
+ * That time dimension changes what the operator runtime has to manage:
+ * cancellation, backpressure, teardown, and failures that might happen after
+ * some values have already flowed downstream.
  *
- * // Only allow even numbers through
- * const evens = createOperator({
- *   transform(chunk, controller) {
- *     if (chunk % 2 === 0) controller.enqueue(chunk);
- *   }
- * });
+ * These operator builders lean on `TransformStream` because it already models
+ * "read one chunk, write zero or more chunks" well. The builders add the rules
+ * that matter for Observable pipelines:
  *
- * // Use them together in a pipeline
- * pipe(
- *   Observable.from([1, 2, 3, 4]),
- *   double,
- *   evens
- * ).subscribe(console.log); // Output: 4, 8
+ * - wrapped errors can keep moving downstream instead of killing the whole
+ *   pipeline immediately
+ * - cancellation from later stages tears earlier work down predictably
+ * - stateful stages create fresh state per subscription instead of sharing it
+ *   accidentally
+ *
+ * The default error mode is the biggest mental shift. In pass-through mode, a
+ * thrown error becomes an `ObservableError` value. Later stages can recover,
+ * drop, summarize, or rethrow it.
+ *
+ * ```text
+ * clean value     -> transform callback runs -> transformed value
+ * thrown error    -> wrapped as ObservableError -> downstream error stage decides
  * ```
  *
- * This module lets you build your own operators using the Web Streams API under the hood.
- * Why streams? Because they're fast, memory-efficient, and let you process data as it arrives,
- * not just after everything is loaded. This is especially useful for things like file processing,
- * network requests, or any situation where you want to handle data piece-by-piece.
+ * That is why built-in data operators such as `map()` and `filter()` keep your
+ * callback focused on ordinary values. Wrapped errors bypass the callback and
+ * keep moving until an error-oriented operator handles them.
  *
- * ## Why Streams? Why Not Just Arrays?
+ * `createStatefulOperator()` adds one more piece: memory that belongs to one
+ * subscription. That is useful for running totals, moving windows, and other
+ * logic where later chunks depend on earlier ones.
  *
- * Arrays are great for data you already have. But what about data that arrives slowly,
- * or is too big to fit in memory? Think files, network responses, or user events.
- * That's where **streams** shine: they let you process data piece-by-piece, as it arrives,
- * without waiting for everything or loading it all at once.
- *
- * The Web Streams API (and Node.js streams) are the standard way to do this in modern JavaScript.
- * But using them directly is verbose and error-prone:
+ * @example Building a simple custom operator
  * ```ts
- * // Native TransformStream: double every number
- * const stream = new TransformStream({
- *   transform(chunk, controller) {
- *     controller.enqueue(chunk * 2);
- *   }
- * });
- * ```
- * Your operator helpers let you write the same thing, but with less boilerplate and
- * built-in error handling:
- * ```ts
- * const double = createOperator({
- *   transform(chunk, controller) {
- *     controller.enqueue(chunk * 2);
- *   }
- * });
- * ```
- *
- * By building operators on top of streams, you get:
- * - **Backpressure**: Slow consumers don't overwhelm fast producers.
- * - **Low memory usage**: Process data chunk-by-chunk, not all at once.
- * - **Composable pipelines**: Easily chain transformations.
- *
- * ## Connecting Operators: Pipelines
- *
- * Operators are most powerful when you chain them together. This is called a pipeline.
- *
- * It's just like chaining `map` and `filter` on arrays, but for streams:
- * ```ts
- * pipe(
- *   Observable.from([1, 2, 3, 4]),
- *   createOperator({
- *     transform(chunk, controller) {
- *       controller.enqueue(chunk * 2);
- *     }
- *   }),
- *   createOperator({
- *     transform(chunk, controller) {
- *       if (chunk % 3 === 0) controller.enqueue(chunk);
- *     }
- *   })
- * ).subscribe(console.log); // Output: 6
- * ```
- *
- * Compare to arrays:
- * ```ts
- * [1, 2, 3, 4]
- *  .map(x => x * 2)
- *  .filter(x => x % 3 === 0)
- *  .forEach(console.log); // [2, 4, 8]
- * ```
- *
- * Of course, no one wants to write operators from scratch every time.
- * So we provide some core operations via basic familiar operators,
- * plus error handling utilities to make your pipelines robust.
- *
- * Aka, `map`, `filter`, `reduce`, `batch`, `catchErrors`, `ignoreErrors`, and more.
- * So really the example above becomes:
- * ```ts
- * pipe(
- *   Observable.from([1, 2, 3, 4]),
- *   map(x => x * 2),
- *   filter(x => x % 3 === 0)
- * ).subscribe(console.log); // Output: 2, 4, 8
- * ```
- *
- * The example is not ideal given arrays have functions for this already,
- * but you get the idea. It's meant more for streams of data that arrive over time.
- *
- * ## Error Handling: Real-World Data is Messy
- *
- * Real-world data is messy. Sometimes things go wrong aka, maybe a chunk is malformed, or a network
- * request fails. Our operators let you choose how to handle errors, with four modes:
- *
- * - `"pass-through"` (default): Errors become special values in the stream, so you can handle them downstream. Imagine almost like bubble wrap over error since they are dangerous allowing us to make sure we don't break the flow.
- * - `"ignore"`: Errors are silently skipped. The stream keeps going as if nothing happened. Imagine that we're basically just remove any errors from the stream while it's flowing (pretty stressful ngl).
- * - `"throw"`: The stream stops immediately on the first error. Basically start screaming bloody murder, an error has occured so everything must stop.
- * - `"manual"`: You handle all errors yourself. If you don't catch them, the stream will error. This is primarily for operators who have special error handling requirements.
- *
- * Example: parsing JSON safely
- * ```ts
- * // Pass-through: errors become ObservableError values (
- * // we basically package errors in bubble wrap which we call a ObservableError
- * const safeParse = createOperator({
- *   errorMode: "pass-through",
- *   transform(chunk, controller) {
- *     controller.enqueue(JSON.parse(chunk));
- *   }
- * });
- *
- * // Ignore: errors are dropped
- * const ignoreParse = createOperator({
- *   errorMode: "ignore",
- *   transform(chunk, controller) {
- *     controller.enqueue(JSON.parse(chunk));
- *   }
- * });
- *
- * // Throw: stream stops on first error
- * const strictParse = createOperator({
- *   errorMode: "throw",
- *   transform(chunk, controller) {
- *     controller.enqueue(JSON.parse(chunk));
- *   }
- * });
- * ```
- *
- * Compare to native TransformStream error handling:
- * ```ts
- * // Native: you must handle errors yourself
- * const stream = new TransformStream({
- *   transform(chunk, controller) {
- *     try {
- *       controller.enqueue(JSON.parse(chunk));
- *     } catch (err) {
- *       controller.error(err); // This kills the stream
- *     }
- *   }
- * });
- * ```
- *
- * ## Stateful Operators: Remembering Across Chunks
- *
- * Sometimes you need to keep track of things as data flows through, like running totals,
- * buffers, or windows. Your `createStatefulOperator` lets you do this easily:
- *
- * ```ts
- * // Running sum
- * const runningSum = createStatefulOperator({
- *   createState: () => ({ sum: 0 }),
- *   transform(chunk, state, controller) {
- *     state.sum += chunk;
- *     controller.enqueue(state.sum);
- *   }
+ * const double = createOperator<number, number>({
+ *   name: 'double',
+ *   transform(value, controller) {
+ *     controller.enqueue(value * 2);
+ *   },
  * });
  *
  * pipe(
  *   Observable.from([1, 2, 3]),
- *   runningSum
- * ).subscribe(console.log); // Output: 1, 3, 6
+ *   double,
+ * ).subscribe(console.log);
+ * // 2, 4, 6
  * ```
  *
- * Native TransformStream can't do this as cleanly, you'd have to manage state outside the stream,
- * which gets messy, error-prone and annoying real quick.
+ * @example Recovering from bad JSON without stopping the stream
+ * ```ts
+ * const parseJson = createOperator<string, unknown>({
+ *   name: 'parseJson',
+ *   errorMode: 'pass-through',
+ *   transform(value, controller) {
+ *     controller.enqueue(JSON.parse(value));
+ *   },
+ * });
  *
- * ## Performance and Memory
+ * pipe(
+ *   Observable.from(['{"ok":true}', 'bad json', '{"ok":false}']),
+ *   parseJson,
+ *   catchErrors({ ok: null }),
+ * ).subscribe(console.log);
+ * ```
  *
- * - **Hot path optimization**: The error handling logic is generated for each operator,
- *   so there are no runtime branches inside your data processing loop.
- * - **Memory safety**: Only the functions and state you need are kept alive; everything else
- *   can be garbage collected.
- * - **Streams scale**: You can process gigabytes of data with minimal RAM, and your operators
- *   work just as well for infinite streams as for arrays (though arrays have better performance through
- *   their built-in `filter`, `map`, `forEach`, etc..., methods).
+ * @example Keeping state per subscription
+ * ```ts
+ * const runningSum = createStatefulOperator<number, number, { sum: number }>({
+ *   name: 'runningSum',
+ *   createState: () => ({ sum: 0 }),
+ *   transform(value, state, controller) {
+ *     state.sum += value;
+ *     controller.enqueue(state.sum);
+ *   },
+ * });
  *
- * ## Summary
- *
- * - Operators are like `Array.map`/`filter`, but for async streams of data.
- * - You can build pipelines that transform, filter, buffer, or combine data.
- * - Error handling is flexible and explicit.
- * - Streams make your code scalable and memory-efficient.
- * - State is easy to manage for advanced use cases.
- * - The helpers make working with streams as easy as working with arrays.
+ * pipe(
+ *   Observable.from([1, 2, 3]),
+ *   runningSum,
+ * ).subscribe(console.log);
+ * // 1, 3, 6
+ * ```
  *
  * @module
  */
