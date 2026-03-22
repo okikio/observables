@@ -1,3 +1,16 @@
+# [1.4.0](https://github.com/okikio/observables/compare/v1.3.0...v1.4.0) (2026-03-22)
+
+
+### Bug Fixes
+
+* improve subscription handling with early abort detection and cleanup ([ecd1dcc](https://github.com/okikio/observables/commit/ecd1dcc7a9c50788d81308d7e6c7525409ff3532))
+
+
+### Features
+
+* add forEach method to Observable class with detailed usage and behavior notes ([bd839e6](https://github.com/okikio/observables/commit/bd839e6e5b04f219bd66fae8df3e0dc4beca5e60))
+* enhance observableInputToStream with improved error handling and subscription management ([c3c392e](https://github.com/okikio/observables/commit/c3c392eca34b9c82fc42504e6822fb8c06ddb404))
+
 # [1.3.0](https://github.com/okikio/observables/compare/v1.2.0...v1.3.0) (2026-03-21)
 
 
