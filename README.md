@@ -69,6 +69,19 @@ sending values until you tell it to stop, where a Promise gives you one value
 eventually, an Observable can give you many values over time: mouse clicks,
 search results, chat messages, sensor readings.
 
+One mental model helps before anything else:
+
+```text
+async source -> Observable -> operator pipeline -> consumer
+
+clicks       ->              filter()            -> subscribe(...)
+search text  ->              debounce()          -> forEach(...)
+websocket    ->              map()               -> for await ... of
+```
+
+The source produces values over time. Operators reshape or coordinate them.
+The consumer decides how to react to them.
+
 If you've ever built a web app, you know this all too well: user clicks, API
 responses, WebSocket messages, timers, file uploads, they all arrive at
 different times and need different handling. Before Observables, we'd all end up
@@ -375,14 +388,12 @@ for await (
 
 ### Behavior Notes and Differences
 
-This package stays close to the TC39 Observable proposal, but a few deliberate
-choices matter when you compare it with raw proposal examples, RxJS,
-`zen-observable`, or handwritten `TransformStream` code.
+A few behavior choices matter when you compare this API with raw proposal
+examples, RxJS, `zen-observable`, or handwritten `TransformStream` code.
 
 - Operators are exported, tree-shakeable pipeline stages. Instead of prototype
   helpers such as `observable.map(...)`, use
-  `pipe(source, map(...), filter(...))`. There is no instance
-  `observable.forEach()` today.
+  `pipe(source, map(...), filter(...))`.
 - `subscribe(observer)` is still the baseline API, but the package also accepts
   `subscribe(next, error?, complete?)` and `subscribe(..., { signal })` for
   direct `AbortSignal` cancellation.
@@ -401,11 +412,6 @@ choices matter when you compare it with raw proposal examples, RxJS,
 - `pipe()` is stream-backed and supports up to 19 operators per call. Split
   longer pipelines into named helpers if a single chain starts fighting the type
   system.
-
-If you land in the generated API docs, start with the package root docs for the
-high-level contract, then read `Observable`, `pipe()`, and the built-in
-operators in that order. The README is the quick refresher. The root TSDoc is
-the more complete behavioral reference.
 
 For a fuller comparison against RxJS and `zen-observable`, see
 [docs/observable-comparison-matrix.md](./docs/observable-comparison-matrix.md).
