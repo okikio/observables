@@ -1,19 +1,23 @@
 /**
- * Timing operators control when values are allowed to move downstream.
+ * Timing operators change when values move downstream.
  *
- * Use them for UI and network patterns where time is the real problem: wait for
- * typing to stop, limit bursty input, delay retries, or fail work that takes
- * too long.
- *
- * They do not mainly change the value. They change the schedule around the
- * value.
+ * They are for situations where the value is already fine, but the schedule is
+ * wrong: typing is too noisy, scroll events are too fast, or a request took too
+ * long to be useful.
  *
  * ```text
- * source event -> wait, delay, throttle, or expire -> next stage
+ * source value -> wait, delay, throttle, or expire -> next stage
  * ```
  *
- * That makes them useful for preventing stale requests, noisy event bursts, and
- * accidental overload on slower consumers.
+ * The easiest way to compare the most common timing operators is by their
+ * timeline behavior:
+ *
+ * ```text
+ * source:     a-b-c------d-
+ * delay(3):   ---abc-----d-
+ * debounce:   --------c---d
+ * throttle:   a---c------d-
+ * ```
  *
  * @module
  */
@@ -22,39 +26,11 @@ import { createOperator, createStatefulOperator } from "../operators.ts";
 import { isObservableError, ObservableError } from "../../error.ts";
 
 /**
- * Delays each item in the stream by a specified number of milliseconds.
+ * Waits once, then releases the buffered values and continues in the original
+ * spacing.
  *
- * This operator shifts the entire stream of events forward in time, preserving
- * the relative time between them.
- *
- * > Note: This does not delay error emissions. If an error occurs, it will
- * > be emitted immediately, regardless of the delay.
- *
- * @example
- * ```ts
- * import { pipe, delay, from } from "./helpers/mod.ts";
- *
- * // No direct Array equivalent, as it's about timing.
- *
- * // Stream behavior
- * const sourceStream = from([1, 2, 3]);
- * const delayedStream = pipe(sourceStream, delay(1000));
- * // Emits 1 (after 1s), then 2 (immediately after), then 3 (immediately after).
- * ```
- *
- * ## Practical Use Case
- *
- * Use `delay` to simulate network latency in tests, or to introduce a small
- * pause in a UI animation sequence to make it feel more natural.
- *
- * ## Key Insight
- *
- * `delay` is about shifting the timeline of events, not about pausing between
- * them. It's a simple way to control when a stream begins to emit its values.
- *
- * @typeParam T - Type of values from the source stream
- * @param ms - The delay duration in milliseconds
- * @returns A stream operator that delays each value
+ * Use it when the whole stream should start later, such as aligning an
+ * animation sequence or simulating startup latency.
  */
 export function delay<T>(
   ms: number,
@@ -142,39 +118,10 @@ export function delay<T>(
 }
 
 /**
- * Delays each individual item by a specified number of milliseconds.
+ * Delays each value independently by the same amount.
  *
- * This operator delays every item independently, preserving the relative
- * spacing between them while shifting each one forward by the same amount.
- * Think of it as "adding X milliseconds to each item's timestamp."
- *
- * > Note: This does not delay error emissions. If an error occurs, it will
- * > be emitted immediately, regardless of the delay.
- *
- * @example
- * ```ts
- * import { pipe, delayEach, from } from "./helpers/mod.ts";
- *
- * // Stream behavior
- * const sourceStream = from([1, 2, 3]); // Items at T+0, T+100, T+200
- * const delayedStream = pipe(sourceStream, delayEach(1000));
- * // Emits 1 (at T+1000), 2 (at T+1100), 3 (at T+1200)
- * ```
- *
- * ## Practical Use Case
- *
- * Use `delayEach` to simulate processing time for each item, or to add
- * consistent lag to every operation (useful for testing race conditions
- * or simulating network latency per request).
- *
- * ## Key Insight
- *
- * `delayEach` maintains the original spacing between items while shifting
- * each one. For delaying the entire stream timeline, use `delay` instead.
- *
- * @typeParam T - Type of values from the source stream
- * @param ms - The delay duration in milliseconds for each item
- * @returns A stream operator that delays each value individually
+ * Unlike `delay()`, which waits once for the whole stream, `delayEach()` acts
+ * as if each value carries its own timer.
  */
 export function delayEach<T>(
   ms: number,
@@ -232,40 +179,10 @@ export function delayEach<T>(
 }
 
 /**
- * Emits only the latest item after a specified period of inactivity.
+ * Waits for a quiet period, then emits only the latest value.
  *
- * This is the "search bar" operator. It waits for the user to stop typing
- * before firing off a search query.
- *
- * > Note: This operator does not delay error emissions. If an error occurs,
- * > it will be emitted immediately, regardless of the debounce period.
- *
- * @example
- * ```ts
- * import { pipe, debounce, from } from "./helpers/mod.ts";
- *
- * // No direct Array equivalent.
- *
- * // Stream behavior
- * const inputStream = from(["a", "ab", "abc"]); // User typing quickly
- * const debouncedStream = pipe(inputStream, debounce(300));
- * // After 300ms of no new input, it will emit "abc".
- * ```
- *
- * ## Practical Use Case
- *
- * Use `debounce` for any event that fires rapidly, but you only care about the
- * final value, such as search inputs, window resize events, or auto-saving
- * form fields.
- *
- * ## Key Insight
- *
- * `debounce` filters out noise from rapid-fire events, ensuring that expensive
- * operations (like API calls) are only triggered when necessary.
- *
- * @typeParam T - Type of values from the source stream
- * @param ms - The debounce duration in milliseconds
- * @returns A stream operator that debounces values
+ * Search inputs are the familiar example: every keystroke matters to the UI,
+ * but only the final paused value should trigger the fetch.
  */
 export function debounce<T>(
   ms: number,
@@ -333,38 +250,10 @@ export function debounce<T>(
 }
 
 /**
- * Limits the stream to emit at most one item per specified time interval.
+ * Emits at most one value per time window, while keeping the latest queued
+ * value for the next allowed slot.
  *
- * This is the "scroll event" operator. It ensures that even if an event fires
- * hundreds of times per second, you only handle it at a manageable rate.
- *
- * @example
- * ```ts
- * import { pipe, throttle, from } from "./helpers/mod.ts";
- *
- * // No direct Array equivalent.
- *
- * // Stream behavior
- * const scrollStream = from([10, 20, 50, 100, 150]); // Scroll events
- * const throttledStream = pipe(scrollStream, throttle(100));
- * // Emits 10 immediately, then waits 100ms before being able to emit again.
- * // If 150 is the last value, it will be emitted after the throttle window.
- * ```
- *
- * ## Practical Use Case
- *
- * Use `throttle` for high-frequency events where you need to guarantee a
- * regular sampling of the data, such as scroll position tracking, mouse
- * movement, or real-time data visualization.
- *
- * ## Key Insight
- *
- * `throttle` guarantees a steady flow of data, unlike `debounce` which waits
- * for silence. It's about rate-limiting, not just handling the final value.
- *
- * @typeParam T - Type of values from the source stream
- * @param ms - The throttle duration in milliseconds
- * @returns A stream operator that throttles values
+ * Scroll, resize, and pointer-move handlers are the familiar examples.
  */
 export function throttle<T>(
   ms: number,
@@ -449,47 +338,10 @@ export function throttle<T>(
 }
 
 /**
- * Errors if an item takes too long to be processed.
+ * Fails a promise-like chunk when it takes longer than the allowed time.
  *
- * This operator passes normal synchronous values through immediately, but when
- * an upstream operator emits a promise-like chunk it waits for that chunk to
- * settle and races it against a timer. If the promise-like chunk does not
- * resolve before the timer finishes, it emits an `ObservableError` instead.
- *
- * The implementation uses an async transform so Web Streams backpressure keeps
- * later chunks from overtaking the timed chunk. In practice that means operator
- * chains still stay ordered: each promise-like chunk either resolves to a value
- * or times out before the next chunk is processed.
- *
- * @example
- * ```ts
- * import { pipe, timeout, from } from "./helpers/mod.ts";
- *
- * // Stream behavior
- * const sourceStream = from([
- *   new Promise(res => setTimeout(() => res(1), 100)),
- *   new Promise(res => setTimeout(() => res(2), 2000))
- * ]);
- *
- * const timedStream = pipe(sourceStream, timeout(1000));
- * // Emits 1, then emits an error because the second promise took too long.
- * ```
- *
- * ## Practical Use Case
- *
- * Use `timeout` to enforce Service Level Agreements (SLAs) on asynchronous
- * operations, such as API calls. If a request takes too long, you can gracefully
- * handle the timeout instead of letting your application hang.
- *
- * ## Key Insight
- *
- * `timeout` is a crucial tool for building resilient systems that can handle
- * slow or unresponsive dependencies. It turns an indefinite wait into a
- * predictable failure.
- *
- * @typeParam T The type of data in the stream.
- * @param ms The timeout duration in milliseconds.
- * @returns An operator that enforces a timeout on each item.
+ * This is useful for streams of async work where hanging forever is worse than
+ * handling a timeout explicitly.
  */
 export function timeout<T>(
   ms: number,
