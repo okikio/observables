@@ -1,17 +1,16 @@
 /**
  * Error operators decide what should happen after a stage fails.
  *
- * In pass-through mode, a thrown error does not have to end the whole pipeline
- * immediately. It can travel downstream as an `ObservableError` value instead.
- * These operators are the place where that wrapped failure becomes a real
- * policy decision: drop it, replace it, log it, summarize it, or throw it.
+ * In pass-through mode, a thrown error can keep moving downstream as an
+ * `ObservableError` value.
  *
  * ```text
- * source value -> stage throws -> ObservableError -> error operator -> next step
+ * ordinary value -> map() -> filter() -> consumer
+ * thrown error   -> ObservableError -> catchErrors()/ignoreErrors()/throwErrors()
  * ```
  *
- * That separation lets data operators stay simple while recovery logic stays
- * explicit.
+ * These operators decide what should happen next: drop the failure, replace
+ * it, inspect it, count it, or throw it.
  *
  * @module
  */
@@ -20,37 +19,21 @@ import { isObservableError, ObservableError } from "../../error.ts";
 import { createOperator, createStatefulOperator } from "../operators.ts";
 
 /**
- * Removes all errors from the stream, keeping only successful data.
+ * Removes wrapped failures and keeps only successful values.
  *
- * Like a filter that only allows non-error values to pass. It's a simple way
- * to clean up a stream when you don't need to handle failures.
- *
- * @example
+ * @example Drop failed values
  * ```ts
- * import { pipe, ignoreErrors, from } from "./helpers/mod.ts";
+ * import { ObservableError, from, ignoreErrors, pipe } from "./helpers/mod.ts";
  *
- * // Array behavior (conceptual)
- * const mixedData = [1, new Error("fail"), 2, 3];
- * const goodData = mixedData.filter(item => !(item instanceof Error)); // [1, 2, 3]
+ * const sourceStream = from([
+ *   1,
+ *   ObservableError.from(new Error("fail"), "example"),
+ *   2,
+ *   3,
+ * ]);
  *
- * // Stream behavior
- * const sourceStream = from([1, new ObservableError("fail"), 2, 3]);
- * const cleanStream = pipe(sourceStream, ignoreErrors()); // Emits 1, 2, 3
+ * const cleanStream = pipe(sourceStream, ignoreErrors());
  * ```
- *
- * ## Practical Use Case
- *
- * Use `ignoreErrors` when processing a batch of items where some failures are
- * expected and acceptable. For example, fetching a list of URLs where some
- * might be broken. You only want to process the ones that work.
- *
- * ## Key Insight
- *
- * `ignoreErrors` provides a "fire-and-forget" approach to error handling. It's
- * useful for non-critical tasks or when partial success is sufficient.
- *
- * @template T The type of good data in your stream
- * @returns A stream operator that silently removes all errors
  */
 export function ignoreErrors<T>(): Operator<
   T | ObservableError,
@@ -61,53 +44,24 @@ export function ignoreErrors<T>(): Operator<
     errorMode: "ignore",
     transform(chunk, controller) {
       controller.enqueue(chunk as ExcludeError<T>);
-      // Errors are silently dropped
     },
   });
 }
 
 /**
- * Replaces any error in the stream with a fallback value.
+ * Replaces each wrapped failure with a fallback value.
  *
- * Like a `try...catch` block for each item in a stream, but instead of just
- * handling the error, you provide a default value to take its place.
- *
- * @example
+ * @example Fall back to a default value
  * ```ts
- * import { pipe, catchErrors, from } from "./helpers/mod.ts";
+ * import { ObservableError, catchErrors, from, pipe } from "./helpers/mod.ts";
  *
- * // Conceptual equivalent
- * function process(item) {
- *   try {
- *     if (item instanceof Error) throw item;
- *     return item;
- *   } catch {
- *     return "default";
- *   }
- * }
- * const results = [1, new Error("fail")].map(process); // [1, "default"]
+ * const sourceStream = from([
+ *   1,
+ *   ObservableError.from(new Error("fail"), "example"),
+ * ]);
  *
- * // Stream behavior
- * const sourceStream = from([1, new ObservableError("fail")]);
- * const safeStream = pipe(sourceStream, catchErrors("default")); // Emits 1, "default"
+ * const safeStream = pipe(sourceStream, catchErrors("default"));
  * ```
- *
- * ## Practical Use Case
- *
- * Use `catchErrors` to provide a default state or value when an operation
- * fails. For example, if fetching a user's profile fails, you could return a
- * default "Guest" profile instead of letting the error propagate.
- *
- * ## Key Insight
- *
- * `catchErrors` ensures your stream continues with a predictable structure,
- * even when individual operations fail. It maintains the flow of data by
- * substituting errors with safe, default values.
- *
- * @template T The type of data in your stream.
- * @template R The type of the fallback value.
- * @param fallback The value to use whenever an error occurs.
- * @returns A stream operator that replaces errors with a fallback value.
  */
 export function catchErrors<T, R>(
   fallback: R,
@@ -126,48 +80,26 @@ export function catchErrors<T, R>(
 }
 
 /**
- * Transforms errors into custom values using a mapping function.
+ * Turns each wrapped failure into a new value.
  *
- * This is a more powerful version of `catchErrors`. Instead of a single
- * fallback, you can inspect each error and decide what to replace it with.
- *
- * @example
+ * @example Map failures to status objects
  * ```ts
- * import { pipe, mapErrors, from } from "./helpers/mod.ts";
+ * import { ObservableError, from, mapErrors, pipe } from "./helpers/mod.ts";
  *
- * // Stream behavior
  * const sourceStream = from([
  *   1,
- *   new ObservableError("Not Found"),
- *   new ObservableError("Server Error")
+ *   ObservableError.from(new Error("Not Found"), "lookup"),
+ *   ObservableError.from(new Error("Server Error"), "lookup"),
  * ]);
  *
  * const handledStream = pipe(
  *   sourceStream,
- *   mapErrors(err => {
+ *   mapErrors((err) => {
  *     if (err.message === "Not Found") return { status: 404 };
  *     return { status: 500 };
- *   })
+ *   }),
  * );
- * // Emits 1, { status: 404 }, { status: 500 }
  * ```
- *
- * ## Practical Use Case
- *
- * Use `mapErrors` to convert different types of errors into meaningful data.
- * For example, a "Not Found" error could be mapped to `null`, while a "Server
- * Error" could be mapped to an object that triggers a retry mechanism.
- *
- * ## Key Insight
- *
- * `mapErrors` treats errors as data. It allows you to create a resilient
- * stream that can intelligently respond to different failure modes without
- * stopping.
- *
- * @template T The type of successful data in your stream.
- * @template E The type your errors will be mapped to.
- * @param errorMapper A function that receives an error and returns a new value.
- * @returns A stream operator that transforms errors.
  */
 export function mapErrors<T, E>(
   errorMapper: (error: ObservableError) => E,
@@ -203,33 +135,20 @@ export function mapErrors<T, E>(
 }
 
 /**
- * Keeps only the errors from the stream, discarding successful data.
+ * Keeps only wrapped failures and drops successful values.
  *
- * This is the inverse of `ignoreErrors`. It's useful for creating a dedicated
- * error-handling pipeline.
- *
- * @example
+ * @example Split failures into their own stream
  * ```ts
- * import { pipe, onlyErrors, from } from "./helpers/mod.ts";
+ * import { ObservableError, from, onlyErrors, pipe } from "./helpers/mod.ts";
  *
- * // Stream behavior
- * const sourceStream = from([1, new ObservableError("fail"), 2]);
- * const errorStream = pipe(sourceStream, onlyErrors()); // Emits ObservableError("fail")
+ * const sourceStream = from([
+ *   1,
+ *   ObservableError.from(new Error("fail"), "example"),
+ *   2,
+ * ]);
+ *
+ * const errorStream = pipe(sourceStream, onlyErrors());
  * ```
- *
- * ## Practical Use Case
- *
- * Use `onlyErrors` to separate the error stream from the data stream. You can
- * then log these errors, send them to a monitoring service, or trigger alerts
- * without interfering with the main data processing flow.
- *
- * ## Key Insight
- *
- * `onlyErrors` allows you to create a side-channel for failures, enabling
- * robust monitoring and debugging.
- *
- * @template T The type of data in the source stream.
- * @returns An operator that filters for errors.
  */
 export function onlyErrors<T>(): Operator<
   T | ObservableError,
@@ -242,41 +161,26 @@ export function onlyErrors<T>(): Operator<
       if (isObservableError(chunk)) {
         controller.enqueue(chunk);
       }
-      // Good data is discarded
     },
   });
 }
 
 /**
- * Summarizes the stream into a final count of successes and errors.
+ * Counts how many values succeeded and how many failed.
  *
- * This operator waits for the stream to complete and then emits a single
- * object with the total counts.
- *
- * @example
+ * @example Build a final summary
  * ```ts
- * import { pipe, summarizeErrors, from } from "./helpers/mod.ts";
+ * import { ObservableError, from, pipe, summarizeErrors } from "./helpers/mod.ts";
  *
- * // Stream behavior
- * const sourceStream = from([1, new ObservableError("fail"), 2, 3]);
+ * const sourceStream = from([
+ *   1,
+ *   ObservableError.from(new Error("fail"), "example"),
+ *   2,
+ *   3,
+ * ]);
+ *
  * const summary = await pipe(sourceStream, summarizeErrors()).toPromise();
- * // { successCount: 3, errorCount: 1, totalProcessed: 4, successRate: 0.75 }
  * ```
- *
- * ## Practical Use Case
- *
- * Use `summarizeErrors` at the end of a batch processing job to get a report
- * on how many items were processed successfully and how many failed. This is
-
- * useful for logging, monitoring, and generating reports.
- *
- * ## Key Insight
- *
- * `summarizeErrors` is a terminal operator that provides a high-level overview
- * of a stream's health and completeness.
- *
- * @template T The type of data in the source stream.
- * @returns An operator that emits a summary of successes and errors.
  */
 export function summarizeErrors<T>(): Operator<T | ObservableError, {
   successCount: number;
@@ -313,38 +217,22 @@ export function summarizeErrors<T>(): Operator<T | ObservableError, {
 }
 
 /**
- * Performs a side effect for each error without modifying the stream.
+ * Runs side effects for failures without changing the stream.
  *
- * Like `Array.prototype.forEach` but only for errors. It's useful for logging
- * or debugging without altering the data flow.
- *
- * @example
+ * @example Log each failure and keep going
  * ```ts
- * import { pipe, tapError, from } from "./helpers/mod.ts";
+ * import { ObservableError, from, pipe, tapError } from "./helpers/mod.ts";
  *
- * // Stream behavior
- * const sourceStream = from([1, new ObservableError("fail")]);
+ * const sourceStream = from([
+ *   1,
+ *   ObservableError.from(new Error("fail"), "example"),
+ * ]);
+ *
  * const tappedStream = pipe(
  *   sourceStream,
- *   tapError(err => console.error("Found an error:", err))
+ *   tapError((err) => console.error("Found an error:", err)),
  * );
- * // Logs the error, then emits 1 and the error object.
  * ```
- *
- * ## Practical Use Case
- *
- * Use `tapError` to log errors to the console or a monitoring service as they
- * happen, without stopping or changing the stream. This is invaluable for
- * real-time debugging.
- *
- * ## Key Insight
- *
- * `tapError` gives you a window into the stream's errors without affecting the
- * stream itself.
- *
- * @template T The type of data in the stream.
- * @param sideEffect A function to call for each error.
- * @returns An operator that performs a side effect on errors.
  */
 export function tapError<T>(
   sideEffect: (error: ObservableError) => void,
@@ -367,44 +255,30 @@ export function tapError<T>(
 }
 
 /**
- * Throws an error if it encounters one in the stream.
+ * Throws as soon as a wrapped failure appears.
  *
- * This operator is useful for enforcing strict error handling. If an error is
- * encountered, it will throw immediately, stopping the iteration.
- *
- * @example
+ * @example Stop on the first failure
  * ```ts
- * import { pipe, throwErrors, from } from "./helpers/mod.ts";
+ * import { ObservableError, from, pipe, throwErrors } from "./helpers/mod.ts";
  *
- * // Stream behavior
- * const sourceStream = from([1, new ObservableError("fail"), 2]);
+ * const sourceStream = from([
+ *   1,
+ *   ObservableError.from(new Error("fail"), "example"),
+ *   2,
+ * ]);
+ *
  * const throwingStream = pipe(sourceStream, throwErrors());
  *
  * for await (const item of throwingStream) {
- *   console.log(item); // Will log 1, then throw on "fail"
+ *   console.log(item);
  * }
  * ```
- *
- * ## Practical Use Case
- *
- * Use `throwErrors` when you want to ensure that any error in the stream is
- * treated as a critical failure. This is useful in scenarios where errors must
- * be handled immediately and cannot be ignored.
- *
- * ## Key Insight
- *
- * `throwErrors` provides a way to enforce strict error handling in streams,
- * ensuring that no errors go unnoticed.
- *
- * @template T The type of data in the stream.
- * @returns An operator that throws on errors.
  */
 export function throwErrors<T>(): Operator<T | ObservableError, T> {
   return createOperator({
     name: "throwErrors",
     errorMode: "throw",
     transform(chunk, controller) {
-      // If it's an error, this will automatically throw due to errorMode: "throw"
       controller.enqueue(chunk as T);
     },
   });
