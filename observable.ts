@@ -6,46 +6,11 @@
  * operations. Think of it as a **multi‑value Promise** that keeps sending
  * values until you tell it to stop.
  *
- * ## Why This Exists
- * Apps juggle many async sources, mouse clicks, HTTP requests, timers,
+ * Meant to help with juggling many async sources, mouse clicks, HTTP requests, timers,
  * WebSockets, file watchers. Before Observables you glued those together with a
  * mish‑mash of callbacks, Promises, `EventTarget`s and async iterators, each
  * with different rules for cleanup and error handling. **Observables give you
  * one mental model** for subscription → cancellation → propagation → teardown.
- *
- * ## ✨ Feature Highlights
- * - **Unified push + pull** – use callbacks *or* `for await … of` on the same
- *   stream.
- * - **Cold by default** – each subscriber gets an independent execution (great
- *   for predictable side‑effects).
- * - **Deterministic teardown** – return a function/`unsubscribe`/`[Symbol.dispose]`
- *   and it *always* runs once, even if the observable errors synchronously.
- * - **Back‑pressure helper** – `pull()` converts to an `AsyncGenerator` backed
- *   by `ReadableStream` so the producer slows down when the consumer lags.
- * - **Tiny surface** – <1 kB min+gzip of logic; treeshakes cleanly.
- *
- * ## Error Propagation Policy
- * 1. **Local catch** – If your observer supplies an `error` callback, **all**
- *    upstream errors funnel there.
- * 2. **Unhandled‑rejection style** – If no `error` handler is provided the
- *    exception is re‑thrown on the micro‑task queue (same timing semantics as
- *    an unhandled Promise rejection).
- * 3. **Observer callback failures** – Exceptions thrown inside `next()` or
- *    `complete()` are routed to `error()` if present, otherwise bubble as in
- *    (2).
- * 4. **Errors inside `error()`** – A second‑level failure is *always* queued to
- *    the micro‑task queue to avoid infinite recursion.
- *
- * ## Edge‑Cases & Gotchas
- * - `subscribe()` can synchronously call `complete()`/`error()` and still have
- *   its teardown captured – **ordering is guaranteed**.
- * - Subscribing twice to a *cold* observable triggers two side‑effects (e.g.
- *   two HTTP requests). Share the source if you want fan‑out.
- * - Infinite streams leak unless you call `unsubscribe()` or wrap them in a
- *   `using` block.
- * - The helper `pull()` encodes thrown errors as `ObservableError` *values* so
- *   buffered items are not lost – remember to `instanceof` check if you rely
- *   on it.
  *
  * @example Common Patterns
  * ```ts
@@ -75,167 +40,63 @@
  * });
  * ```
  *
- * @example Basic subscription:
- * ```ts
- * import { Observable } from './observable.ts';
+ * That makes Observables a good fit for UI events, timers, socket messages,
+ * file watchers, and any workflow where starting, stopping, and cleaning up
+ * are part of the job.
  *
- * // Emit 1,2,3 then complete
- * const subscription = Observable.of(1, 2, 3).subscribe({
- *   start(sub) { console.log('Subscribed'); },
- *   next(val)  { console.log('Value:', val); },
- *   complete() { console.log('Complete'); }
- * });
+ * By default, each `subscribe()` call starts fresh work for that subscriber.
+ * If you subscribe twice to a fetch-like Observable, you usually get two
+ * separate fetches unless you choose to share the source.
  *
- * // Cancel manually if needed
- * subscription.unsubscribe();
- * ```
- *
- * @example Resource-safe usage with `using` statement:
- * ```ts
- * import { Observable } from './observable.ts';
- *
- * {
- *   using subscription = Observable.of(1, 2, 3).subscribe({
- *     next(val) { console.log('Value:', val); }
- *   });
- *
- *   // Code that uses the subscription
- *   doSomething();
- *
- * } // Subscription automatically unsubscribed at block end
- * ```
- *
- * @example Simple async iteration:
- * ```ts
- * import { Observable } from './observable.ts';
- *
- * (async () => {
- *   for await (const x of Observable.of('a', 'b', 'c')) {
- *     console.log(x);
- *   }
- * })();
- * ```
- *
- * @example Pull with backpressure:
- * ```ts
- * import { Observable } from './observable.ts';
- *
- * const nums = Observable.from([1,2,3,4,5]);
- * (async () => {
- *   for await (const n of nums.pull({ strategy: { highWaterMark: 2 } })) {
- *     console.log('Pulled:', n);
- *     await new Promise(r => setTimeout(r, 1000)); // Slow consumer
- *   }
- * })();
- * ```
- *
- * ## Spec Compliance & Notable Deviations
- * | Area                       | Proposal Behaviour                     | This Library                                                                            |
- * |----------------------------|----------------------------------------|-----------------------------------------------------------------------------------------|
- * | `subscribe` parameters     | Only **observer object**               | Adds `(next, error?, complete?)` triple‑param overload.                                 |
- * | Teardown shape             | Function or `{ unsubscribe() }`        | Also honours `[Symbol.dispose]` **and** `[Symbol.asyncDispose]`.                        |
- * | Pull‑mode iteration        | *Not in spec*                          | `pull()` helper returns an `AsyncGenerator` with `ReadableStream`‑backed back‑pressure. |
- * | Error propagation in pull  | Stream **error** ends iteration        | Error encoded as `ObservableError` value so buffered items drain first.                 |
- * | `Symbol.toStringTag`       | Optional                               | Provided for `Observable` and `SubscriptionObserver`.                                   |
- *
- * Anything not listed above matches the TC39 draft (**May 2025**).
- *
- * ## Lifecycle State Machine
  * ```text
- * (inactive) --subscribe()--> [  active  ]
- *     ^                         |  next()
- *     |   unsubscribe()/error() |  complete()
- *     |<------------------------|  (closed)
- * ```
- * *Teardown executes exactly once on the leftward arrow.*
- *
- * @example Type‑Parameter Primer
- * ```ts
- * Observable<number>                     // counter
- * Observable<Response>                   // fetch responses
- * Observable<{x:number;y:number}>        // mouse coords
- * Observable<never>                      // signal‑only (no payload)
- * Observable<string | ErrorPayload>      // unions are fine
+ * source setup -> subscribe() -> next(value) ... -> complete()
+ *                         |             |
+ *                         |             -> error(error)
+ *                         -> unsubscribe()
  * ```
  *
- * @example Interop Cheat‑Sheet
+ * Cleanup runs once when the subscription completes, fails, or is cancelled,
+ * even if the source finishes right away during setup.
+ *
+ * Read operator pipelines the same way you read array pipelines:
+ * `pipe(source, map(...), filter(...))` is the time-based version of
+ * `array.map(...).filter(...)`.
+ *
+ * @example Turning DOM events into a stream
  * ```ts
- * // Promise → Observable (single value then complete)
- * Observable.from(fetch("/api"));
- *
- * // Observable → async iterator (back‑pressure aware)
- * for await (const chunk of obs) {
- *   processChunk(chunk);
- * }
- *
- * // Observable → Promise (first value only)
- * const first = (await obs.pull().next()).value;
- * ```
- *
- * ## Performance Cookbook (pull())
- * | Producer speed | Consumer speed | Suggested `highWaterMark` | Notes                                   |
- * |---------------:|---------------:|--------------------------:|-----------------------------------------|
- * | 🔥 Very fast   | 🐢 Slow         | 1‑8                       | Minimal RAM; heavy throttling.          |
- * | ⚡ Fast         | 🚶 Moderate     | 16‑64 (default 64)        | Good balance for most apps.             |
- * | 🚀 Bursty      | 🚀 Bursty       | 128‑512                   | Smooths spikes at the cost of memory.   |
- *
- * ➜ If RSS climbs steadily, halve `highWaterMark`; if you’re dropping messages
- * under load, raise it (RAM permitting).
- *
- * ## Memory Management
- *
- * **Critical**: Infinite Observables need manual cleanup via `unsubscribe()` or `using` blocks
- * to prevent memory leaks. Finite Observables auto-cleanup on complete/error.
- *
- * @example Quick start - DOM events
- * ```ts
- * const clicks = new Observable(observer => {
- *   const handler = e => observer.next(e);
+ * const clicks = new Observable<MouseEvent>((observer) => {
+ *   const handler = (event: MouseEvent) => observer.next(event);
  *   button.addEventListener('click', handler);
+ *
  *   return () => button.removeEventListener('click', handler);
  * });
- *
- * using subscription = clicks.subscribe(event => console.log('Clicked!'));
+ * 
  * // Auto-cleanup when leaving scope
+ * using subscription = clicks.subscribe(event => console.log('Clicked!'));
  * ```
  *
- * @example Network with backpressure
+ * @example Building an Array-style pipeline for async values
  * ```ts
- * const dataStream = new Observable(observer => {
- *   const ws = new WebSocket('ws://api.com/live');
- *   ws.onmessage = e => observer.next(JSON.parse(e.data));
- *   ws.onerror = e => observer.error(e);
- *   return () => ws.close();
- * });
+ * const evenTens = pipe(
+ *   Observable.of(1, 2, 3, 4),
+ *   filter((value) => value % 2 === 0),
+ *   map((value) => value * 10),
+ * );
  *
- * // Consume at controlled pace
- * for await (const data of dataStream.pull({ strategy: { highWaterMark: 10 } })) {
- *   await processSlowly(data); // Producer pauses when buffer fills
+ * evenTens.subscribe(console.log);
+ * // 20
+ * // 40
+ * ```
+ *
+ * @example Pulling values at the consumer's pace
+ * ```ts
+ * const values = Observable.from([1, 2, 3, 4, 5]);
+ *
+ * for await (const value of values.pull({ strategy: { highWaterMark: 2 } })) {
+ *   console.log(value);
+ *   await new Promise((resolve) => setTimeout(resolve, 100));
  * }
  * ```
- *
- * @example Testing & Debugging Tips
- * ```ts
- * import { expect, test } from "jsr:@libs/testing@^5";
- *
- * test("emits three ticks then completes", async () => {
- *   const ticks = Observable.of(1, 2, 3);
- *   const out: number[] = [];
- *   for await (const n of ticks) out.push(n);
- *   expect(out).toEqual([1, 2, 3]);
- * });
- *
- * // Quick console probe
- * obs.subscribe(v => console.log("[OBS]", v));
- * ```
- *
- * ## FAQ
- * - **Why does my network request fire twice?** Cold observables run once per
- *   subscribe. Reuse a single subscription or share the source.
- * - **Why does `next()` throw after `complete()`?** The stream is closed; calls
- *   are ignored by design.
- * - **Memory leak on interval** ,  Infinite streams require `unsubscribe()` or
- *   `using`.
  *
  * @module
  */
@@ -250,43 +111,32 @@ import { assertObservableError, ObservableError } from "./error.ts";
 import { Symbol } from "./symbol.ts";
 
 /**
- * Teardown function returned by the *subscriber* when it needs to release
- * resources (DOM handlers, sockets…).
+ * `Teardown` describes how a subscription releases resources.
  *
- * A *teardown* function or object returned from the subscriber to release
- * resources when a subscription terminates.
+ * The subscriber can return a plain function, an object with
+ * `unsubscribe()`, or a sync/async disposable. They all mean the same thing:
+ * when the subscription closes, clean up once.
  *
- * - `() => void` – plain cleanup callback.
- * - `{ unsubscribe() }` – imperative cancel method.
- * - `{ [Symbol.dispose](): void }` – synchronous disposable.
- * - `{ [Symbol.asyncDispose](): Promise<void> }` – async disposable.
- * - `undefined | null` – nothing to clean up.
- *
- * **Timing Note**: Cleanup is captured and called **even if** `observer.error()` or
- * `observer.complete()` is called synchronously before your subscriber returns.
- *
- * @example
+ * @example Cleaning up a timer
  * ```ts
- * new Observable(observer => {
+ * new Observable<number>((observer) => {
  *   const timer = setInterval(() => observer.next(Date.now()), 1000);
- *   // Return teardown function
  *   return () => clearInterval(timer);
  * });
  * ```
  *
- * @example Multi-resource cleanup
+ * @example Cleaning up several resources together
  * ```ts
- * new Observable(observer => {
- *   const timer = setInterval(tick, 1000);
- *   const ws = new WebSocket(url);
- *   const sub = other.subscribe(observer);
+ * new Observable<string>((observer) => {
+ *   const timer = setInterval(() => observer.next('tick'), 1000);
+ *   const socket = new WebSocket(url);
  *
  *   return () => {
  *     clearInterval(timer);
- *     ws.close();
- *     sub.unsubscribe();
+ *     socket.close();
  *   };
  * });
+ * ```
  */
 export type Teardown =
   | (() => void)
@@ -298,23 +148,22 @@ export type Teardown =
   | void;
 
 /**
- * Internal state associated with each Subscription.
- * Using a dedicated state object stored in a WeakMap gives us:
- * 1. A single source of truth for subscription state
- * 2. No circular references that might leak memory
- * 3. Clean separation between public interface and internal state
+ * Internal subscription state kept outside the public `Subscription` object.
+ *
+ * Storing this in a `WeakMap` keeps the public handle small while giving close,
+ * cleanup, and abort logic one place to read and update state.
  */
 export interface StateMap<T> {
-  /** True once subscription is closed via unsubscribe, error, or complete */
+  /** Set once cancellation, completion, or error closes the subscription. */
   closed: boolean;
 
-  /** Reference to the observer; nulled on closure to prevent memory leaks */
+  /** Active observer callbacks. Cleared on close so references can be released. */
   observer: Observer<T> | null;
 
-  /** Function or object returned by subscriber; used for resource cleanup */
+  /** Cleanup returned by the subscriber body. */
   cleanup: Teardown;
 
-  /** AbortSignal's abort event handler */
+  /** Removes the linked `AbortSignal` listener when one was attached. */
   removeAbortHandler?: (() => void) | null;
 }
 
@@ -406,12 +255,12 @@ export function createSubscription<T>(
       closeSubscription(this, stateMap);
     },
 
-    // Support `using` disposal for automatic resource management
+    // Let subscriptions work with `using` for automatic cleanup.
     [Symbol.dispose]() {
       this.unsubscribe();
     },
 
-    // Support async disposal patterns
+    // Match async disposal APIs too.
     [Symbol.asyncDispose]() {
       return Promise.resolve(this.unsubscribe());
     },
@@ -859,31 +708,19 @@ export class SubscriptionObserver<T> {
 }
 
 /**
- * Observale - A push-based stream for handling async data over time.
+ * `Observable` is the main type for values that show up over time.
  *
- * **What it is**: Like a "smart Promise" that can emit multiple values and provides
- * unified patterns for resource management, error handling, and subscription lifecycle.
+ * A Promise gives you one future value. An Observable can give you many
+ * values, plus a clear way to stop listening and clean up.
  *
- * Observable is the central type in this library, representing a push-based
- * source of values that can be subscribed to. It delivers values to observers
- * and provides lifecycle guarantees around subscription and cleanup.
+ * A few rules matter most:
+ * 1. Nothing happens until `subscribe()` is called.
+ * 2. Each subscription runs its own work unless you share the source.
+ * 3. Cleanup runs when the subscription completes, fails, or is cancelled.
+ * 4. Infinite streams need `unsubscribe()` or a `using` block.
  *
- * Key guarantees:
- * 1. Lazy execution - nothing happens until `subscribe()` is called
- * 2. Multiple independent subscriptions to the same Observable
- * 3. Each subscriber executes and cleans up independently.
- * 4. Cleanups are deterministic one‑time resource disposal, the occur when subscriptions are cancelled, error or complete
- *
- * Extensions beyond the TC39 proposal:
- * - Pull API via AsyncIterable interface
- * - Using/await using support via Symbol.dispose/asyncDispose
- *
- * Gotchas:
- * - Two subscribers → two side‑effects on a cold stream.
- * - Remember to cancel infinite observables.
- * - Calling `next()` after `complete()` is a no‑op.
- * - Errors in observer callbacks go to error handler if provided, else global reporting.
- * - Synchronous completion during subscribe still captures cleanup functions.
+ * This implementation also lets you consume values with `for await` and clean
+ * up with `Symbol.dispose` or `Symbol.asyncDispose`.
  *
  * @typeParam T - Type of values emitted by this Observable
  */
@@ -895,20 +732,15 @@ export class Observable<T>
   /**
    * Creates a new Observable with the given subscriber function.
    *
-   * **Important**: This just stores your function - nothing executes until `subscribe()` is called.
-   * Think of it like writing a recipe vs actually cooking.
-   *
-   * The subscriber function is the heart of an Observable. It:
-   * 1. Is called once per subscription (not at Observable creation time)
-   * 2. Receives a SubscriptionObserver to send values through
-   * 3. Can optionally return a cleanup function or subscription
-   *
-   * Nothing happens when an Observable is created - execution only
-   * begins when subscribe() is called.
+    * Creating an Observable does not start any work. It only stores the
+    * function that should run later when someone subscribes.
+    *
+    * That function gets an observer it can send values to, and it can return
+    * cleanup logic for timers, event listeners, sockets, or other resources.
    *
    * @param subscribeFn - Function that implements the Observable's behavior
    *
-   * Your subscriber function receives a `SubscriptionObserver` to:
+  * The observer lets the source:
    * - `observer.next(value)` - Emit a value
    * - `observer.error(err)` - Emit error (terminates)
    * - `observer.complete()` - Signal completion (terminates)
@@ -965,11 +797,10 @@ export class Observable<T>
   }
 
   /**
-   * Returns this Observable (required for interoperability).
-   *
-   * This method implements the TC39 Symbol.observable protocol,
-   * which allows foreign Observable implementations to recognize
-   * and interoperate with this implementation.
+    * Returns this Observable from `[Symbol.observable]()`.
+    *
+    * Other libraries use this method to treat the instance as an Observable-like
+    * source.
    *
    * @returns This Observable instance
    */
@@ -980,31 +811,22 @@ export class Observable<T>
   /**
    * Subscribes to this Observable with an observer object.
    *
-   * This method creates a subscription that:
-   * 1. Executes the subscriber function to begin producing values
-   * 2. Delivers those values to the observer's callbacks
-   * 3. Returns a subscription object for cancellation
-   *
-   * **What happens**: Creates subscription → calls observer.start() → executes subscriber function →
-   * stores cleanup → returns subscription for cancellation.
+    * This starts the source, sends values to the observer callbacks, and
+    * returns a subscription you can cancel.
    *
    * `observer.start()` is for observing the newly-created subscription or
    * cancelling it before the subscriber body runs. It is not where teardown is
    * registered. Cleanup is still sourced from the subscriber function's return
    * value.
    *
-   * Subscription Lifecycle:
-   * - Starts immediately and synchronously
-   * - Continues until explicitly cancelled or completed/errored
-   * - Guarantees proper resource cleanup on termination
-   *
-   * **Error handling**: If you provide an error callback, it catches all stream errors.
-   * If not, errors become unhandled Promise rejections.
-   *
-   * **Memory warning**: Infinite Observables need manual `unsubscribe()` or `using` blocks.
-   * If the Observable never calls `complete()` or `error()`,
-   * resources will not be automatically released unless you call
-   * `unsubscribe()` manually.
+  * The subscription starts right away. It keeps going until the source
+  * finishes or you cancel it.
+  *
+  * If you provide an `error` callback, stream failures go there. If you do
+  * not, they are reported to the host environment.
+  *
+  * Infinite Observables need manual cleanup. If the source never finishes,
+  * call `unsubscribe()` yourself or use a `using` block.
    *
    * For long-lived subscriptions, consider:
    * 1. Using a `using` block with this subscription
@@ -1057,31 +879,22 @@ export class Observable<T>
    * See the documentation for the observer-based overload for details
    * on subscription behavior.
    *
-   * This method creates a subscription that:
-   * 1. Executes the subscriber function to begin producing values
-   * 2. Delivers those values to the observer's callbacks
-   * 3. Returns a subscription object for cancellation
-   *
-   * **What happens**: Creates subscription → calls observer.start() → executes subscriber function →
-   * stores cleanup → returns subscription for cancellation.
+  * This overload does the same work as the observer-based form: it starts the
+  * source, sends values to your callbacks, and returns a subscription you can
+  * cancel.
   *
-  * `observer.start()` is for observing the newly-created subscription or
-  * cancelling it before the subscriber body runs. It is not where teardown is
-  * registered. Cleanup is still sourced from the subscriber function's return
-  * value.
-   *
-   * Subscription Lifecycle:
-   * - Starts immediately and synchronously
-   * - Continues until explicitly cancelled or completed/errored
-   * - Guarantees proper resource cleanup on termination
-   *
-   * **Error handling**: If you provide an error callback, it catches all stream errors.
-   * If not, errors become unhandled Promise rejections.
-   *
-   * **Memory warning**: Infinite Observables need manual `unsubscribe()` or `using` blocks.
-   * If the Observable never calls `complete()` or `error()`,
-   * resources will not be automatically released unless you call
-   * `unsubscribe()` manually.
+  * `observer.start()` is only for seeing or cancelling the subscription
+  * before the subscriber body runs. It is not where cleanup is registered.
+  * Cleanup still comes from the value returned by the subscriber function.
+  *
+  * The subscription starts right away. It keeps going until the source
+  * finishes or you cancel it.
+  *
+  * If you provide an `error` callback, stream failures go there. If you do
+  * not, they are reported to the host environment.
+  *
+  * Infinite Observables need manual cleanup. If the source never finishes,
+  * call `unsubscribe()` yourself or use a `using` block.
    *
    * For long-lived subscriptions, consider:
    * 1. Using a `using` block with this subscription
@@ -1395,26 +1208,23 @@ export class Observable<T>
   }
 
   /**
-   * Converts Promise, an iterable, async iterable, or Observable-like object to an Observable.
-   *
-   * This static method is a key part of the Observable interoperability mechanism,
-   * handling multiple input types in a consistent way.
+   * Turns a Promise, iterable, async iterable, or Observable-like value into
+   * an Observable.
    *
    * **Handles**:
    * - Arrays, Sets, Maps → sync emission
    * - Async generators → values over time
    * - Symbol.observable objects → delegates to their implementation
    *
-   * Behavior depends on the input type:
+  * What happens depends on the input type:
    * 1. Objects with Symbol.observable - Delegates to their implementation
    * 2. Synchronous iterables - Emits all values then completes
    * 3. Asynchronous iterables - Emits values as they arrive then completes
    * 4. Promise - Emits a single value (the resovled value) then completes
    *
-   * Unlike Promise.resolve, Observable.from will not return the input unchanged
-   * if it's already an Observable, unless it's an instance of the exact same
-   * constructor. This ensures consistent behavior across different Observable
-   * implementations.
+  * Unlike `Promise.resolve`, `Observable.from` does not always return the
+  * input unchanged when it already looks Observable-like. That keeps behavior
+  * consistent across different Observable libraries.
    *
    * @param input - The object to convert to an Observable
    * @returns A new Observable that emits values from the input
@@ -2138,9 +1948,10 @@ interface ForEachState<T> {
 /**
  * Settles the traversal promise and removes the external abort listener.
  *
- * `forEach()` can finish through completion, source error, callback failure, or
- * external cancellation. This helper keeps those competing paths one-shot so
- * the public Promise and listener cleanup stay deterministic.
+ * `forEach()` can finish in several ways: normal completion, source error,
+ * callback failure, or external cancellation. This helper makes sure only one
+ * of those paths wins, and that the Promise plus abort-listener cleanup happen
+ * once.
  */
 function settleForEach<T>(
   state: ForEachState<T>,
@@ -2314,173 +2125,16 @@ export function forEach<T>(
 }
 
 /**
- * Checks if a value is an Observable instance from this library.
+ * Returns `true` when a value is an instance of this library's `Observable`
+ * class.
  *
- * When working with different Observable implementations or mixed data types, you often need
- * to verify what kind of object you're dealing with. This function provides a reliable way to
- * check if something is specifically an instance of our Observable class, which is helpful
- * for type safety and ensuring you can use all the methods available on our implementation.
+ * Use it when you need methods that belong to this implementation specifically,
+ * such as `pull()`.
  *
- * **Why This Function Exists**:
- *
- * In JavaScript ecosystems, you might encounter different Observable implementations - RxJS,
- * this library, custom implementations, or objects that just happen to have a `subscribe` method.
- * Without a proper way to distinguish between them, you'd have to either:
- * - Risk calling methods that don't exist (crashes your app)
- * - Write defensive code with lots of property checks (clutters your logic)
- * - Use duck typing that might give false positives (unreliable)
- *
- * This function eliminates those problems by giving you a definitive answer: "Is this an
- * Observable from our library?" If yes, you know exactly what methods and properties are
- * available.
- *
- * **How It Relates to Other Checks**:
- *
- * Think of this as the strict cousin of `isSpecObservable()`. While `isSpecObservable()`
- * asks "can I subscribe to this?" this function asks "is this specifically our Observable?"
- *
- * Use `isObservable()` when you need to ensure you're working with our exact implementation,
- * and `isSpecObservable()` when you just need something subscribable.
- *
- * **Performance Story**:
- *
- * This function uses `instanceof`, which modern JavaScript engines optimize very well. It's
- * essentially a pointer comparison under the hood, making it extremely fast and suitable for
- * use in performance-critical code paths.
- *
- * The performance characteristics are:
- * - Single `instanceof` check (optimized by JavaScript engines)
- * - No method calls or property access required
- * - Safe to use in tight loops or frequently called functions
- * - Memory efficient (no allocations, just a boolean return)
- *
- * **Common Ways to Use This Function**:
- *
- * ```typescript
- * // Scenario 1: Type-safe method access
- * function processObservable(input: unknown) {
- *   if (isObservable(input)) {
- *     // TypeScript now knows input is Observable<unknown>
- *     const generator = input.pull({ strategy: { highWaterMark: 10 } });
- *     return generator; // Can safely use our specific methods
- *   }
- *
- *   throw new Error('Expected an Observable from this library');
- * }
- *
- * // Scenario 2: Library interoperability
- * function convertToOurObservable(source: unknown): Observable<any> {
- *   if (isObservable(source)) {
- *     return source; // Already our type, no conversion needed
- *   }
- *
- *   if (isSpecObservable(source)) {
- *     return Observable.from(source); // Convert from other implementation
- *   }
- *
- *   throw new Error('Cannot convert to Observable');
- * }
- *
- * // Scenario 3: Filtering mixed arrays
- * const mixedSources = [rxjsObservable, ourObservable, promise, array];
- * const ourObservables = mixedSources.filter(isObservable);
- * // ourObservables is now Observable[] with full type safety
- *
- * // Scenario 4: Defensive programming
- * function subscribeToSource(source: unknown) {
- *   if (isObservable(source)) {
- *     // We know exactly what methods are available
- *     return source.subscribe({ next: console.log });
- *   } else if (isSpecObservable(source)) {
- *     // Different Observable implementation, but still subscribable
- *     return source.subscribe({ next: console.log });
- *   } else {
- *     throw new Error('Source is not observable');
- *   }
- * }
- * ```
- *
- * **What Makes This Function Reliable**:
- *
- * Unlike duck typing (checking for the presence of methods), this function is precise:
- * - Returns true only for actual instances of our Observable class
- * - Handles inheritance correctly (subclasses return true)
- * - Never gives false positives from look-alike objects
- * - Works correctly across different module loading scenarios
- *
- * **Edge Cases Handled**:
- * - `null` and `undefined` → false (not Observables)
- * - Objects with `subscribe` methods → false (unless they're actually our Observable)
- * - Subclasses of Observable → true (proper inheritance support)
- * - Cross-frame instances → true (same constructor reference)
- *
- * **When to Use This vs Other Options**:
- *
- * Choose `isObservable()` when:
- * - You need to access methods specific to our Observable implementation
- * - You're building type guards for strict type checking
- * - You need to distinguish between different Observable libraries
- * - You're doing performance-critical filtering of mixed object types
- *
- * Choose `isSpecObservable()` instead when:
- * - You just need something that can be subscribed to
- * - You want maximum compatibility with other Observable implementations
- * - You're building generic utilities that work with any Observable-like object
- *
- * @template T - The expected type for the Observable's emitted values
- * @param value - Any value that might or might not be our Observable
- * @returns true if the value is an instance of our Observable class, false otherwise
- *
- * @example Simple type checking
- * ```typescript
- * const maybeObservable: unknown = getDataSource();
- *
- * if (isObservable(maybeObservable)) {
- *   // TypeScript knows maybeObservable is Observable<unknown>
- *   const subscription = maybeObservable.subscribe(console.log);
- *
- *   // Can also use our specific methods
- *   for await (const value of maybeObservable.pull()) {
- *     console.log('Pulled:', value);
- *   }
- * } else {
- *   console.log('Not our Observable implementation');
- * }
- * ```
- *
- * @example Building a conversion utility
- * ```typescript
- * function ensureOurObservable<T>(source: unknown): Observable<T> {
- *   if (isObservable<T>(source)) {
- *     return source; // Already the right type
- *   }
- *
- *   if (isSpecObservable<T>(source)) {
- *     // Convert from another Observable implementation
- *     return new Observable<T>(observer => {
- *       const sub = source.subscribe(observer);
- *       return () => sub.unsubscribe();
- *     });
- *   }
- *
- *   // Try to convert from other types
- *   return Observable.from(source as any);
- * }
- * ```
- *
- * @example Library integration
- * ```typescript
- * // Function that works with any Observable but optimizes for ours
- * function processStream<T>(stream: unknown): AsyncGenerator<T> {
- *   if (isObservable<T>(stream)) {
- *     // Use our optimized pull method
- *     return stream.pull();
- *   } else if (isSpecObservable<T>(stream)) {
- *     // Convert and then use our method
- *     return Observable.from(stream).pull();
- *   } else {
- *     throw new Error('Expected an Observable-like object');
- *   }
+ * @example Narrowing to this implementation
+ * ```ts
+ * if (isObservable(source)) {
+ *   return source.pull();
  * }
  * ```
  */
@@ -2493,242 +2147,17 @@ export function isObservable<T = unknown>(
 }
 
 /**
- * Checks if a value conforms to the Observable specification protocol.
+ * Returns `true` when a value implements the Observable protocol via
+ * `[Symbol.observable]()`.
  *
- * When building applications that work with multiple Observable implementations, you need a way
- * to identify objects that can be subscribed to, regardless of which specific library created
- * them. This function provides that capability by checking for the core Observable protocol
- * rather than specific implementation details.
+ * Use it when compatibility matters more than the concrete class. This is the
+ * right check for adapters and utilities that should work with RxJS, this
+ * package, or any other spec-shaped Observable.
  *
- * **Why This Function Exists**:
- *
- * The Observable ecosystem includes many implementations - RxJS, this library, Zen Observable,
- * and others. Each has its own class structure, but they all follow the same basic protocol:
- * having a `[Symbol.observable]()` method that returns an object with a `subscribe()` method.
- *
- * Without this function, you'd need to write complex checks to determine if something is
- * subscribable, leading to:
- * - Fragile duck typing that breaks with edge cases
- * - Verbose property checking that clutters your code
- * - Missing compatibility with new Observable implementations
- * - Inconsistent behavior across different parts of your application
- *
- * This function solves those problems by implementing the official Observable protocol check.
- *
- * **How It Relates to Other Checks**:
- *
- * Think of this as the diplomatic cousin of `isObservable()`. While `isObservable()` checks
- * for our specific implementation, this function asks "do you speak the Observable protocol?"
- * It's designed for interoperability and maximum compatibility.
- *
- * The relationship between these functions is:
- * - `isObservable()` → "Are you our exact Observable class?"
- * - `isSpecObservable()` → "Can I subscribe to you using the standard protocol?"
- *
- * **Performance Story**:
- *
- * This function is more complex than `isObservable()` because it needs to check multiple
- * properties and call a method. However, it's still quite efficient:
- *
- * - Fast property access for Symbol.observable
- * - Single method call to get the subscribable object
- * - Type checking for the subscribe method
- * - Early returns for non-objects to avoid unnecessary work
- *
- * While not as fast as `instanceof`, it's still suitable for most use cases. If you're in a
- * performance-critical path and know you're only dealing with our Observable implementation,
- * prefer `isObservable()`.
- *
- * **Common Ways to Use This Function**:
- *
- * ```typescript
- * // Scenario 1: Cross-library compatibility
- * import { Observable as RxObservable } from 'rxjs';
- * import { Observable as OurObservable } from './observable.ts';
- *
- * function processAnyObservable<T>(source: unknown): Promise<T[]> {
- *   if (isSpecObservable<T>(source)) {
- *     // Works with RxJS, our Observable, or any other spec-compliant implementation
- *     const results: T[] = [];
- *
- *     return new Promise((resolve, reject) => {
- *       source.subscribe({
- *         next: value => results.push(value),
- *         error: reject,
- *         complete: () => resolve(results)
- *       });
- *     });
- *   }
- *
- *   throw new Error('Source must be Observable-like');
- * }
- *
- * // Scenario 2: Building generic utilities
- * function toArray<T>(source: unknown): Promise<T[]> {
- *   if (isSpecObservable<T>(source)) {
- *     return new Promise((resolve, reject) => {
- *       const items: T[] = [];
- *       source.subscribe({
- *         next: item => items.push(item),
- *         error: reject,
- *         complete: () => resolve(items)
- *       });
- *     });
- *   }
- *
- *   // Fallback for other iterable types
- *   if (Array.isArray(source)) return Promise.resolve([...source]);
- *
- *   throw new Error('Cannot convert to array');
- * }
- *
- * // Scenario 3: Input validation in APIs
- * function subscribeToStream<T>(
- *   stream: unknown,
- *   handler: (value: T) => void
- * ): () => void {
- *   if (!isSpecObservable<T>(stream)) {
- *     throw new TypeError('Expected an Observable-like object');
- *   }
- *
- *   const subscription = stream.subscribe({ next: handler });
- *   return () => subscription.unsubscribe();
- * }
- *
- * // Scenario 4: Filtering and type narrowing
- * const mixedSources: unknown[] = [
- *   rxjsObservable,
- *   ourObservable,
- *   { subscribe() { return { unsubscribe() {} }; } }, // Custom implementation
- *   "not observable",
- *   42
- * ];
- *
- * const observableSources = mixedSources.filter(isSpecObservable);
- * // observableSources is now Array<{ subscribe: Function, [Symbol.observable]: Function }>
- * ```
- *
- * **What Makes This Function Robust**:
- *
- * This function implements the official Observable protocol checking:
- * 1. Verifies the object has `Symbol.observable` method
- * 2. Calls that method to get the subscribable object
- * 3. Ensures the result has a working `subscribe` method
- * 4. Handles errors gracefully (returns false rather than throwing)
- *
- * **Edge Cases Handled**:
- * - `null` and `undefined` → false (not objects)
- * - Objects without `Symbol.observable` → false (not Observable protocol)
- * - `Symbol.observable` that throws → false (graceful error handling)
- * - `Symbol.observable` returning non-objects → false (invalid protocol)
- * - Objects with `subscribe` but no `Symbol.observable` → false (incomplete protocol)
- *
- * **When to Use This vs Other Options**:
- *
- * Choose `isSpecObservable()` when:
- * - Building libraries that should work with any Observable implementation
- * - You need maximum compatibility across the Observable ecosystem
- * - You're creating utilities for consuming streams regardless of their origin
- * - You want to follow the official Observable specification strictly
- *
- * Choose `isObservable()` instead when:
- * - You need methods specific to our Observable implementation
- * - Performance is critical and you know the expected types
- * - You're working within a single Observable implementation ecosystem
- * - You need compile-time guarantees about available methods
- *
- * @template T - The expected type for values emitted by the Observable
- * @param value - Any value that might conform to the Observable protocol
- * @returns true if the value implements the Observable specification, false otherwise
- *
- * @example Cross-library compatibility
- * ```typescript
- * import { Observable as RxObservable } from 'rxjs';
- * import { Observable as OurObservable } from './observable.ts';
- *
- * const sources = [
- *   new RxObservable(sub => sub.next(1)),
- *   new OurObservable(obs => obs.next(2)),
- *   { subscribe() { return { unsubscribe() {} }; } } // Custom
- * ];
- *
- * // Process any Observable-like object
- * sources.forEach(source => {
- *   if (isSpecObservable(source)) {
- *     console.log('Can subscribe to this source');
- *     source.subscribe({ next: console.log });
- *   }
- * });
- * ```
- *
- * @example Building a universal Observable utility
- * ```typescript
- * function first<T>(source: unknown): Promise<T> {
- *   if (!isSpecObservable<T>(source)) {
- *     return Promise.reject(new Error('Source must be Observable'));
- *   }
- *
- *   return new Promise((resolve, reject) => {
- *     const subscription = source.subscribe({
- *       next: value => {
- *         subscription.unsubscribe();
- *         resolve(value);
- *       },
- *       error: reject,
- *       complete: () => reject(new Error('Observable completed without emitting'))
- *     });
- *   });
- * }
- *
- * // Works with any Observable implementation
- * const result1 = await first(rxjsObservable);
- * const result2 = await first(ourObservable);
- * ```
- *
- * @example Input validation for APIs
- * ```typescript
- * interface StreamProcessor<T> {
- *   process(stream: unknown): AsyncGenerator<T>;
- * }
- *
- * class UniversalProcessor<T> implements StreamProcessor<T> {
- *   async* process(stream: unknown): AsyncGenerator<T> {
- *     if (isSpecObservable<T>(stream)) {
- *       // Convert any Observable to async generator
- *       const observable = stream[Symbol.observable]();
- *
- *       let resolve: (value: IteratorResult<T>) => void;
- *       let reject: (error: any) => void;
- *       let promise = new Promise<IteratorResult<T>>((res, rej) => {
- *         resolve = res;
- *         reject = rej;
- *       });
- *
- *       const subscription = observable.subscribe({
- *         next: value => {
- *           resolve({ value, done: false });
- *           promise = new Promise<IteratorResult<T>>((res, rej) => {
- *             resolve = res;
- *             reject = rej;
- *           });
- *         },
- *         error: reject,
- *         complete: () => resolve({ value: undefined as any, done: true })
- *       });
- *
- *       try {
- *         while (true) {
- *           const result = await promise;
- *           if (result.done) break;
- *           yield result.value;
- *         }
- *       } finally {
- *         subscription.unsubscribe();
- *       }
- *     } else {
- *       throw new Error('Input must implement Observable protocol');
- *     }
- *   }
+ * @example Accepting any Observable-like source
+ * ```ts
+ * if (isSpecObservable(source)) {
+ *   return Observable.from(source);
  * }
  * ```
  */
