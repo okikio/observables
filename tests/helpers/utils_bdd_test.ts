@@ -574,6 +574,24 @@ describe("Interop Utilities", () => {
       }
     });
 
+    it("should wrap synchronous foreign subscribe failures as ObservableError values", async () => {
+      const foreignOperator = fromObservableOperator<number, number>(() => ({
+        subscribe() {
+          throw new Error("subscribe failed immediately");
+        },
+      }));
+
+      const values = await collectStream(applyOperator(toStream([1, 2, 3]), foreignOperator));
+
+      expect(values).toHaveLength(1);
+      expect(isObservableError(values[0])).toBe(true);
+
+      if (isObservableError(values[0])) {
+        expect(values[0].message).toContain("subscribe failed immediately");
+        expect(values[0].operator).toBe("operator:fromObservableOperator:output");
+      }
+    });
+
     it("should preserve wrapped errors from the foreign output", async () => {
       const failingOperator = fromObservableOperator<number, number>((_source) => ({
         async *[Symbol.asyncIterator]() {

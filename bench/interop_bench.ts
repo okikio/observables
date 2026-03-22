@@ -3,8 +3,14 @@
  * Interop-focused benchmarks.
  *
  * These scenarios measure the cost of the new adapter helpers against the
- * closest direct baseline so interop convenience does not hide avoidable
+ * closest practical baselines so interop convenience does not hide avoidable
  * overhead.
+ *
+ * The RxJS-adapter cases include a leading `ignoreErrors()` stage because the
+ * foreign operator currently plugs into the pipeline after local error values
+ * have been filtered out. Matching local baselines include the same
+ * compatibility stage so the comparison separates adapter cost from that extra
+ * source-filtering step.
  */
 
 import { bench, do_not_optimize, run } from "npm:mitata@^1.0.34";
@@ -132,6 +138,32 @@ bench("Interop: local map/take pipeline via async iteration (1000 items)", async
 bench("Interop: local map/take pipeline via subscribe (1000 items)", async () => {
   const result = pipe(
     Observable.from(range1000),
+    map((value: number) => value + 1),
+    take(100),
+  );
+
+  const values = await collectObservableBySubscription(result);
+
+  do_not_optimize(values);
+}).gc("inner");
+
+bench("Interop: local map/take with ignoreErrors via async iteration (1000 items)", async () => {
+  const result = pipe(
+    Observable.from(range1000),
+    ignoreErrors(),
+    map((value: number) => value + 1),
+    take(100),
+  );
+
+  const values = await collectObservable(result);
+
+  do_not_optimize(values);
+}).gc("inner");
+
+bench("Interop: local map/take with ignoreErrors via subscribe (1000 items)", async () => {
+  const result = pipe(
+    Observable.from(range1000),
+    ignoreErrors(),
     map((value: number) => value + 1),
     take(100),
   );
