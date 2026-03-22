@@ -1,30 +1,29 @@
 /**
- * A lightweight circular-buffer queue for the library's hot paths.
+ * Queue helpers provide fixed-capacity FIFO storage with predictable O(1)
+ * enqueue and dequeue work.
  *
- * This entrypoint exposes the small FIFO data structure that backs replay,
- * buffering, and event fan-out inside the Observable runtime. It keeps
- * enqueue/dequeue work O(1) by moving `head` and `tail` pointers around a fixed
- * array instead of repeatedly calling `Array.shift()`, which has to move every
- * remaining element one slot to the left.
+ * A plain array is fine for append-only work. The trouble starts when you keep
+ * removing from the front with `Array.shift()`, because every remaining element
+ * has to be reindexed. The circular buffer here avoids that by moving `head`
+ * and `tail` pointers around one fixed backing array.
  *
- * Use this module when you need predictable queue performance and explicit
- * capacity control. It is especially useful for buffers that grow and shrink
- * frequently, where repeated array reindexing would turn steady traffic into an
- * unnecessary O(n) cost.
+ * ```text
+ * items: [A, B, C, ., .]
+ *         ^        ^
+ *       head      tail
  *
- * @example
+ * dequeue(A) -> head moves right
+ * enqueue(D) -> tail writes into next slot
+ *
+ * items: [A, B, C, D, .]
+ *            ^        ^
+ *          head      tail
+ *
+ * when tail reaches capacity, it wraps back to 0
  * ```
- * import { createQueue, enqueue, dequeue, peek } from './queue.ts';
  *
- * const taskQueue = createQueue<string>(100);  // capacity of 100
- * enqueue(taskQueue, 'process-order-123');     // add task
- * enqueue(taskQueue, 'send-email-456');        // add another
- *
- * console.log(peek(taskQueue));                // 'process-order-123' (doesn't remove)
- * console.log(dequeue(taskQueue));             // 'process-order-123' (removes and returns)
- *
- * clear(taskQueue);                            // empty the queue instantly
- * ```
+ * That wrap-around behavior is why replay buffers and hot-path event queues can
+ * grow and shrink without paying O(n) array-shift costs.
  *
  * @module
  */
