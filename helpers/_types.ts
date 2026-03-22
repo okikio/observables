@@ -1,11 +1,19 @@
 // deno-lint-ignore-file no-explicit-any
+/**
+ * Helper types describe how pipeline stages connect, what kinds of foreign
+ * inputs can be adapted, and which lifecycle hooks custom operators can use.
+ *
+ * They are most useful when you are authoring operators or interop helpers
+ * rather than just consuming built-in operators.
+ *
+ * @module
+ */
 import type { ObservableError } from "../error.ts";
 import type { Observable } from "../observable.ts";
 import type { SpecObservable } from "../_spec.ts";
 
 /**
- * Type representing a stream operator function
- * Transforms a ReadableStream of type In to a ReadableStream of type Out
+ * Stream-level operator function used internally by `pipe()`.
  */
 export type Operator<In, Out> = (
   stream: ReadableStream<In>,
@@ -75,18 +83,18 @@ export type ObservableWithPipe<
 > = Observable<InferOperatorItemOutputType<LastTupleItem<TPipe>>>;
 
 /**
- * Type representing how to handle errors in operators
- * - "ignore" => errors wrapped in ObservableError will be used as values
- *               and can then be transformed as the operator sees fit
- * - "pass-through" => errors automatically pass through, meaning ObservableError
- *                     will not appear as a value
- * - "throw" => errors will cause the stream to throw and terminate
- * - "manual" => errors are passed to the transform function to handle manually
+ * Error-handling policy for custom operators.
+ *
+ * - `pass-through`: wrap failures as `ObservableError` values and let later
+ *   stages decide what to do
+ * - `ignore`: drop wrapped failures from the output
+ * - `throw`: terminate the stream on failure
+ * - `manual`: handle success and failure paths yourself inside the transform
  */
 export type OperatorErrorMode = "ignore" | "pass-through" | "throw" | "manual";
 
 /**
- * Base interface with properties shared across all transform options
+ * Fields shared by all operator-builder option shapes.
  */
 export interface BaseTransformOptions {
   /**
@@ -184,7 +192,7 @@ export interface ObservableOperatorInteropOptions<TIn, TSource = Observable<TIn>
 // ========================================
 
 /**
- * Options for using an existing TransformStream
+ * Options for adapting an existing `TransformStream` factory into an operator.
  */
 export interface TransformStreamOptions<T, R> extends BaseTransformOptions {
   /**
@@ -194,17 +202,15 @@ export interface TransformStreamOptions<T, R> extends BaseTransformOptions {
 }
 
 /**
- * Options for custom transformation logic
+ * Options for authoring a stateless transform callback.
  */
 export interface TransformFunctionOptions<T, R> extends BaseTransformOptions {
   /**
-   * How to handle errors in the stream:
-   * - "ignore" => errors wrapped in ObservableError will be used as values
-   *               and can then be transformed as the operator sees fit
-   * - "pass-through" => errors automatically pass through, meaning ObservableError
-   *                     will not appear as a value
-   * - "throw" => errors will cause the stream to throw and terminate
-   * - "manual" => errors are passed to the transform function to handle manually
+   * Error-handling policy for this operator.
+   *
+   * `pass-through` is the default because it keeps recovery explicit in later
+   * stages instead of silently dropping failures.
+   *
    * @default "pass-through"
    */
   errorMode?: OperatorErrorMode;
@@ -244,7 +250,7 @@ export interface TransformFunctionOptions<T, R> extends BaseTransformOptions {
 }
 
 /**
- * Union type for all createOperator options
+ * All accepted option shapes for `createOperator()`.
  */
 export type CreateOperatorOptions<T, R> =
   | TransformStreamOptions<T, R>
@@ -255,18 +261,13 @@ export type CreateOperatorOptions<T, R> =
 // ========================================
 
 /**
- * Options for stateful transformation logic
+ * Options for authoring a stateful operator.
  */
 export interface StatefulTransformFunctionOptions<T, R, S>
   extends BaseTransformOptions {
   /**
-   * How to handle errors in the stream:
-   * - "ignore" => errors wrapped in ObservableError will be used as values
-   *               and can then be transformed as the operator sees fit
-   * - "pass-through" => errors automatically pass through, meaning ObservableError
-   *                     will not appear as a value
-   * - "throw" => errors will cause the stream to throw and terminate
-   * - "manual" => errors are passed to the transform function to handle manually
+   * Error-handling policy for this operator.
+   *
    * @default "pass-through"
    */
   errorMode?: OperatorErrorMode;
@@ -321,11 +322,7 @@ export interface StatefulTransformFunctionOptions<T, R, S>
 }
 
 /**
- * Context for transform handlers
- * This interface provides additional information for the transform handler,
- * such as the operator name, whether it is
- * stateful, and any associated state.
- * @typeParam S - State type (if applicable)
+ * Shared metadata passed into lifecycle helpers that wrap custom transforms.
  */
 export interface TransformHandlerContext<S extends unknown = undefined> {
   /**
