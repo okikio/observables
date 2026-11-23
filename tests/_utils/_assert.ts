@@ -1,5 +1,4 @@
-// deno-lint-ignore-file no-import-prefix
-import { AssertionError } from "jsr:@std/assert@^1/assertion-error";
+import { AssertionError } from "@std/assert/assertion-error";
 
 /**
  * Make an assertion that `actual` and `expected` are not equal, deeply.

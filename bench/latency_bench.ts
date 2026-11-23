@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-import-prefix
 /**
  * Low-latency benchmarks for primitive operations.
  *
@@ -7,7 +6,7 @@
  * single-value operator hop.
  */
 
-import { bench, do_not_optimize, run } from "npm:mitata@^1.0.34";
+import { bench, do_not_optimize, run } from "mitata";
 
 import { EventBus } from "../events.ts";
 import { isObservableError } from "../error.ts";

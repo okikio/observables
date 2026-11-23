@@ -1,7 +1,7 @@
-// deno-lint-ignore-file no-import-prefix
 import type { ObservableError } from "../../../error.ts";
-import { expect, test } from "jsr:@libs/testing@^5";
-import { delay as stdDelay } from "jsr:@std/async@^1";
+import { test } from "node:test";
+import { expect } from "@libs/testing";
+import { delay as stdDelay } from "@std/async";
 
 import { isObservableError } from "../../../error.ts";
 import { createOperator } from "../../../helpers/operators.ts";

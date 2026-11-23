@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-import-prefix
 /**
  * Interop-focused benchmarks.
  *
@@ -13,14 +12,14 @@
  * source-filtering step.
  */
 
-import { bench, do_not_optimize, run } from "npm:mitata@^1.0.34";
+import { bench, do_not_optimize, run } from "mitata";
 import {
   from as rxFrom,
   map as rxMap,
   type Observable as RxObservable,
   pipe as rxPipe,
   take as rxTake,
-} from "npm:rxjs@7.8.2";
+} from "rxjs";
 
 import { isObservableError } from "../error.ts";
 import { ignoreErrors } from "../helpers/operations/errors.ts";

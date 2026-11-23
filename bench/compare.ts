@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-import-prefix
 /**
  * Cross-library comparison benchmarks for equivalent observable scenarios.
  *
@@ -7,16 +6,16 @@
  * than against earlier numbers from this repo alone.
  */
 
-import { bench, do_not_optimize, run } from "npm:mitata@^1.0.34";
+import { bench, do_not_optimize, run } from "mitata";
 import {
   filter as rxFilter,
   from as rxFrom,
   map as rxMap,
   of as rxOf,
   take as rxTake,
-} from "npm:rxjs@7.8.2";
-import { Observable as EsObservable } from "npm:es-observable@2.0.5";
-import ZenObservable from "npm:zen-observable@0.10.0";
+} from "rxjs";
+import { Observable as EsObservable } from "es-observable";
+import ZenObservable from "zen-observable";
 
 import { isObservableError } from "../error.ts";
 import {

@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-import-prefix
 /**
  * Observable creation and subscription benchmarks.
  *
@@ -6,7 +5,7 @@
  * across various scenarios from simple to complex patterns.
  */
 
-import { bench, do_not_optimize, run } from "npm:mitata@^1.0.34";
+import { bench, do_not_optimize, run } from "mitata";
 import { Observable } from "../observable.ts";
 import { pipe } from "../helpers/pipe.ts";
 import { filter, map, take } from "../helpers/operations/core.ts";

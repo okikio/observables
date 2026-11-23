@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-import-prefix
 /**
  * Tests for stream utilities that connect the Observable and operator ecosystem - type guards
  * for distinguishing operator option types, stream conversion from arrays/iterables/async iterables,
@@ -11,15 +10,15 @@
  * for cross-platform compatibility without low-level boilerplate.
  */
 
-import { describe, it } from "jsr:@std/testing@^1/bdd";
-import { expect } from "jsr:@std/expect@^1";
+import { describe, it } from "@std/testing/bdd";
+import { expect } from "@std/expect";
 import {
   type Observable as RxObservable,
   from as rxFrom,
   map as rxMap,
   pipe as rxPipe,
   take as rxTake,
-} from "npm:rxjs@7.8.2";
+} from "rxjs";
 
 import {
   applyOperator,

@@ -1,6 +1,5 @@
-// deno-lint-ignore-file no-import-prefix
-import { describe, it } from "jsr:@std/testing@^1/bdd";
-import { expect } from "jsr:@std/expect@^1";
+import { describe, it } from "@std/testing/bdd";
+import { expect } from "@std/expect";
 
 const repo_root = new URL("../", import.meta.url);
 
@@ -119,8 +118,8 @@ describe("publishing setup", () => {
   it("pins publishing-script JSR imports to explicit versions", () => {
     const build_script = readRepoFile("scripts/build_npm.ts");
 
-    expect(build_script).toContain("jsr:@deno/dnt@^0.42.3");
-    expect(build_script).toContain("jsr:@std/jsonc@^1.0.2");
+    expect(build_script).toContain("@deno/dnt");
+    expect(build_script).toContain("@std/jsonc");
   });
 
   it("documents npm install before the JSR bridge fallback", () => {

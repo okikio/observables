@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-import-prefix
 /**
  * Tests for Observable-based event patterns: EventBus (simple multicast), EventDispatcher
  * (type-safe routing), withReplay (buffer for late subscribers), and waitForEvent (Promise-based
@@ -11,8 +10,8 @@
  * on event (supports AbortSignal cancellation).
  */
 
-import { describe, it } from "jsr:@std/testing@^1/bdd";
-import { expect } from "jsr:@std/expect@^1";
+import { describe, it } from "@std/testing/bdd";
+import { expect } from "@std/expect";
 
 import {
   createEventDispatcher,

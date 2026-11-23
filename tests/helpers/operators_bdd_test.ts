@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-import-prefix
 /**
  * Tests for `createOperator` and `createStatefulOperator` - the core functions for building
  * custom Observable operators that wrap Web Streams with ergonomic error handling.
@@ -17,8 +16,8 @@
  * fast producers), chunk-by-chunk processing (memory efficient), and cross-platform compatibility.
  */
 
-import { describe, it } from "jsr:@std/testing@^1/bdd";
-import { expect } from "jsr:@std/expect@^1";
+import { describe, it } from "@std/testing/bdd";
+import { expect } from "@std/expect";
 
 import { Observable, pull } from "../../observable.ts";
 import {

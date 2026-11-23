@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-import-prefix
 /**
  * Event system benchmarks.
  *
@@ -8,7 +7,7 @@
  * subscription setup on every iteration.
  */
 
-import { bench, do_not_optimize, run } from "npm:mitata@^1.0.34";
+import { bench, do_not_optimize, run } from "mitata";
 
 import { createEventDispatcher, EventBus } from "../events.ts";
 
