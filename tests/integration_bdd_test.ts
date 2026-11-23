@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-import-prefix
 /**
  * Integration tests validating operator composition in real-world patterns. Unlike unit tests
  * focused on individual operators, these ensure complete pipelines handle order dependencies,
@@ -10,8 +9,8 @@
  * (mergeMap for parallelism, concatMap for ordering).
  */
 
-import { describe, it } from "jsr:@std/testing@^1/bdd";
-import { expect } from "jsr:@std/expect@^1";
+import { describe, it } from "@std/testing/bdd";
+import { expect } from "@std/expect";
 
 import { Observable } from "../observable.ts";
 import { pipe } from "../helpers/pipe.ts";

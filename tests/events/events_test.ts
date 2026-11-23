@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-import-prefix
 /**
  * Comprehensive test suite for EventBus and Event Dispatcher
  *
@@ -21,8 +20,10 @@ import {
   waitForEvent,
   withReplay,
 } from "../../events.ts";
-import { expect, runtime, test } from "jsr:@libs/testing@^5";
-import { spy } from "jsr:@std/testing@^1/mock";
+import { test } from "node:test";
+import { expect } from "@libs/testing";
+import { runtime } from "../_runtime.ts";
+import { spy } from "@std/testing/mock";
 
 // Import the modules under test
 import { Observable } from "../../observable.ts";
@@ -912,7 +913,9 @@ test("Documentation - waitForEvent example from docs", async () => {
 
 // Runtime-specific tests
 if (runtime === "deno") {
-  test("Deno-specific - Network permissions test", async () => {
+  Deno.test("Deno-specific - Network permissions test", {
+    permissions: { net: "inherit" },
+  }, async () => {
     // Use an ephemeral port and force the connection closed so shutdown does
     // not wait on a kept-alive client socket after the assertion passes.
     const server = Deno.serve(
@@ -921,12 +924,13 @@ if (runtime === "deno") {
         port: 0,
         onListen: () => {},
       },
-      () => new Response(null, {
-        status: 200,
-        headers: {
-          connection: "close",
-        },
-      }),
+      () =>
+        new Response(null, {
+          status: 200,
+          headers: {
+            connection: "close",
+          },
+        }),
     );
 
     try {
@@ -941,7 +945,7 @@ if (runtime === "deno") {
     } finally {
       await server.shutdown();
     }
-  }, { permissions: { net: "inherit" } });
+  });
 }
 
 if (runtime === "node") {

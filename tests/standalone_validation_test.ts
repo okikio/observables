@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-import-prefix
 /**
  * Cross-runtime intent tests for the Observable library.
  * Tests core macro and micro behaviors with the shared `@libs/testing` harness.
@@ -6,8 +5,8 @@
  * Run with: deno test --allow-read --trace-leaks standalone_validation_test.ts
  */
 
-// deno-lint-ignore-file no-import-prefix
-import { expect, test } from "jsr:@libs/testing@^5";
+import { test } from "node:test";
+import { expect } from "@libs/testing";
 
 function assertEquals<T>(actual: T, expected: T, msg?: string): void {
   expect(actual, msg).toBe(expected);

@@ -74,15 +74,17 @@ jobs:
       released: ${{ steps.detect.outputs.released }}
       tag: ${{ steps.detect.outputs.tag }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - uses: denoland/setup-deno@v2
-
-      - uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          deno-version: 2.9.8
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26.13.1"
 
       - name: Configure git author
         run: |
@@ -203,11 +205,13 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.resolve-release.outputs.ref }}
 
       - uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.9.8
 
       - name: Publish to JSR
         run: deno publish
@@ -222,18 +226,20 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.resolve-release.outputs.ref }}
 
       - uses: denoland/setup-deno@v2
+        with:
+          deno-version: 2.9.8
 
       - name: Build npm package
         run: deno task build:npm
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
-          node-version: "24"
+          node-version: "26.13.1"
           registry-url: "https://registry.npmjs.org"
 
       - name: Detect whether the npm package already exists

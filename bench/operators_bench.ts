@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-import-prefix
 /**
  * Operator pipeline benchmarks.
  *
@@ -6,7 +5,7 @@
  * real-world Observable usage patterns.
  */
 
-import { bench, do_not_optimize, run } from "npm:mitata@^1.0.34";
+import { bench, do_not_optimize, run } from "mitata";
 import { Observable } from "../observable.ts";
 import { isObservableError } from "../error.ts";
 import {

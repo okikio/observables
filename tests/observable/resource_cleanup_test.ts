@@ -1,6 +1,6 @@
-// deno-lint-ignore-file no-import-prefix
 import type { SubscriptionObserver } from "../../observable.ts";
-import { expect, test } from "jsr:@libs/testing@^5";
+import { test } from "node:test";
+import { expect } from "@libs/testing";
 
 import { Observable } from "../../observable.ts";
 import { Symbol } from "../../symbol.ts";
@@ -125,7 +125,7 @@ test("Teardown timing: complete() triggers immediate cleanup", () => {
 
 test("Teardown timing: synchronous error in subscriber", async () => {
   let teardownCalled = false;
-  let timeout: number | null = null;
+  let timeout: ReturnType<typeof setTimeout> | null = null;
 
   const { promise, resolve } = Promise.withResolvers<void>();
   const obs = new Observable<never>(() => {

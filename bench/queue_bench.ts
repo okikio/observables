@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-import-prefix
 /**
  * Queue operations benchmarks focusing on O(1) performance claims.
  *
@@ -6,7 +5,7 @@
  * performance and compare against naive Array.shift() implementations.
  */
 
-import { bench, do_not_optimize, run } from "npm:mitata@^1.0.34";
+import { bench, do_not_optimize, run } from "mitata";
 import {
   clear,
   createQueue,

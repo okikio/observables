@@ -1,4 +1,3 @@
-// deno-lint-ignore-file no-import-prefix
 /**
  * Memory allocation and GC pressure benchmarks.
  *
@@ -7,7 +6,7 @@
  * real-world performance characteristics beyond simple execution time.
  */
 
-import { bench, do_not_optimize, run } from "npm:mitata@^1.0.34";
+import { bench, do_not_optimize, run } from "mitata";
 import { Observable } from "../observable.ts";
 import { isObservableError } from "../error.ts";
 import { pipe } from "../helpers/pipe.ts";
